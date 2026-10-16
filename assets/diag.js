@@ -31,7 +31,9 @@ form.addEventListener('submit', async e => {
         ? 'Players can’t join without a passphrase until it’s updated.'
         : v < 3
           ? 'It works, but an edit sent again after being offline can undo newer changes to the same rows.'
-          : 'It works, but the site shows the book’s wording for every Rules row: the Override columns are ignored.';
+          : v < 4
+            ? 'It works, but the site shows the book’s wording for every Rules row: the Override columns are ignored.'
+            : 'It works, but images linked from Google Drive don’t show.';
       html += line(false, 'Script version', `This deployment runs an older Code.gs (version ${v}; the latest is ${API_VERSION}). ${missing} Paste the latest <code>apps-script/Code.gs</code> into the Apps Script editor and save, then <b>Deploy → Manage deployments</b>, click the pencil, set <b>Version: New version</b> and click <b>Deploy</b>. Saving alone doesn’t change what’s deployed.`);
     }
   } catch {

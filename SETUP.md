@@ -34,7 +34,10 @@ also add `CREW_KEY` with the players' passphrase.
 4. Click **Deploy**, then **Authorize access** and pick your Google account.
    - Google will warn that it "hasn't verified this app". It's your own script, so click
      **Advanced → Go to (project name)** and **Allow**.
-   - It asks for access to "the spreadsheet it's attached to" only.
+   - It asks for access to "the spreadsheet it's attached to" and to see your Drive files, so
+     it can send the images the Rules tab links to (see [Images](#images)). If it asks to
+     *edit and delete* all your Drive files instead, the script's manifest wasn't copied from
+     the template: see [Images](#images) for how to paste it in.
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -94,7 +97,7 @@ game's own wording, and the site uses them first:
   moves by it; give a move new text instead.
 - **Override text**: new text (a kit's items, a location's description, …).
 - **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere;
-  `img=assets/world/…` (or an `https://` address) shows an image with it.
+  `img=…` shows an image with it (see [Images](#images) below).
 
 The Rules page shows the book's wording under each overridden row, as "Rapscallion original".
 The columns are found by their headers, so add the three headers to an existing game's Rules tab
@@ -115,7 +118,26 @@ site makes the first time the GM turns a place on. Everyone can read it, but onl
 change it. A themed place stays on the map under its new name. Maps always show, and levels
 show with their place.
 
-Images in `assets/world/` are part of this site, so anyone can open them.
+## Images
+
+Maps and other pictures live in the Google Drive of whoever deployed the script, not on this
+site. To add or change one:
+
+1. Upload the image to that Drive (any folder).
+2. Right-click it, **Share → Copy link**.
+3. Paste the link into the row's Meta (or Override meta) after `img=`, e.g.
+   `img=https://drive.google.com/file/d/1AbC…/view?usp=sharing`.
+
+To change an image but keep the link, use **Manage versions → Upload new version** on the file
+in Drive. The image doesn't have to be shared with anyone. The script sends it, but only when a
+Rules row links to it, and only to people who can see that row (a `gm` row's image only to the
+GM). An ordinary `https://` image address works too.
+
+Reading Drive needs script version 5. `apps-script/appsscript.json` limits the script to
+reading this spreadsheet and reading (never changing) Drive files. To use it, open **Project
+Settings** in the Apps Script editor, tick **Show "appsscript.json" manifest file in editor**,
+and paste the repository's version over it. Without it, Google asks for full Drive access when
+you deploy. Either way, deploying the new version asks you to authorize again.
 
 `tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
 template, or, without `--rules`, makes a workbook of just the theme's rows to paste into an

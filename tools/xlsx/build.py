@@ -45,7 +45,7 @@ README = [
     '    them instead of the book’s and keeps the book’s under "Rapscallion original". Override meta adds to Meta; "hide" there',
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
     '    Kinds for the Map page: map (img=… a world map), location (Group = region; img=… optional), level (Group = the location’s',
-    '    name; img=… one floor or level, in order). img= is a path on the site (assets/world/…) or an https address.',
+    '    name; img=… one floor or level, in order). img= is a Google Drive link (Share > Copy link) or an https address.',
     '    The crew see a location only once the GM puts it on the map (the Map tab).',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',

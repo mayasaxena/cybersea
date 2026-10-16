@@ -125,7 +125,8 @@ class Spreadsheet {
 
 // Build the fake services. `tabs` is {name: [[...header], [...row], ...]} (rows as typed into the
 // sheet by hand: values starting with "=" become formulas, as in Sheets).
-export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () => Date.now(), asText = false } = {}) {
+// `files` is {id: {name, type, bytes (a Buffer)}}: the deployer's Google Drive.
+export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () => Date.now(), asText = false, files = {} } = {}) {
   const ss = new Spreadsheet(name);
   for (const [tab, rows] of Object.entries(tabs)) seedTab(ss, tab, rows, asText);
 
@@ -147,6 +148,16 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     clearCache() { cache.clear(); },
     services: {
       SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+      DriveApp: {
+        getFileById: id => {
+          const f = Object.hasOwn(files, id) ? files[id] : null;
+          if (!f) throw new Error('No item with the given ID could be found. Or perhaps you do not have permission to access it.');
+          return {
+            getName: () => f.name,
+            getBlob: () => ({ getName: () => f.name, getContentType: () => f.type, getBytes: () => [...f.bytes].map(b => (b > 127 ? b - 256 : b)) }),
+          };
+        },
+      },
       PropertiesService: {
         getScriptProperties: () => propsOf(store),
         getDocumentProperties: () => propsOf(docStore),

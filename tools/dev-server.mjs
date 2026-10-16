@@ -20,7 +20,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGas, loadCodeGs } from './gas-fake.mjs';
-import { gameTabs, KEYS, RULES_HEADER } from '../tests/fixtures/game.mjs';
+import { gameTabs, gameFiles, KEYS, RULES_HEADER } from '../tests/fixtures/game.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = {
@@ -36,12 +36,12 @@ function parseLatency(spec) {
 }
 
 // codePath and codeTransform stand in for an older deployment of Code.gs.
-export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codePath, codeTransform } = {}) {
+export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), files = gameFiles(), keys = KEYS, rulesJson, codePath, codeTransform } = {}) {
   if (rulesJson) {
     const recs = JSON.parse(readFileSync(rulesJson, 'utf8'));
     tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew', r.override_name || '', r.override_text || '', r.override_meta || ''])] };
   }
-  const gas = createGas({ name, tabs, props: keys, asText: true });
+  const gas = createGas({ name, tabs, files, props: keys, asText: true });
   return { gas, api: loadCodeGs(gas, codePath, codeTransform) };
 }
 

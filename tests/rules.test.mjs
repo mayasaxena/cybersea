@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { atSession, atSessionStart, luckFloorOf, parseMeta, indexRules, rollFor, atSessionEnd, gainsFrom } from '../assets/rules.js';
-import { imgSrc } from '../assets/markup.js';
+import { imgSrc, driveId } from '../assets/markup.js';
 
 test('meta: pairs, flags and quoted values', () => {
   assert.deepEqual(parseMeta('type=pirate harm=6 luck=8 pick=1'), { type: 'pirate', harm: '6', luck: '8', pick: '1' });
@@ -53,7 +53,7 @@ test("overrides: the game's wording first, the book's kept as orig", () => {
     ['playbook', 'Brute', 'Brute', 'Big.', 'type=pirate', 'crew', 'Bruiser', '', ''],
     ['kit', 'Brute', 'Kit 1', 'Club, rope', 'traits=1,0,0', 'crew', '', 'Club, data cable', 'traits=0,1,0'],
     ['pmove', 'Brute', 'SMASH', 'roll +BLOOD', 'start', 'crew', 'CRUSH', 'roll +BLOOD hard', ''],
-    ['location', 'places', 'Gull Rock', 'Gulls.', '', 'crew', 'Packet Reef', '', 'img=assets/world/x.jpg'],
+    ['location', 'places', 'Gull Rock', 'Gulls.', '', 'crew', 'Packet Reef', '', 'img=https://example.com/x.jpg'],
     ['location', 'places', 'Old Mill', 'A mill.', '', 'crew', '', '', 'hide'],
     ['move', 'basic', 'POKE', 'roll +VINEGAR', '', 'crew'],
   ]);
@@ -74,10 +74,22 @@ test("overrides: the game's wording first, the book's kept as orig", () => {
   assert.equal(smash.text, 'roll +BLOOD hard');
 });
 
-test('images: site paths and https only', () => {
-  assert.equal(imgSrc('assets/world/vega-server.jpg'), 'assets/world/vega-server.jpg');
+test('images: https only; the site holds no art of its own', () => {
   assert.equal(imgSrc('https://example.com/a.png'), 'https://example.com/a.png');
-  for (const bad of ['javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
+  for (const bad of ['assets/world/vega-server.jpg', 'javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
+});
+
+test('images: Google Drive links give the file id', () => {
+  const id = '1AbC-dEf_GhIjKlMnOpQrStUvWxYz0123';
+  for (const link of [
+    `https://drive.google.com/file/d/${id}/view?usp=sharing`,
+    `https://drive.google.com/file/d/${id}/view?usp=drive_link`,
+    `https://drive.google.com/file/d/${id}`,
+    `https://drive.google.com/open?id=${id}`,
+    `https://drive.google.com/uc?export=view&id=${id}`,
+    `https://docs.google.com/uc?id=${id}`,
+  ]) assert.equal(driveId(link), id, link);
+  for (const bad of ['https://example.com/a.png', 'https://drive.google.com/drive/folders/abcdefghijkl', `http://drive.google.com/file/d/${id}/view`, 'https://drive.google.com/file/d/short/view', `https://evil.com/?u=https://drive.google.com/file/d/${id}`]) assert.equal(driveId(bad), '', bad);
 });
 
 test('session end: which moves it touches, and what they mark', () => {

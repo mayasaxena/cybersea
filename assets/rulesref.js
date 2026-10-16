@@ -3,7 +3,7 @@ import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { indexRules } from './rules.js';
 import { esc, pageShell, refreshNav } from './core.js';
-import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
+import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent, showDriveImages } from './refview.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -17,6 +17,7 @@ pageShell(app, client, 'rules');
 const store = client.tab('Rules');
 const main = document.createElement('main');
 app.append(main);
+showDriveImages(main, client);
 const KEYS = ['moves', 'playbooks', 'tags', 'reference', 'world', 'other'];
 let R = indexRules(store.rows);
 let tab = 'moves';

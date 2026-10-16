@@ -125,11 +125,16 @@ export function htmlToMarkup(html) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// An image a Rules row points to (img=… in its meta): a path on this site, or an https address.
-// Anything else (another scheme, a way out of the site) gives ''.
+// An image a Rules row points to (img=… in its meta): an https address. Anything else gives ''.
+// A Google Drive link isn't the image itself: see driveId.
 export function imgSrc(u) {
   const s = String(u || '').trim();
-  if (/^https:\/\/[^\s"'<>]+$/i.test(s)) return s;
-  if (/^\w[\w.\/%-]*$/.test(s) && !s.includes('..') && !s.includes('//')) return s;
-  return '';
+  return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
+}
+
+// The file id in a Google Drive link (Share > Copy link, or an open?id= / uc?id= link), or ''.
+// The game's script sends the image (op "image"), so the file needn't be shared with anyone.
+export function driveId(u) {
+  const m = String(u || '').trim().match(/^https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|(?:open|uc)\?(?:[^#]*&)?id=)([\w-]{10,200})(?=[/?&#]|$)/i);
+  return m ? m[1] : '';
 }

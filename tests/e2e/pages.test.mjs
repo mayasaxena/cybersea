@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, invite, signIn } from './harness.mjs';
-import { KEYS, gameTabs } from '../fixtures/game.mjs';
+import { KEYS, DRIVE, gameTabs } from '../fixtures/game.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
@@ -171,7 +171,7 @@ test("map page: crew see the maps and only the places the GM has put on the map,
   await join(p, g1, 'map.html');
   await p.waitForSelector('.worldmap img');
   assert.equal(await p.textContent('.worldmap h2'), 'The Test Server');
-  assert.ok(await p.$eval('.worldmap img', i => i.complete && i.naturalWidth > 0), 'the map image loads');
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'the map image loads from the GM\'s Drive, through the script');
   await p.waitForSelector('.loc h2');
   assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Packet Reef'], 'on the map, under its themed name; GM-only rows never reach the crew');
   assert.equal(await p.$('[data-place]'), null, 'crew can\'t change what\'s on the map');
@@ -195,7 +195,9 @@ test("map page: crew see the maps and only the places the GM has put on the map,
   await st.locator('[data-lv="1"]').click();
   await p.waitForSelector('.loc [data-lv="1"][aria-selected="true"]');
   assert.match(await p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels .rich').textContent(), /The market/);
-  assert.match(await p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels img').getAttribute('src'), /level-2/);
+  const lv2 = p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels img');
+  assert.equal(await lv2.getAttribute('data-drive'), DRIVE.level2);
+  assert.ok(await until(() => lv2.evaluate(i => i.complete && i.naturalWidth === 32)), 'the level\'s image loads');
   await p.fill('#q', 'market');
   assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Scrap Town'], 'a level\'s text finds its place');
 

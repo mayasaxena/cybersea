@@ -1,5 +1,5 @@
 // Searchable views of the Rules tab, shared by rules.html (crew) and gm.html (GM).
-import { md, plain, imgSrc } from './markup.js';
+import { md, plain, imgSrc, driveId } from './markup.js';
 import { esc, escTxt } from './core.js';
 
 const cap = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
@@ -37,10 +37,54 @@ export const SECTIONS = {
 
 const metaLine = r => Object.entries(r.meta).filter(([k]) => !['start', 'adv', 'img'].includes(k)).map(([k, v]) => (v === true ? k : `${k} ${v}`)).join(' · ');
 
+// Images from Google Drive, as the game's script sends them: Drive id -> object URL.
+const fromDrive = new Map();
+const loading = new Map(); // Drive id -> promise of its object URL
+
 export const imgHTML = (r, cls = 'rimg') => {
+  const id = driveId(r.meta.img);
+  if (id) {
+    const src = fromDrive.get(id);
+    const at = src ? ` src="${esc(src)}"` : '';
+    return `<a class="${cls}" href="${esc(src || `https://drive.google.com/file/d/${id}/view`)}" target="_blank" rel="noopener"><img data-drive="${esc(id)}"${at} alt="${esc(r.name)}" loading="lazy"></a>`;
+  }
   const src = imgSrc(r.meta.img);
   return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(r.name)}" loading="lazy"></a>` : '';
 };
+
+function driveImage(client, id) {
+  if (!loading.has(id)) {
+    const why = msg => new Error(/unknown op/i.test(msg || '') ? 'Update the game’s script to show images from Google Drive.' : msg || 'Couldn’t load the image.');
+    loading.set(id, client.request({ op: 'image', id }).catch(err => { throw why(err.message); }).then(r => {
+      if (!r.ok) throw why(r.error);
+      const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: r.type }));
+      fromDrive.set(id, url);
+      return url;
+    }));
+  }
+  return loading.get(id);
+}
+
+// Fill in the Drive images under root as they appear (pages re-render often; each image is
+// fetched once).
+export function showDriveImages(root, client) {
+  const fill = () => root.querySelectorAll('img[data-drive]:not([src]):not([data-wait])').forEach(img => {
+    img.dataset.wait = '';
+    driveImage(client, img.dataset.drive).then(url => {
+      img.src = url;
+      const a = img.closest('a');
+      if (a) a.href = url;
+    }, err => {
+      const note = document.createElement('span');
+      note.className = 'imgfail';
+      note.textContent = `${img.alt}: ${err.message}`;
+      img.replaceWith(note);
+    });
+  });
+  new MutationObserver(fill).observe(root, { childList: true, subtree: true });
+  fill();
+}
 
 // The book's wording, under the game's own, for a row with overrides.
 export function origHTML(r) {

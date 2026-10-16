@@ -2,6 +2,7 @@
 //   map      | Group | Name     | Text | img=…        a map of the whole world (or a region)
 //   location | Group | Name     | Text | img=…        a place; Group is the region it's listed under
 //   level    | Place | Level 1  | Text | img=…        a floor or level of a place, in order
+// img= is a Google Drive link to the image (the game's script sends it) or an https address.
 // The book's locations and new ones alike; Override name/text/meta give a book location the
 // game's own name, text and image (see rules.js).
 //
@@ -13,7 +14,7 @@ import { GameClient } from './api.js';
 import { indexRules } from './rules.js';
 import { md } from './markup.js';
 import { esc, escTxt, pageShell, refreshNav } from './core.js';
-import { imgHTML, origHTML } from './refview.js';
+import { imgHTML, origHTML, showDriveImages } from './refview.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -28,6 +29,7 @@ const store = client.tab('Rules');
 const placesStore = client.tab('Map');
 const main = document.createElement('main');
 app.append(main);
+showDriveImages(main, client);
 let R = indexRules(store.rows);
 let query = '';
 let showAll = true; // the GM's view: every place, or only those on the map

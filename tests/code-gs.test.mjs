@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 4 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 5 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 4 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 5 });
 });
 
 test('explains missing passphrases', () => {
@@ -494,4 +494,42 @@ test('removed rows are remembered within a property’s size', () => {
   const gone = gas.docProps['gone:lore'];
   assert.equal(Object.keys(JSON.parse(gone)).length, 150);
   assert.ok(gone.length < 9000, `${gone.length} characters`); // Apps Script allows 9 kB per property
+});
+
+test('image: sends a Drive image only when a Rules row the caller can read links to it', () => {
+  const b = n => Buffer.from(Array.from({ length: n }, (_, i) => (i * 37) & 255));
+  const files = {
+    mapImageId01: { name: 'map.png', type: 'image/png', bytes: b(300) },
+    themedImg001: { name: 'themed.jpg', type: 'image/jpeg', bytes: b(10) },
+    gmImageId001: { name: 'secret.png', type: 'image/png', bytes: b(10) },
+    notesFile001: { name: 'notes.txt', type: 'text/plain', bytes: b(10) },
+    unlinked0001: { name: 'other.png', type: 'image/png', bytes: b(10) },
+  };
+  const gas = createGas({
+    props: KEYS,
+    files,
+    tabs: {
+      Rules: [
+        ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'],
+        ['map', 'World', 'Map', 'The world.', 'img=https://drive.google.com/file/d/mapImageId01/view?usp=sharing', 'crew'],
+        ['location', 'places', 'Rock', 'A rock.', '', 'crew', 'Reef', '', 'img=https://drive.google.com/open?id=themedImg001'],
+        ['location', 'places', 'Lair', 'Secret.', 'img=https://drive.google.com/file/d/gmImageId001/view', 'gm'],
+        ['location', 'places', 'Desk', 'Notes.', 'img=https://drive.google.com/file/d/notesFile001/view', 'crew'],
+        ['location', 'places', 'Gone', 'Missing.', 'img=https://drive.google.com/file/d/deletedFile1/view', 'crew'],
+      ],
+    },
+  });
+  const api = loadCodeGs(gas);
+  const r = api.call({ op: 'image', id: 'mapImageId01' });
+  assert.equal(r.ok, true);
+  assert.equal(r.type, 'image/png');
+  assert.deepEqual(Buffer.from(r.data, 'base64'), files.mapImageId01.bytes, 'the bytes come through unchanged');
+  assert.equal(api.call({ op: 'image', id: 'themedImg001' }).ok, true, 'linked from Override meta');
+  assert.equal(api.call({ op: 'image', id: 'unlinked0001' }).code, 'missing', 'no row links to it: the rest of the Drive stays out of reach');
+  assert.equal(api.call({ op: 'image', id: 'gmImageId001' }).code, 'missing', 'a GM-only row\'s image isn\'t sent to crew');
+  assert.equal(api.call({ op: 'image', id: 'gmImageId001', key: KEYS.GM_KEY }).ok, true, 'but is to the GM');
+  assert.match(api.call({ op: 'image', id: 'notesFile001' }).error, /isn't an image/);
+  assert.match(api.call({ op: 'image', id: 'deletedFile1' }).error, /can't open that Drive file/);
+  assert.equal(api.call({ op: 'image', id: '../../etc' }).ok, false);
+  assert.equal(api.call({ op: 'image', id: 'mapImageId01', key: 'wrong' }).code, 'auth');
 });

@@ -16,10 +16,14 @@
  * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
+ * Images (maps and the like) are files in the Drive of whoever deployed the script; a Rules
+ * row's img= is a link to one, and op "image" sends it (see image_). So the script needs to
+ * read Drive: appsscript.json asks for read-only access.
+ *
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 4; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab
+const API_VERSION = 5; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: images from Drive
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // A game's own wording for a Rules row, kept beside the book's (which stays as it is). Found by
@@ -31,6 +35,7 @@ const MAX_TAB_NAME = 40;
 const MAX_GONE = 150;          // removed rows remembered per tab (see gone_)
 const BAD_KEY_LIMIT = 10;      // wrong passphrases per minute before pausing
 const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this long
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 function doGet(e) {
   const op = e && e.parameter ? e.parameter.op : '';
@@ -66,6 +71,7 @@ function handle_(req) {
     case 'read': return read_(role, req);
     case 'patch': return withLock_(() => patch_(role, req));
     case 'create': return withLock_(() => create_(role, req));
+    case 'image': return image_(role, req);
     case 'selftest': return role === 'gm' ? withLock_(selftest_) : forbidden_();
   }
   return { ok: false, error: 'Unknown op: ' + req.op };
@@ -501,6 +507,38 @@ function create_(role, req) {
   const at = Date.now();
   const t = table_(sh, kind, role);
   return { ok: true, tab: name, kind, at, d: t.d, rows: t.rows, vers: t.vers };
+}
+
+/*
+ * image {id} -> {type, data (base64), name}: a Drive image that a Rules row the caller can read
+ * links to (in Meta or Override meta), so only images the GM put in the sheet are sent.
+ */
+function image_(role, req) {
+  const id = String(req.id || '');
+  if (!/^[\w-]{10,200}$/.test(id)) return { ok: false, error: 'That isn\'t a Drive file.' };
+  const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Rules');
+  const linked = sh && table_(sh, 'rules', role).rows.some(r => [r[4], r[8]].some(m => driveIds_(m).indexOf(id) >= 0));
+  if (!linked) return { ok: false, code: 'missing', error: 'No Rules row links to that image.' };
+  let blob;
+  try {
+    blob = DriveApp.getFileById(id).getBlob();
+  } catch (err) {
+    return { ok: false, code: 'missing', error: 'The script can\'t open that Drive file: it must be in, or shared with, the Drive of whoever deployed the script.' };
+  }
+  const type = String(blob.getContentType() || '');
+  if (type.indexOf('image/') !== 0) return { ok: false, error: 'That Drive file isn\'t an image.' };
+  const bytes = blob.getBytes();
+  if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'That image is too big (over 20 MB).' };
+  return { ok: true, type, name: blob.getName(), data: Utilities.base64Encode(bytes) };
+}
+
+// The Drive file ids linked in a Meta cell (as assets/markup.js driveId reads them).
+function driveIds_(meta) {
+  const re = /https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|(?:open|uc)\?(?:[^#\s]*&)?id=)([\w-]{10,200})(?=[\/?&#\s"]|$)/gi;
+  const ids = [];
+  let m;
+  while ((m = re.exec(String(meta || '')))) ids.push(m[1]);
+  return ids;
 }
 
 /* selftest (GM): checks that values survive a round trip through this sheet unchanged */
