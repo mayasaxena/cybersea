@@ -119,7 +119,8 @@ Images in `assets/world/` are part of this site, so anyone can open them.
 
 `tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
 template, or, without `--rules`, makes a workbook of just the theme's rows to paste into an
-existing game.
+existing game. A theme's change to a book row this workbook doesn't have (a kit's Override text, say)
+goes in an `_Overrides` tab, to copy into that row by hand.
 
 ## Updating the script later
 

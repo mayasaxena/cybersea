@@ -15,7 +15,9 @@ rules.json: [{kind, group, name, text, meta, vis}, ...] (from tools/extract)
 --theme theme.json: a setting laid over the book, {rules, lore, gm}:
   rules: Rules rows, optionally with override_name, override_text, override_meta. One with the
     same Kind + Group + Name as a book row fills in that row's Override columns from those (or
-    from its own text and meta); the book's columns stay as they are. Any other is a new row.
+    from its own text and meta); the book's columns stay as they are. One with only overrides
+    (no text) that matches no book row goes in the _Overrides tab, to copy across by hand. Any
+    other is a new row.
   lore, gm, map: rows for the Lore, GM and Map tabs, as [[Kind, Name, Value, Notes], ...]. Map rows
     are the places the Map page shows the crew: ['place', the location's book name, 'on', '']
 Without --rules, the workbook holds only the theme's rows, to paste into an existing game.
@@ -86,9 +88,11 @@ def text_sheet(ws, header, rows, widths):
 
 
 def overlay(recs, theme_rules):
-    """The book's rows with the theme's laid over them: matching rows get Override columns."""
+    """The book's rows with the theme's laid over them: matching rows get Override columns.
+    Returns (rows, overrides for book rows that aren't here: override-only theme rows, to fill in by hand)."""
     key = lambda r: tuple(str(r.get(k, '')).strip().lower() for k in ('kind', 'group', 'name'))
     out = [dict(r) for r in recs]
+    loose = []
     at = {}
     for i, r in enumerate(out):
         at.setdefault(key(r), i)
@@ -101,10 +105,12 @@ def overlay(recs, theme_rules):
             for k, v in ov.items():
                 if v and v != out[i].get(k[len('override_'):], ''):
                     out[i][k] = v
+        elif not str(t.get('text', '')).strip() and any(t.get(k) for k in OVERRIDES):
+            loose.append(t)  # a change to a book row this workbook doesn't have
         else:
             out.append(dict(t))
             at[key(t)] = len(out) - 1
-    return out
+    return out, loose
 
 
 def main():
@@ -120,7 +126,9 @@ def main():
     if a.house:
         recs = recs + json.load(open(a.house, encoding='utf-8'))
     theme = json.load(open(a.theme, encoding='utf-8')) if a.theme else {}
-    recs = overlay(recs, theme.get('rules', []))
+    recs, loose = overlay(recs, theme.get('rules', []))
+    if loose and a.rules:
+        print(f'warning: {len(loose)} override(s) match no book row; see the Overrides tab')
     rules_rows = [[r.get('kind', ''), r.get('group', ''), r.get('name', ''), r.get('text', ''), r.get('meta', ''), r.get('vis', 'crew')]
                   + [r.get(k, '') for k in OVERRIDES] for r in recs]
 
@@ -136,6 +144,11 @@ def main():
     text_sheet(wb.create_sheet('GM'), HEADER, theme.get('gm', []), [10, 26, 60, 60])
     text_sheet(wb.create_sheet('Lore'), HEADER, theme.get('lore', []), [14, 26, 70, 16])
     text_sheet(wb.create_sheet('Map'), HEADER, theme.get('map', []), [10, 30, 8, 30])
+    if loose:
+        # Not a game tab (the site ignores tabs starting with _): copy each into the matching Rules row.
+        text_sheet(wb.create_sheet('_Overrides'), ['Kind', 'Group', 'Name', 'Override name', 'Override text', 'Override meta'],
+                   [[t.get('kind', ''), t.get('group', ''), t.get('name', '')] + [t.get(k, '') for k in OVERRIDES] for t in loose],
+                   [10, 16, 12, 20, 90, 20])
 
     for spec in a.tab:
         name, path = spec.split('=', 1)
