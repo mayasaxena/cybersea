@@ -337,3 +337,7 @@ a.pbtn{display:inline-block;text-decoration:none}
 .levels .cats{margin:0}
 details.orig{margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);color:var(--muted);font-size:.92em}
 details.orig summary{cursor:pointer;font:600 11px/1.4 "Chakra Petch",sans-serif;letter-spacing:.12em;text-transform:uppercase}
+.loc .mapon{margin-left:auto}
+.loc .mapon.on{color:var(--bg);background:var(--cyan);border-color:var(--cyan)}
+.loc.off{opacity:.62}
+.loc.off:hover{opacity:1}

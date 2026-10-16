@@ -303,7 +303,8 @@ export class GameClient extends Emitter {
   }
 
   // Honor system, kept by the site rather than the sheet: the GM edits everything; crew edit once
-  // signed in as a character: that character's sheet, and the shared Ship and Lore tabs.
+  // signed in as a character: that character's sheet, and the shared Ship and Lore tabs. (The Map
+  // tab, like the GM tab, is the GM's alone; the sheet holds to that too.)
   canEdit(tab) {
     if (this.role === 'gm') return true;
     const me = this.me;

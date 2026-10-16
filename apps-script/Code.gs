@@ -11,14 +11,15 @@
  * carrying any passphrase as "key".
  *
  * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis, plus optional Override name|Override text|Override
- * meta columns, found by their headers), GM, Lore, Ship, and one tab per character
+ * meta columns, found by their headers), GM, Lore, Ship, Map (which places the Map page shows: everyone
+ * reads it, only the GM writes it), and one tab per character
  * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 4; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides
+const API_VERSION = 4; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // A game's own wording for a Rules row, kept beside the book's (which stays as it is). Found by
@@ -110,7 +111,7 @@ function forbidden_() {
 function tabKind_(name) {
   const n = String(name).trim().toLowerCase();
   if (!n || n.charAt(0) === '_' || n === 'readme') return null;
-  if (n === 'rules' || n === 'gm' || n === 'lore' || n === 'ship') return n;
+  if (n === 'rules' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map') return n;
   return 'character';
 }
 
@@ -119,7 +120,7 @@ function canRead_(role, kind) {
 }
 
 function canWrite_(role, kind) {
-  return !!kind && kind !== 'rules' && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'rules' && ((kind !== 'gm' && kind !== 'map') || role === 'gm');
 }
 
 function findSheet_(ss, name) {
@@ -473,14 +474,14 @@ function patch_(role, req) {
   return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, skipped };
 }
 
-/* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; GM tab needs the GM key) */
+/* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; GM and Map tabs need the GM key) */
 function create_(role, req) {
   const name = String(req.tab || '').trim();
   if (!name || name.length > MAX_TAB_NAME || /[\[\]*?\/\\:]/.test(name)) {
     return { ok: false, code: 'name', error: 'Pick a different name: up to ' + MAX_TAB_NAME + ' characters, without [ ] * ? / \\ :' };
   }
   const kind = tabKind_(name);
-  if (!kind || kind === 'rules' || (kind === 'gm' && role !== 'gm')) {
+  if (!kind || kind === 'rules' || ((kind === 'gm' || kind === 'map') && role !== 'gm')) {
     return { ok: false, code: 'name', error: '"' + name + '" is a reserved name.' };
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();

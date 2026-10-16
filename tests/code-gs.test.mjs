@@ -222,6 +222,19 @@ test('permissions: crew cannot write GM or Rules; GM can write GM but not Rules'
   assert.equal(crew(api, { op: 'selftest' }).code, 'forbidden');
 });
 
+test('the Map tab: everyone reads it, only the GM writes or makes it', () => {
+  const { api } = setup();
+  assert.equal(crew(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] }).code, 'name');
+  const made = gm(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] });
+  assert.equal(made.ok, true);
+  assert.equal(made.kind, 'map');
+  const r = crew(api, { op: 'read', tabs: ['Map'] });
+  assert.ok(r.list.some(t => t.name === 'Map' && t.kind === 'map'), 'not a character');
+  assert.deepEqual(r.tabs.Map.rows, [['place', 'Gull Rock', 'on', '']]);
+  assert.equal(crew(api, { op: 'patch', tab: 'Map', set: [['place', 'Gull Rock', '', '']] }).code, 'forbidden');
+  assert.equal(gm(api, { op: 'patch', tab: 'Map', set: [['place', 'Old Mill', 'on', '']] }).ok, true);
+});
+
 test('oversize cells are refused', () => {
   const { api } = setup();
   const r = crew(api, { op: 'patch', tab: 'Lore', set: [['note', 'big', 'x'.repeat(50001), '']] });

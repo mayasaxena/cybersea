@@ -118,6 +118,7 @@ export function gameTabs({ withCharacter = true } = {}) {
     Lore: [HEADER, ['place', 'Gull Harbor', 'A rainy port.', 'Sam']],
     GM: [HEADER, ['npc', 'Captain Vex', 'jumpy, loud', 'Owes the crew money.'], ['secret', 'Twist', 'The map is fake.', '']],
     Ship: [HEADER, ...sampleShip],
+    Map: [HEADER, ['place', 'Gull Rock', 'on', 'Packet Reef'], ['place', 'Hidden Dock', 'on', '']],
     ...(withCharacter ? { Testa: [HEADER, ...sampleCharacter] } : {}),
   };
 }

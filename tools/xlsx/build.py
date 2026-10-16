@@ -16,7 +16,8 @@ rules.json: [{kind, group, name, text, meta, vis}, ...] (from tools/extract)
   rules: Rules rows, optionally with override_name, override_text, override_meta. One with the
     same Kind + Group + Name as a book row fills in that row's Override columns from those (or
     from its own text and meta); the book's columns stay as they are. Any other is a new row.
-  lore, gm: rows for the Lore and GM tabs, as [[Kind, Name, Value, Notes], ...]
+  lore, gm, map: rows for the Lore, GM and Map tabs, as [[Kind, Name, Value, Notes], ...]. Map rows
+    are the places the Map page shows the crew: ['place', the location's book name, 'on', '']
 Without --rules, the workbook holds only the theme's rows, to paste into an existing game.
 """
 import argparse
@@ -43,9 +44,11 @@ README = [
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
     '    Kinds for the Map page: map (img=… a world map), location (Group = region; img=… optional), level (Group = the location’s',
     '    name; img=… one floor or level, in order). img= is a path on the site (assets/world/…) or an https address.',
+    '    The crew see a location only once the GM puts it on the map (the Map tab).',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',
     '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
+    '  Map: which places the Map page shows the crew: "place | the location’s book name | on". The GM sets these on the Map page.',
     '  Every other tab is a character sheet. Tabs starting with _ are ignored.',
     '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
     '',
@@ -132,6 +135,7 @@ def main():
     text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6, 26, 90, 28])
     text_sheet(wb.create_sheet('GM'), HEADER, theme.get('gm', []), [10, 26, 60, 60])
     text_sheet(wb.create_sheet('Lore'), HEADER, theme.get('lore', []), [14, 26, 70, 16])
+    text_sheet(wb.create_sheet('Map'), HEADER, theme.get('map', []), [10, 30, 8, 30])
 
     for spec in a.tab:
         name, path = spec.split('=', 1)

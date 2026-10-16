@@ -108,6 +108,13 @@ The **Map** page, open to everyone, shows Rules rows of these kinds:
 - `level`: a floor or level of a place: Group is the location's name, then one row per level in
   order, each with `img=…`.
 
+The GM chooses which places the crew see. On the Map page, each place has an **On the map** /
+**Hidden** button (only the GM sees it), and every place starts hidden, the book's and new ones
+alike. The choices are kept in a **Map** tab (`place | the location's book name | on`), which the
+site makes the first time the GM turns a place on. Everyone can read it, but only the GM can
+change it. A themed place stays on the map under its new name. Maps always show, and levels
+show with their place.
+
 Images in `assets/world/` are part of this site, so anyone can open them.
 
 `tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
