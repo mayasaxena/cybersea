@@ -53,29 +53,61 @@ function toastEl() {
     el.className = 'toast';
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.addEventListener('click', () => el.classList.remove('show'));
+    el.addEventListener('click', () => {
+      if (el.classList.contains('preview')) { rollSeq++; document.activeElement?.blur(); } // closing a preview drops the roll
+      el.classList.remove('show');
+    });
     document.body.append(el);
   }
   return el;
 }
 
-export function doRoll(label, mod = 0, dice = 2) {
-  const ds = Array.from({ length: dice }, d6);
-  const total = ds.reduce((a, b) => a + b, 0) + mod;
-  const band = dice === 2 ? (total >= 10 ? ['hi', '10+'] : total >= 7 ? ['mid', '7-9'] : ['lo', '6-']) : ['', ''];
+// Show what a roll will be (label, dice, modifier) with a Roll button; nothing is rolled until it's pressed.
+// Then the dice tumble briefly, settle, and onRolled gets { dice, total }.
+let rollSeq = 0;
+export function doRoll(label, mod = 0, dice = 2, onRolled) {
+  const seq = ++rollSeq;
   const el = toastEl();
-  el.innerHTML = `<span class="tl">${escTxt(label)}</span>` + ds.map(d => `<span class="die">${d}</span>`).join('') +
-    (mod ? `<span class="mod">${fmt(mod)}</span>` : '') + `<span class="mod">=</span><span class="tot">${total}</span>` +
-    (band[1] ? `<span class="band">${band[1]}</span>` : '');
+  const faces = ds => ds.map(d => `<span class="die">${d}</span>`).join('');
+  el.innerHTML = `<span class="tl">${escTxt(label)}</span><span class="dice">${faces(Array(dice).fill('?'))}</span>` +
+    (mod ? `<span class="mod">${fmt(mod)}</span>` : '') +
+    `<button type="button" class="roll-go">${ICON.die}<span>Roll ${dice}d6</span></button>`;
   el.className = 'toast';
   void el.offsetWidth;
-  el.className = 'toast show ' + band[0];
+  el.className = 'toast show preview';
   clearTimeout(toastT);
-  toastT = setTimeout(() => el.classList.remove('show'), 12000);
-  return { dice: ds, total };
+  const go = el.querySelector('.roll-go');
+  go.focus({ preventScroll: true });
+  go.addEventListener('click', e => {
+    e.stopPropagation();
+    if (seq !== rollSeq) return;
+    const ds = Array.from({ length: dice }, d6);
+    const total = ds.reduce((a, b) => a + b, 0) + mod;
+    const band = dice === 2 ? (total >= 10 ? ['hi', '10+'] : total >= 7 ? ['mid', '7-9'] : ['lo', '6-']) : ['', ''];
+    go.remove();
+    el.className = 'toast show rolling';
+    const box = el.querySelector('.dice');
+    const settle = () => {
+      if (seq !== rollSeq) return;
+      box.innerHTML = faces(ds);
+      el.insertAdjacentHTML('beforeend', `<span class="mod">=</span><span class="tot">${total}</span>` +
+        (band[1] ? `<span class="band">${band[1]}</span>` : ''));
+      el.className = 'toast show ' + band[0];
+      toastT = setTimeout(() => el.classList.remove('show'), 12000);
+      onRolled?.({ dice: ds, total });
+    };
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return settle();
+    const start = performance.now();
+    const tick = setInterval(() => {
+      if (seq !== rollSeq) return clearInterval(tick);
+      if (performance.now() - start >= 600) { clearInterval(tick); return settle(); }
+      box.innerHTML = faces(Array.from({ length: dice }, d6));
+    }, 70);
+  });
 }
 
 export function toast(message, kind = '') {
+  rollSeq++;
   const el = toastEl();
   el.innerHTML = `<span class="tl msg">${escTxt(message)}</span>`;
   el.className = 'toast show ' + kind;

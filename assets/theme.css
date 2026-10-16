@@ -173,6 +173,15 @@ input.name{width:11ch;padding:2px 8px}
 .mod{font-weight:700;color:var(--muted)}
 .tot{font-size:22px;font-weight:700;color:var(--c)}
 .band{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--c)}
+.toast .dice{display:flex;gap:8px}
+.toast.preview .die{color:var(--muted);border-style:dashed}
+.toast.rolling .die{color:var(--c);animation:tumble .14s linear infinite}
+@keyframes tumble{0%{transform:rotate(0)}25%{transform:rotate(-14deg) translateY(-2px)}75%{transform:rotate(14deg) translateY(-2px)}100%{transform:rotate(0)}}
+.roll-go{display:flex;align-items:center;gap:6px;margin-left:4px;padding:5px 10px;border:1px solid var(--c);border-radius:4px;background:none;color:var(--c);
+  font:700 12px/1 "Chakra Petch",sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.roll-go:hover,.roll-go:focus-visible{background:var(--c);color:var(--panel)}
+.roll-go svg{width:14px;height:14px}
+@media (prefers-reduced-motion: reduce){.toast.rolling .die{animation:none}}
 
 /* data panel */
 .overlay{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
