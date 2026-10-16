@@ -36,7 +36,7 @@ export const SYSTEM_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta'];
 export const system = [
   ...['Blood', 'Vinegar', 'Polish', 'Spitfire'].map(n => S('stat', 'pirate', n, '')),
   ...['Steadfast', 'Speed', 'Fortune'].map(n => S('stat', 'ship', n, '')),
-  S('track', 'pirate', 'Harm', '', 'role=harm size=6'),
+  S('track', 'pirate', 'Harm', '', 'role=harm size=6 skulls=3'),
   S('track', 'pirate', 'Luck', '', 'role=luck size=5 start=Spitfire refill=Spitfire'),
   S('track', 'pirate', 'Vice', '', 'role=vice size=1'),
   S('track', 'pirate', 'Experience', '', 'role=xp size=level+6'),
@@ -143,7 +143,7 @@ export const sampleCharacter = [
   ['stat', 'Vinegar', '-1', ''],
   ['stat', 'Polish', '0', ''],
   ['stat', 'Spitfire', '+2', ''],
-  ['track', 'Harm', '●○○✕✕✕', ''],
+  ['track', 'Harm', '●○○○○○', ''],
   ['track', 'Luck', '●●●●○○○○', ''],
   ['track', 'Vice', '○', ''],
   ['track', 'Experience', '●●○○○○', ''],

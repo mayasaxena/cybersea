@@ -9,7 +9,8 @@
 //
 // Track meta: role (what the site does with it: harm, luck, vice, xp, treasure, hoard),
 // size (pips; a playbook's meta for the track's name or role overrides it, e.g. harm=8), start (marks a new
-// sheet starts with), refill (Session Begins marks it back up to this). A number is a sum like
+// sheet starts with), refill (Session Begins marks it back up to this), skulls (how many of its last
+// pips are drawn as skulls, the last one bloody, as on the book's harm tally). A number is a sum like
 // "6", "Steadfast+3", "level+6" or "Spitfire": numbers, stat names and the character's level.
 // Section meta: role (vice, oddity, bonds, troubles, xp, treasure, kit, cargo, crew, specials),
 // tab (sheet, notes or inventory), fill (vices, oddity, kit, specials, questions, lastwords: copied
@@ -56,7 +57,7 @@ export function effects(spec) {
 
 export function systemOf(R, type) {
   const t = low(type);
-  const tracks = R.by('track', t).map(r => ({ name: r.name, role: low(r.meta.role), size: r.meta.size, start: r.meta.start, refill: r.meta.refill, text: r.text }));
+  const tracks = R.by('track', t).map(r => ({ name: r.name, role: low(r.meta.role), size: r.meta.size, start: r.meta.start, refill: r.meta.refill, skulls: r.meta.skulls, text: r.text }));
   const sections = R.by('section', t).map(r => ({
     title: r.name, role: low(r.meta.role), tab: low(r.meta.tab) || 'sheet', fill: low(r.meta.fill), size: r.meta.size, full: r.meta.full, note: r.text,
   }));

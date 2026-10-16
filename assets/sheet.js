@@ -124,7 +124,7 @@ function headerHTML() {
   const E = editing;
   // The harm and luck tracks (role=harm, role=luck) sit at the top, under whatever names the game gives them.
   const vitals = sys().tracks.filter(d => VITALS.includes(d.role)).map(d => [d, track(d.name)]).filter(([, t]) => t);
-  const trackHTML = (label, t, kind) => `<div class="track ${kind}"><span class="lbl">${escTxt(label)}</span><span class="pips">${pips(`t:${t.name}`, t.pips, label)}</span>${E ? pm(`t:${t.name}`) : ''}</div>`;
+  const trackHTML = (label, t, kind, skulls) => `<div class="track ${kind}"><span class="lbl">${escTxt(label)}</span><span class="pips">${pips(`t:${t.name}`, t.pips, label, false, skulls)}</span>${E ? pm(`t:${t.name}`) : ''}</div>`;
   const stats = st.stats.map((s, i) => E
     ? `<div class="stat"><input class="in sk" data-bind="stat:${i}:k" value="${esc(s.k)}" aria-label="Stat"><input class="in sv" type="number" step="1" data-bind="stat:${i}:v" value="${s.v}" aria-label="${esc(s.k)}"></div>`
     : `<button class="stat" data-act="roll-stat" data-i="${i}" title="Roll"><span class="sk">${escTxt(s.k)}</span>${ICON.die}<span class="sv">${fmt(s.v)}</span></button>`).join('');
@@ -140,13 +140,15 @@ function headerHTML() {
         <button class="ic" data-act="sheet-menu" title="Sheet options" aria-label="Sheet options">${ICON.dots}</button>
       </div>
     </div>
-    <div class="vitals">${vitals.map(([d, t]) => trackHTML(t.name, t, d.role)).join('')}</div>
+    <div class="vitals">${vitals.map(([d, t]) => trackHTML(t.name, t, d.role, skullsOf(d))).join('')}</div>
     <div class="stats">${stats}</div>
     <nav class="tabs">${SECTION_TABS.map(([k, l]) => `<button data-act="tab" data-tab="${k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
   </header>`;
 }
 
 const VITALS = ['harm', 'luck'];
+// How many of a track's last pips are skulls (its skulls= in the System tab).
+const skullsOf = d => Math.max(0, sum(d.skulls));
 // Tracks shown somewhere other than their section card's header.
 const placed = () => sys().tracks.filter(d => [...VITALS, 'treasure', 'hoard'].includes(d.role)).map(d => d.name.toLowerCase());
 
@@ -450,12 +452,11 @@ function clickPip(btn) {
     if (editing) v = v ? 0 : 1;      // mark / unmark
     else if (!v) return;             // unmarked bonds can't be used
     else v = v === 1 ? 2 : 1;        // use / restore
-  } else if (editing && same_(path.slice(2), sys().name('harm') || '\u0000')) v = (v + 1) % 3; // harm can be crossed out
-  else if (v === 2) return;
-  else v = v ? 0 : 1;
+  } else v = v ? 0 : 1;
   const was = arr[j] || 0;
   arr[j] = v;
-  btn.className = 'pip' + pipClass(v, bond);
+  if (bond) btn.className = 'pip' + pipClass(v, bond);
+  else btn.classList.toggle('on', v === 1); // keeps skull classes
   btn.setAttribute('aria-pressed', v === 1);
   changed();
   if (bond) {

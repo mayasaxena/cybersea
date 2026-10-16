@@ -40,7 +40,7 @@ const who = p => p.$eval('.gnav .who', b => b.textContent.trim());
 const withRow = (rows, r) => rows.map(x => x.slice(0, 4)).filter(x => !(x[0] === r[0] && x[1] === r[1])).concat([r]);
 // The next `count` answers from the sheet are lost (the script still runs).
 const fail = (count, game = api) => fetch(`${game.base}/__test/fail`, { method: 'POST', body: JSON.stringify({ count }) });
-const track = (p, cls) => p.$$eval(`.${cls} .pip`, ps => ps.map(e => (e.classList.contains('on') ? '●' : e.classList.contains('x') ? '✕' : '○')).join(''));
+const track = (p, cls) => p.$$eval(`.${cls} .pip`, ps => ps.map(e => (e.classList.contains('on') ? '●' : '○')).join(''));
 const queued = p => p.evaluate(() => Object.keys(localStorage).filter(k => k.includes(':pending:')).some(k => localStorage.getItem(k) !== '{}'));
 // Change one row of a tab in Sheets, where it is.
 async function editRow(game, tab, r) {
@@ -97,11 +97,16 @@ test('an invite opens the sheet and the passphrase leaves the URL', async () => 
 
 test('pips: tracks toggle; bonds are used and restored, unmarked bonds ignore clicks', async () => {
   const p = await openSheet();
+  const kinds = () => p.$$eval('.harm .pip', ps => ps.map(e => (e.classList.contains('bloody') ? 'B' : e.classList.contains('skull') ? 'S' : 'o')).join(''));
+  assert.equal(await kinds(), 'oooSSB', 'the harm track’s last skulls=3 pips are skulls, the last bloody');
+  await p.click('.harm .pip[data-j="5"]');
+  assert.equal(await kinds(), 'oooSSB', 'marking a skull keeps it a skull');
+  await p.click('.harm .pip[data-j="5"]');
   await p.click('.harm .pip[data-j="1"]');
   await p.click('[data-pip="b:0"][data-j="0"]');  // Ship ● → used
   await p.click('[data-pip="b:0"][data-j="2"]');  // unmarked: ignored outside edit mode
   const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'bond', 'Ship')?.[2] === '○●·' && r; });
-  assert.equal(row(rows, 'track', 'Harm')[2], '●●○✕✕✕');
+  assert.equal(row(rows, 'track', 'Harm')[2], '●●○○○○');
   assert.equal(row(rows, 'bond', 'Ship')[2], '○●·');
   // restore it
   await p.click('[data-pip="b:0"][data-j="0"]');
@@ -321,7 +326,7 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
     'Begin Downtime: - At sea',
     `Leave Downtime: - DICE GAME (${logs[3].match(/\((\d+)\)/)?.[1]})`,
   ]);
-  assert.equal(row(rows, 'track', 'Harm')[2], '○○●✕✕✕', 'harm from before downtime healed by chapter’s end; fresh harm stays');
+  assert.equal(row(rows, 'track', 'Harm')[2], '○○●○○○', 'harm from before downtime healed by chapter’s end; fresh harm stays');
   assert.equal(row(rows, 'track', 'Experience')[2], '●●●○○○');
   assert.match(row(rows, 'sheet', 'Experience')[2], /- 1 \(Chapter’s End\)$/);
   assert.equal(row(rows, 'bond', 'Ship')[2], '●●·');

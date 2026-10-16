@@ -4,9 +4,9 @@ import { parseTrack, formatTrack, parseBond, formatBond, parseStat, formatStat, 
 import { sampleCharacter } from './fixtures/game.mjs';
 
 test('pip symbols, including hand-typed ones', () => {
-  assert.deepEqual(parseTrack('●○○✕✕✕'), [1, 0, 0, 2, 2, 2]);
-  assert.deepEqual(parseTrack('x o * 0 1 X'), [2, 0, 1, 0, 1, 2]);
-  assert.equal(formatTrack([1, 0, 2]), '●○✕');
+  assert.deepEqual(parseTrack('●○○○○○'), [1, 0, 0, 0, 0, 0]);
+  assert.deepEqual(parseTrack('x o * 0 1 X'), [0, 0, 1, 0, 1, 0]); // tracks have no crossed-out boxes
+  assert.equal(formatTrack([1, 0, 0]), '●○○');
   assert.deepEqual(parseBond('●○·'), [1, 2, 0]);
   assert.deepEqual(parseBond('110'), [1, 1, 0]);
   assert.equal(formatBond([1, 2, 0]), '●○·');
