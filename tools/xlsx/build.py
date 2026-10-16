@@ -30,7 +30,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 HEADER = ['Kind', 'Name', 'Value', 'Notes']
-RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta']
+RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta', 'Image']
 OVERRIDES = ['override_name', 'override_text', 'override_meta']
 CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,move,special,advance,log,state'
 BOLD = Font(bold=True)
@@ -44,8 +44,9 @@ README = [
     '    Override name | Override text | Override meta: the game’s own wording for a row (e.g. the Cybersea theme). The site uses',
     '    them instead of the book’s and keeps the book’s under "Rapscallion original". Override meta adds to Meta; "hide" there',
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
-    '    Kinds for the Map page: map (img=… a world map), location (Group = region; img=… optional), level (Group = the location’s',
-    '    name; img=… one floor or level, in order). img= is a Google Drive link (Share > Copy link) or an https address.',
+    '    Image: a picture for the row, placed in the cell (Insert > Image > Insert image in cell) or =IMAGE("https://…").',
+    '    Kinds for the Map page: map (a world map), location (Group = region; a picture is optional), level (Group = the location’s',
+    '    name; one floor or level, in order).',
     '    The crew see a location only once the GM puts it on the map (the Map tab).',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',
@@ -140,7 +141,7 @@ def main():
     readme.column_dimensions['A'].width = 120
     readme['A1'].font = Font(bold=True, size=13)
 
-    text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6, 26, 90, 28])
+    text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6, 26, 90, 28, 30])
     text_sheet(wb.create_sheet('GM'), HEADER, theme.get('gm', []), [10, 26, 60, 60])
     text_sheet(wb.create_sheet('Lore'), HEADER, theme.get('lore', []), [14, 26, 70, 16])
     text_sheet(wb.create_sheet('Map'), HEADER, theme.get('map', []), [10, 30, 8, 30])

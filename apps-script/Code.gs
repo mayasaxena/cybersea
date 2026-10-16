@@ -16,14 +16,15 @@
  * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
- * Images (maps and the like) are files in the Drive of whoever deployed the script; a Rules
- * row's img= is a link to one, and op "image" sends it (see image_). So the script needs to
- * read Drive: appsscript.json asks for read-only access.
+ * Images (maps and the like) sit in the Rules tab's optional Image column, found by its header:
+ * a picture placed in the cell (Insert > Image > Insert image in cell) or an =IMAGE("https://…")
+ * formula. Each Rules row is sent with a 10th cell for it (see imageCells_), and op "image"
+ * sends a placed picture's bytes (see image_).
  *
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 5; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: images from Drive
+const API_VERSION = 5; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: images in the Rules tab's Image column
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // A game's own wording for a Rules row, kept beside the book's (which stays as it is). Found by
@@ -36,6 +37,7 @@ const MAX_GONE = 150;          // removed rows remembered per tab (see gone_)
 const BAD_KEY_LIMIT = 10;      // wrong passphrases per minute before pausing
 const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this long
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const IMAGE_HEADER = 'Image';
 
 function doGet(e) {
   const op = e && e.parameter ? e.parameter.op : '';
@@ -144,12 +146,14 @@ function table_(sh, kind, role) {
   const width = rules ? RULES_HEADER.length : HEADER.length;
   const vc = rules ? 0 : verColIn_(grid[0]);
   const oc = rules ? overrideCols_(grid[0]) : [];
+  const ic = rules ? imageCells_(sh, grid[0]) : null;
   const rows = [];
   const vers = [];
-  grid.slice(1).forEach(line => {
+  grid.slice(1).forEach((line, n) => {
     const r = line.slice(0, width);
     while (r.length < width) r.push('');
-    if (oc.some(c => c >= 0)) oc.forEach(c => r.push(c >= 0 && line[c] != null ? line[c] : ''));
+    if (oc.some(c => c >= 0) || (ic && ic[n])) oc.forEach(c => r.push(c >= 0 && line[c] != null ? line[c] : ''));
+    if (ic && ic[n]) r.push(ic[n]);
     if (r.join('').trim() === '') return;
     if (rules && role !== 'gm' && String(r[5]).trim().toLowerCase() === 'gm') return;
     rows.push(r);
@@ -510,35 +514,57 @@ function create_(role, req) {
 }
 
 /*
- * image {id} -> {type, data (base64), name}: a Drive image that a Rules row the caller can read
- * links to (in Meta or Override meta), so only images the GM put in the sheet are sent.
+ * image {row} -> {type, data (base64)}: the picture placed in the Image cell of that Rules row
+ * (the sheet's row number, as imageCells_ gives it), if the caller can read the row.
  */
 function image_(role, req) {
-  const id = String(req.id || '');
-  if (!/^[\w-]{10,200}$/.test(id)) return { ok: false, error: 'That isn\'t a Drive file.' };
   const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Rules');
-  const linked = sh && table_(sh, 'rules', role).rows.some(r => [r[4], r[8]].some(m => driveIds_(m).indexOf(id) >= 0));
-  if (!linked) return { ok: false, code: 'missing', error: 'No Rules row links to that image.' };
-  let blob;
+  const row = Number(req.row);
+  const col = sh ? imageCol_(sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0]) : -1;
+  if (col < 0 || !(row >= 2 && row <= sh.getLastRow() && Math.floor(row) === row)) return { ok: false, code: 'missing', error: 'No image there.' };
+  if (role !== 'gm' && String(sh.getRange(row, 6).getDisplayValue()).trim().toLowerCase() === 'gm') return forbidden_();
+  const v = sh.getRange(row, col + 1).getValue();
+  if (!isCellImage_(v)) return { ok: false, code: 'missing', error: 'No image there.' };
+  let res;
   try {
-    blob = DriveApp.getFileById(id).getBlob();
+    res = UrlFetchApp.fetch(v.getContentUrl(), { muteHttpExceptions: true });
   } catch (err) {
-    return { ok: false, code: 'missing', error: 'The script can\'t open that Drive file: it must be in, or shared with, the Drive of whoever deployed the script.' };
+    return { ok: false, error: 'Couldn\'t read the image in row ' + row + ' of the Rules tab.' };
   }
-  const type = String(blob.getContentType() || '');
-  if (type.indexOf('image/') !== 0) return { ok: false, error: 'That Drive file isn\'t an image.' };
+  if (res.getResponseCode() !== 200) return { ok: false, error: 'Couldn\'t read the image in row ' + row + ' of the Rules tab (' + res.getResponseCode() + ').' };
+  const blob = res.getBlob();
   const bytes = blob.getBytes();
   if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'That image is too big (over 20 MB).' };
-  return { ok: true, type, name: blob.getName(), data: Utilities.base64Encode(bytes) };
+  return { ok: true, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
 }
 
-// The Drive file ids linked in a Meta cell (as assets/markup.js driveId reads them).
-function driveIds_(meta) {
-  const re = /https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|(?:open|uc)\?(?:[^#\s]*&)?id=)([\w-]{10,200})(?=[\/?&#\s"]|$)/gi;
-  const ids = [];
-  let m;
-  while ((m = re.exec(String(meta || '')))) ids.push(m[1]);
-  return ids;
+// Where the Rules tab's Image column is (0-based; -1 if it has none).
+function imageCol_(header) {
+  const i = (header || []).map(h => String(h).trim().toLowerCase()).indexOf(IMAGE_HEADER.toLowerCase());
+  return i >= RULES_HEADER.length ? i : -1;
+}
+
+function isCellImage_(v) {
+  return !!v && typeof v === 'object' && typeof v.getContentUrl === 'function';
+}
+
+/*
+ * What each Rules row (after the header) has in its Image cell, or null with no Image column:
+ * "row:<the sheet's row number>" for a picture placed in the cell (op "image" sends it), the
+ * address of an =IMAGE("https://…") formula, or ''.
+ */
+function imageCells_(sh, header) {
+  const col = imageCol_(header);
+  const n = sh.getLastRow() - 1;
+  if (col < 0 || n < 1) return null;
+  const range = sh.getRange(2, col + 1, n, 1);
+  const vals = range.getValues();
+  const forms = range.getFormulas();
+  return vals.map((v, i) => {
+    if (isCellImage_(v[0])) return 'row:' + (i + 2);
+    const m = String(forms[i][0] || '').match(/^=\s*IMAGE\s*\(\s*"(https:\/\/[^"\s]+)"/i);
+    return m ? m[1] : '';
+  });
 }
 
 /* selftest (GM): checks that values survive a round trip through this sheet unchanged */

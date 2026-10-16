@@ -1,5 +1,5 @@
 // Searchable views of the Rules tab, shared by rules.html (crew) and gm.html (GM).
-import { md, plain, imgSrc, driveId } from './markup.js';
+import { md, plain, imgSrc } from './markup.js';
 import { esc, escTxt } from './core.js';
 
 const cap = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
@@ -37,44 +37,49 @@ export const SECTIONS = {
 
 const metaLine = r => Object.entries(r.meta).filter(([k]) => !['start', 'adv', 'img'].includes(k)).map(([k, v]) => (v === true ? k : `${k} ${v}`)).join(' · ');
 
-// Images from Google Drive, as the game's script sends them: Drive id -> object URL.
-const fromDrive = new Map();
-const loading = new Map(); // Drive id -> promise of its object URL
+// Pictures placed in the Rules tab's Image cells, as the game's script sends them:
+// the sheet's row number -> object URL. Fetched once per page.
+const placed = new Map();
+const loading = new Map(); // row -> promise of its object URL
 
 export const imgHTML = (r, cls = 'rimg') => {
-  const id = driveId(r.meta.img);
-  if (id) {
-    const src = fromDrive.get(id);
-    const at = src ? ` src="${esc(src)}"` : '';
-    return `<a class="${cls}" href="${esc(src || `https://drive.google.com/file/d/${id}/view`)}" target="_blank" rel="noopener"><img data-drive="${esc(id)}"${at} alt="${esc(r.name)}" loading="lazy"></a>`;
+  if (r.imageRow) {
+    const src = placed.get(r.imageRow);
+    return `<span class="${cls}"><img data-row="${r.imageRow}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(r.name)}"></span>`;
   }
   const src = imgSrc(r.meta.img);
   return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(r.name)}" loading="lazy"></a>` : '';
 };
 
-function driveImage(client, id) {
-  if (!loading.has(id)) {
-    const why = msg => new Error(/unknown op/i.test(msg || '') ? 'Update the game’s script to show images from Google Drive.' : msg || 'Couldn’t load the image.');
-    loading.set(id, client.request({ op: 'image', id }).catch(err => { throw why(err.message); }).then(r => {
+function placedImage(client, row) {
+  if (!loading.has(row)) {
+    const why = msg => new Error(/unknown op/i.test(msg || '') ? 'Update the game’s script to show images from the spreadsheet.' : msg || 'Couldn’t load the image.');
+    loading.set(row, client.request({ op: 'image', row }).catch(err => { throw why(err.message); }).then(r => {
       if (!r.ok) throw why(r.error);
       const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
       const url = URL.createObjectURL(new Blob([bytes], { type: r.type }));
-      fromDrive.set(id, url);
+      placed.set(row, url);
       return url;
     }));
   }
-  return loading.get(id);
+  return loading.get(row);
 }
 
-// Fill in the Drive images under root as they appear (pages re-render often; each image is
-// fetched once).
-export function showDriveImages(root, client) {
-  const fill = () => root.querySelectorAll('img[data-drive]:not([src]):not([data-wait])').forEach(img => {
+// Fill in the spreadsheet's images under root as they appear (pages re-render often).
+export function showSheetImages(root, client) {
+  const fill = () => root.querySelectorAll('img[data-row]:not([src]):not([data-wait])').forEach(img => {
     img.dataset.wait = '';
-    driveImage(client, img.dataset.drive).then(url => {
+    placedImage(client, +img.dataset.row).then(url => {
       img.src = url;
-      const a = img.closest('a');
-      if (a) a.href = url;
+      if (img.parentElement?.tagName === 'SPAN') {
+        const a = document.createElement('a');
+        a.className = img.parentElement.className;
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        img.parentElement.replaceWith(a);
+        a.append(img);
+      }
     }, err => {
       const note = document.createElement('span');
       note.className = 'imgfail';

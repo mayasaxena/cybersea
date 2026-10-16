@@ -11,9 +11,14 @@ import vm from 'node:vm';
 const MAX_ROWS = 1000;
 const MAX_COLUMNS = 26; // a new sheet's size; insertColumnsAfter adds more
 
+// A picture placed in a cell (Insert > Image > Insert image in cell): {type, bytes (a Buffer)}.
+// Seed one by giving a cell {image: {type, bytes}}.
+const images = new Map(); // fake content URL -> image
 class Cell {
-  constructor() { this.v = ''; this.formula = null; this.fmt = null; }
+  constructor() { this.v = ''; this.formula = null; this.fmt = null; this.image = null; }
   display() {
+    if (this.image) return '';
+    if (this.formula && /^=\s*IMAGE\s*\(/i.test(this.formula)) return ''; // Sheets shows the picture, not text
     if (this.formula) return '#FORMULA ' + this.formula; // Code.gs must never create formulas
     if (typeof this.v === 'boolean') return this.v ? 'TRUE' : 'FALSE';
     return String(this.v);
@@ -21,6 +26,8 @@ class Cell {
 }
 
 function coerce(cell, value) {
+  cell.image = value && typeof value === 'object' && value.image ? value.image : null;
+  if (cell.image) { cell.v = ''; cell.formula = null; return; }
   const s = value == null ? '' : String(value);
   cell.formula = null;
   if (s.startsWith("'")) { cell.v = s.slice(1); return; }          // quote prefix: stored as text, hidden
@@ -29,6 +36,16 @@ function coerce(cell, value) {
   if (/^[+-]?\d+(\.\d+)?(e\d+)?$/i.test(s.trim())) { cell.v = Number(s); return; }
   if (/^(true|false)$/i.test(s.trim())) { cell.v = /^true$/i.test(s.trim()); return; }
   cell.v = s;
+}
+
+// Like Apps Script's CellImage: its content URL is new each time, as Google's are short-lived.
+let urls = 0;
+function cellImage(image) {
+  return {
+    valueType: 'IMAGE',
+    getContentUrl: () => { const u = `https://lh7-rt.googleusercontent.com/fake/${++urls}`; images.set(u, image); return u; },
+    getAltTextTitle: () => '',
+  };
 }
 
 class Range {
@@ -55,7 +72,10 @@ class Range {
   getLastRow() { return this.row + this.nr - 1; }
   getLastColumn() { return this.col + this.nc - 1; }
   getDisplayValues() { return this.cells(c => c.display()); }
-  getValues() { return this.cells(c => (c.formula ? '' : c.v)); }
+  getValues() { return this.cells(c => (c.image ? cellImage(c.image) : c.formula ? '' : c.v)); }
+  getValue() { return this.getValues()[0][0]; }
+  getDisplayValue() { return this.getDisplayValues()[0][0]; }
+  getFormulas() { return this.cells(c => c.formula || ''); }
   setValues(values) {
     if (!Array.isArray(values) || values.length !== this.nr) {
       throw new Error(`The number of rows in the data does not match the number of rows in the range. The data has ${values?.length} but the range has ${this.nr}.`);
@@ -125,8 +145,7 @@ class Spreadsheet {
 
 // Build the fake services. `tabs` is {name: [[...header], [...row], ...]} (rows as typed into the
 // sheet by hand: values starting with "=" become formulas, as in Sheets).
-// `files` is {id: {name, type, bytes (a Buffer)}}: the deployer's Google Drive.
-export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () => Date.now(), asText = false, files = {} } = {}) {
+export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () => Date.now(), asText = false } = {}) {
   const ss = new Spreadsheet(name);
   for (const [tab, rows] of Object.entries(tabs)) seedTab(ss, tab, rows, asText);
 
@@ -147,15 +166,12 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     setProps(p) { Object.assign(store, p); },
     clearCache() { cache.clear(); },
     services: {
-      SpreadsheetApp: { getActiveSpreadsheet: () => ss },
-      DriveApp: {
-        getFileById: id => {
-          const f = Object.hasOwn(files, id) ? files[id] : null;
-          if (!f) throw new Error('No item with the given ID could be found. Or perhaps you do not have permission to access it.');
-          return {
-            getName: () => f.name,
-            getBlob: () => ({ getName: () => f.name, getContentType: () => f.type, getBytes: () => [...f.bytes].map(b => (b > 127 ? b - 256 : b)) }),
-          };
+      SpreadsheetApp: { getActiveSpreadsheet: () => ss, ValueType: { IMAGE: 'IMAGE' } },
+      UrlFetchApp: {
+        fetch: url => {
+          const img = images.get(url);
+          if (!img) return { getResponseCode: () => 404, getBlob: () => null };
+          return { getResponseCode: () => 200, getBlob: () => ({ getContentType: () => img.type, getBytes: () => [...img.bytes].map(b => (b > 127 ? b - 256 : b)) }) };
         },
       },
       PropertiesService: {

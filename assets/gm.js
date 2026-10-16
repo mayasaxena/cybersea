@@ -8,7 +8,7 @@ import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
 import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
-import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent, showDriveImages } from './refview.js';
+import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent, showSheetImages } from './refview.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -24,7 +24,7 @@ const gmStore = client.tab('GM');
 const rulesStore = client.tab('Rules');
 const main = document.createElement('main');
 app.append(main);
-showDriveImages(main, client);
+showSheetImages(main, client);
 
 const TABS = [['crew', 'Crew'], ['npcs', 'NPCs'], ['notes', 'Notes'], ['ref', 'Reference']];
 const REF_KEYS = ['fates', 'tags', 'moves', 'playbooks', 'reference', 'world', 'other'];

@@ -7,11 +7,15 @@ const R = (kind, group, name, text, meta = '', vis = 'crew') => [kind, group, na
 // A game's own wording for a book row: [...row, Override name, Override text, Override meta].
 const O = (row, oname = '', otext = '', ometa = '') => [...row, oname, otext, ometa];
 
-// Images in the GM's Google Drive (see gameFiles), linked from Rules rows as Drive share links.
-export const DRIVE = { map: 'fixtureMapImage01', level1: 'fixtureLevelOne01', level2: 'fixtureLevelTwo02', notImage: 'fixtureTextFile01', unlinked: 'fixtureUnlinked01' };
-export const driveLink = id => `https://drive.google.com/file/d/${id}/view?usp=sharing`;
+// A picture placed in the row's Image cell (Insert > Image > Insert image in cell).
+const I = (row, image) => [...row, ...Array(Math.max(0, 9 - row.length)).fill(''), { image }];
+export const IMAGES = {
+  map: { type: 'image/png', bytes: png(64, 40, [20, 60, 120]) },
+  level1: { type: 'image/png', bytes: png(32, 32, [120, 40, 20]) },
+  level2: { type: 'image/png', bytes: png(32, 32, [20, 120, 40]) },
+};
 
-export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'];
+export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta', 'Image'];
 export const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 
 export const rules = [
@@ -77,13 +81,13 @@ export const rules = [
   R('table', 'Gear', 'Rope', 'A coil of rope.', 'cost=1'),
 
   O(R('kit', 'Brute', 'Kit 1', 'Club, sack, rope'), '', 'Club, sack, data cable'),
-  O(R('location', 'locations', 'Gull Rock', 'A rock full of gulls.'), 'Packet Reef', 'A reef of lost packets.', `img=${driveLink(DRIVE.map)}`),
+  I(O(R('location', 'locations', 'Gull Rock', 'A rock full of gulls.'), 'Packet Reef', 'A reef of lost packets.'), IMAGES.map),
   O(R('location', 'locations', 'Old Mill', 'A mill nobody uses.'), '', '', 'hide'),
   R('location', 'Vega Server', 'Scrap Town', 'A town of scrap.'),
   R('location', 'Vega Server', 'Hidden Dock', 'Only the GM knows.', '', 'gm'),
-  R('level', 'Scrap Town', 'Level 1', 'The docks.', `img=${driveLink(DRIVE.level1)}`),
-  R('level', 'Scrap Town', 'Level 2', 'The market.', `img=https://drive.google.com/open?id=${DRIVE.level2}`),
-  R('map', 'Vega Server', 'The Test Server', 'Everything, all at once.', `img=${driveLink(DRIVE.map)}`),
+  I(R('level', 'Scrap Town', 'Level 1', 'The docks.'), IMAGES.level1),
+  I(R('level', 'Scrap Town', 'Level 2', 'The market.'), IMAGES.level2),
+  I(R('map', 'Vega Server', 'The Test Server', 'Everything, all at once.'), IMAGES.map),
 ];
 
 export const sampleCharacter = [
@@ -130,17 +134,6 @@ export function gameTabs({ withCharacter = true } = {}) {
     Ship: [HEADER, ...sampleShip],
     Map: [HEADER, ['place', 'Gull Rock', 'on', 'Packet Reef'], ['place', 'Hidden Dock', 'on', '']],
     ...(withCharacter ? { Testa: [HEADER, ...sampleCharacter] } : {}),
-  };
-}
-
-// The Drive files the fake script can open: {id: {name, type, bytes}}.
-export function gameFiles() {
-  return {
-    [DRIVE.map]: { name: 'map.png', type: 'image/png', bytes: png(64, 40, [20, 60, 120]) },
-    [DRIVE.level1]: { name: 'level-1.png', type: 'image/png', bytes: png(32, 32, [120, 40, 20]) },
-    [DRIVE.level2]: { name: 'level-2.png', type: 'image/png', bytes: png(32, 32, [20, 120, 40]) },
-    [DRIVE.notImage]: { name: 'notes.txt', type: 'text/plain', bytes: Buffer.from('not an image') },
-    [DRIVE.unlinked]: { name: 'secret.png', type: 'image/png', bytes: png(8, 8, [0, 0, 0]) },
   };
 }
 

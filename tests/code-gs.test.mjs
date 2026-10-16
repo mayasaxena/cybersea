@@ -496,40 +496,40 @@ test('removed rows are remembered within a property’s size', () => {
   assert.ok(gone.length < 9000, `${gone.length} characters`); // Apps Script allows 9 kB per property
 });
 
-test('image: sends a Drive image only when a Rules row the caller can read links to it', () => {
+test("image: the Rules tab's Image column, placed pictures and =IMAGE() formulas", () => {
   const b = n => Buffer.from(Array.from({ length: n }, (_, i) => (i * 37) & 255));
-  const files = {
-    mapImageId01: { name: 'map.png', type: 'image/png', bytes: b(300) },
-    themedImg001: { name: 'themed.jpg', type: 'image/jpeg', bytes: b(10) },
-    gmImageId001: { name: 'secret.png', type: 'image/png', bytes: b(10) },
-    notesFile001: { name: 'notes.txt', type: 'text/plain', bytes: b(10) },
-    unlinked0001: { name: 'other.png', type: 'image/png', bytes: b(10) },
-  };
+  const pic = { type: 'image/png', bytes: b(300) };
   const gas = createGas({
     props: KEYS,
-    files,
     tabs: {
       Rules: [
-        ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'],
-        ['map', 'World', 'Map', 'The world.', 'img=https://drive.google.com/file/d/mapImageId01/view?usp=sharing', 'crew'],
-        ['location', 'places', 'Rock', 'A rock.', '', 'crew', 'Reef', '', 'img=https://drive.google.com/open?id=themedImg001'],
-        ['location', 'places', 'Lair', 'Secret.', 'img=https://drive.google.com/file/d/gmImageId001/view', 'gm'],
-        ['location', 'places', 'Desk', 'Notes.', 'img=https://drive.google.com/file/d/notesFile001/view', 'crew'],
-        ['location', 'places', 'Gone', 'Missing.', 'img=https://drive.google.com/file/d/deletedFile1/view', 'crew'],
+        ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta', 'Image'],
+        ['map', 'World', 'Map', 'The world.', '', 'crew', '', '', '', { image: pic }],
+        ['location', 'places', 'Lair', 'Secret.', '', 'gm', '', '', '', { image: { type: 'image/jpeg', bytes: b(10) } }],
+        ['location', 'places', 'Reef', 'A reef.', '', 'crew', '', '', '', '=IMAGE("https://example.com/reef.png")'],
+        ['location', 'places', 'Rock', 'A rock.', '', 'crew'],
       ],
     },
   });
   const api = loadCodeGs(gas);
-  const r = api.call({ op: 'image', id: 'mapImageId01' });
+  const rows = api.call({ op: 'read', tabs: ['Rules'] }).tabs.Rules.rows;
+  assert.deepEqual(rows.map(r => r[9]), ['row:2', 'https://example.com/reef.png', undefined], 'crew never see the GM row; a row with no image has no 10th cell');
+  const again = api.call({ op: 'read', tabs: ['Rules'], have: { Rules: api.call({ op: 'read', tabs: ['Rules'] }).tabs.Rules.d } });
+  assert.equal(again.tabs.Rules.rows, undefined, 'the digest holds still: a placed picture is sent as its row, not its short-lived URL');
+
+  const r = api.call({ op: 'image', row: 2 });
   assert.equal(r.ok, true);
   assert.equal(r.type, 'image/png');
-  assert.deepEqual(Buffer.from(r.data, 'base64'), files.mapImageId01.bytes, 'the bytes come through unchanged');
-  assert.equal(api.call({ op: 'image', id: 'themedImg001' }).ok, true, 'linked from Override meta');
-  assert.equal(api.call({ op: 'image', id: 'unlinked0001' }).code, 'missing', 'no row links to it: the rest of the Drive stays out of reach');
-  assert.equal(api.call({ op: 'image', id: 'gmImageId001' }).code, 'missing', 'a GM-only row\'s image isn\'t sent to crew');
-  assert.equal(api.call({ op: 'image', id: 'gmImageId001', key: KEYS.GM_KEY }).ok, true, 'but is to the GM');
-  assert.match(api.call({ op: 'image', id: 'notesFile001' }).error, /isn't an image/);
-  assert.match(api.call({ op: 'image', id: 'deletedFile1' }).error, /can't open that Drive file/);
-  assert.equal(api.call({ op: 'image', id: '../../etc' }).ok, false);
-  assert.equal(api.call({ op: 'image', id: 'mapImageId01', key: 'wrong' }).code, 'auth');
+  assert.deepEqual(Buffer.from(r.data, 'base64'), pic.bytes, 'the bytes come through unchanged');
+  assert.equal(api.call({ op: 'image', row: 3 }).code, 'forbidden', 'a GM-only row\'s picture isn\'t sent to crew');
+  assert.equal(api.call({ op: 'image', row: 3, key: KEYS.GM_KEY }).type, 'image/jpeg', 'but is to the GM');
+  for (const row of [4, 5, 1, 99, 2.5, 'x']) assert.equal(api.call({ op: 'image', row }).ok, false, `row ${row}`);
+  assert.equal(api.call({ op: 'image', row: 2, key: 'wrong' }).code, 'auth');
+});
+
+test('image: a Rules tab without an Image column sends rows as before', () => {
+  const gas = createGas({ props: KEYS, tabs: { Rules: [['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'], ['map', 'World', 'Map', 'The world.', '', 'crew']] } });
+  const api = loadCodeGs(gas);
+  assert.deepEqual(api.call({ op: 'read', tabs: ['Rules'] }).tabs.Rules.rows, [['map', 'World', 'Map', 'The world.', '', 'crew']]);
+  assert.equal(api.call({ op: 'image', row: 2 }).code, 'missing');
 });

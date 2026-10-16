@@ -34,10 +34,8 @@ also add `CREW_KEY` with the players' passphrase.
 4. Click **Deploy**, then **Authorize access** and pick your Google account.
    - Google will warn that it "hasn't verified this app". It's your own script, so click
      **Advanced → Go to (project name)** and **Allow**.
-   - It asks for access to "the spreadsheet it's attached to" and to see your Drive files, so
-     it can send the images the Rules tab links to (see [Images](#images)). If it asks to
-     *edit and delete* all your Drive files instead, the script's manifest wasn't copied from
-     the template: see [Images](#images) for how to paste it in.
+   - It asks for access to "the spreadsheet it's attached to", and to "connect to an external
+     service", which it uses to read the pictures in the Rules tab (see [Images](#images)).
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -97,7 +95,7 @@ game's own wording, and the site uses them first:
   moves by it; give a move new text instead.
 - **Override text**: new text (a kit's items, a location's description, …).
 - **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere;
-  `img=…` shows an image with it (see [Images](#images) below).
+  `img=https://…` shows an image with it; an Image cell (see [Images](#images) below) wins over it.
 
 The Rules page shows the book's wording under each overridden row, as "Rapscallion original".
 The columns are found by their headers, so add the three headers to an existing game's Rules tab
@@ -105,11 +103,11 @@ and update the script (below). A script older than version 4 ignores them.
 
 The **Map** page, open to everyone, shows Rules rows of these kinds:
 
-- `map`: a world map. Its image is `img=…` in Meta.
+- `map`: a world map. Its picture goes in the row's Image cell.
 - `location`: a place, listed under its Group. The book's locations show here too; theme them
   with the Override columns. A new location is a new `location` row.
 - `level`: a floor or level of a place: Group is the location's name, then one row per level in
-  order, each with `img=…`.
+  order, each with its picture.
 
 The GM chooses which places the crew see. On the Map page, each place has an **On the map** /
 **Hidden** button (only the GM sees it), and every place starts hidden, the book's and new ones
@@ -120,24 +118,20 @@ show with their place.
 
 ## Images
 
-Maps and other pictures live in the Google Drive of whoever deployed the script, not on this
-site. To add or change one:
+Maps and other pictures live in the spreadsheet, not on this site. Give the Rules tab an
+**Image** column (after the other columns; it's found by its header), then, in the row a
+picture belongs to:
 
-1. Upload the image to that Drive (any folder).
-2. Right-click it, **Share → Copy link**.
-3. Paste the link into the row's Meta (or Override meta) after `img=`, e.g.
-   `img=https://drive.google.com/file/d/1AbC…/view?usp=sharing`.
+- click its Image cell and use **Insert → Image → Insert image in cell**, or
+- type `=IMAGE("https://…")` there, for a picture that's already online.
 
-To change an image but keep the link, use **Manage versions → Upload new version** on the file
-in Drive. The image doesn't have to be shared with anyone. The script sends it, but only when a
-Rules row links to it, and only to people who can see that row (a `gm` row's image only to the
-GM). An ordinary `https://` image address works too.
+To change a picture, replace the one in the cell. The script sends a placed picture only to
+people who can see its row, so a `gm` row's picture goes only to the GM. An Image cell wins
+over an `img=` in Meta. Pictures floating over the grid (**Insert image over cells**) aren't
+read: they belong to no row.
 
-Reading Drive needs script version 5. `apps-script/appsscript.json` limits the script to
-reading this spreadsheet and reading (never changing) Drive files. To use it, open **Project
-Settings** in the Apps Script editor, tick **Show "appsscript.json" manifest file in editor**,
-and paste the repository's version over it. Without it, Google asks for full Drive access when
-you deploy. Either way, deploying the new version asks you to authorize again.
+The Image column needs script version 5. Deploying it asks you to authorize again, for
+"connect to an external service": that's how the script reads a picture out of its cell.
 
 `tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
 template, or, without `--rules`, makes a workbook of just the theme's rows to paste into an

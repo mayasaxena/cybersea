@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { atSession, atSessionStart, luckFloorOf, parseMeta, indexRules, rollFor, atSessionEnd, gainsFrom } from '../assets/rules.js';
-import { imgSrc, driveId } from '../assets/markup.js';
+import { imgSrc } from '../assets/markup.js';
 
 test('meta: pairs, flags and quoted values', () => {
   assert.deepEqual(parseMeta('type=pirate harm=6 luck=8 pick=1'), { type: 'pirate', harm: '6', luck: '8', pick: '1' });
@@ -79,17 +79,17 @@ test('images: https only; the site holds no art of its own', () => {
   for (const bad of ['assets/world/vega-server.jpg', 'javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
 });
 
-test('images: Google Drive links give the file id', () => {
-  const id = '1AbC-dEf_GhIjKlMnOpQrStUvWxYz0123';
-  for (const link of [
-    `https://drive.google.com/file/d/${id}/view?usp=sharing`,
-    `https://drive.google.com/file/d/${id}/view?usp=drive_link`,
-    `https://drive.google.com/file/d/${id}`,
-    `https://drive.google.com/open?id=${id}`,
-    `https://drive.google.com/uc?export=view&id=${id}`,
-    `https://docs.google.com/uc?id=${id}`,
-  ]) assert.equal(driveId(link), id, link);
-  for (const bad of ['https://example.com/a.png', 'https://drive.google.com/drive/folders/abcdefghijkl', `http://drive.google.com/file/d/${id}/view`, 'https://drive.google.com/file/d/short/view', `https://evil.com/?u=https://drive.google.com/file/d/${id}`]) assert.equal(driveId(bad), '', bad);
+test("images: the Image cell (a placed picture, or an =IMAGE() address) wins over Meta's img=", () => {
+  const R = indexRules([
+    ['map', 'World', 'Placed', '', 'img=https://example.com/old.png', 'crew', '', '', '', 'row:7'],
+    ['map', 'World', 'Formula', '', '', 'crew', '', '', '', 'https://example.com/f.png'],
+    ['map', 'World', 'Meta only', '', 'img=https://example.com/m.png', 'crew'],
+  ]);
+  const [placed, formula, meta] = R.by('map');
+  assert.equal(placed.imageRow, 7);
+  assert.equal(formula.meta.img, 'https://example.com/f.png');
+  assert.equal(formula.imageRow, undefined);
+  assert.equal(meta.meta.img, 'https://example.com/m.png');
 });
 
 test('session end: which moves it touches, and what they mark', () => {
