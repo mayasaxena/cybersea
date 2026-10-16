@@ -443,9 +443,38 @@ test('a wrong passphrase asks for the right one, or you can carry on as crew', a
   assert.equal(await q.textContent('.gnav .who'), 'Sign in');
 });
 
+test('inventory: fill from the Kit card, add and remove items, treasure carries into hoard', async () => {
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.waitForSelector('#kitpick');
+  assert.equal(await p.$eval('#kitpick', s => s.value), '@sheet', 'starts from the sheet’s own kit');
+  await p.selectOption('#kitpick', 'Kit 2');
+  await p.click('[data-act="fill-inv"]');
+  await p.click('[data-act="fill-inv"]'); // second click confirms replacing the Kit card
+  await p.waitForSelector('.items');
+  let rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'item') && r; });
+  assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Bone dice', 'A lantern (cracked, still works)']);
+  assert.equal(row(rows, 'sheet', 'Kit'), undefined, 'the Kit card is gone');
+  assert.equal(row(rows, 'track', 'Treasure')[2], '●○○○○', '6-treasure is 1-hoard and 1-treasure');
+  assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
+
+  await p.fill('#newitem', 'Rope');
+  await p.press('#newitem', 'Enter');
+  await p.fill('#newitem', 'Rope');
+  await p.click('[data-act="add-item"]');
+  await p.click('[data-act="rm-item"][data-j="0"]');
+  await p.click('[data-act="rm-item"][data-j="0"]');
+  await p.click('.wealth [data-pip="t:Treasure"][data-j="4"]'); // fill treasure: it rolls over into hoard
+  await p.click('[data-act="treasure"][data-n="-1"]'); // spending with no loose treasure breaks a hoard
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Treasure')?.[2] === '●●●●○' && r; });
+  assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['A lantern (cracked, still works)', 'Rope', 'Rope (2)']);
+  assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
+  assert.match(row(rows, 'inventory', 'Treasure')[2], /6-treasure/);
+});
+
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {
   const p = await openSheet({ width: 380, height: 760 });
-  for (const t of ['sheet', 'moves', 'notes', 'log']) {
+  for (const t of ['sheet', 'inventory', 'moves', 'notes', 'log']) {
     await p.click(`[data-act="tab"][data-tab="${t}"]`);
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, t);
   }

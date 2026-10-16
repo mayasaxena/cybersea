@@ -8,12 +8,13 @@ import { indexRules, rollFor } from './rules.js';
 import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
 import { makeActions, ACTIONS } from './actions.js';
 import { shipRows } from './build.js';
+import { wealth, setWealth, addTreasure, inventoryRows, uniqueName, TREASURE_PER_HOARD } from './inventory.js';
 import { plain } from './markup.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
 const CATS = SHIP ? ['playbook', 'ship'] : ['playbook', 'basic', 'special', 'ship', 'downtime'];
 const CAT_LABEL = { basic: 'Basic', special: 'Special', ship: 'Ship', downtime: 'Downtime' };
-const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
+const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['inventory', 'Inventory'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
 const PAGE = SHIP ? 'ship' : '';
 
 const app = document.getElementById('app');
@@ -217,6 +218,70 @@ function movesHTML() {
     </div><div id="mlist">${moveListHTML()}</div>`;
 }
 
+/* ---------- inventory: treasure and hoard pips, notes, and items ---------- */
+const isWealth = name => /^(treasure|hoard)$/i.test(name);
+
+function inventoryHTML() {
+  const E = editing;
+  const can = canEdit();
+  const others = st.sections.map((s, i) => (s.tab === 'inventory' && s.title.toLowerCase() !== 'treasure' ? sectionHTML(s, i) : '')).join('');
+  const more = `<div class="cols">${others}</div>` + (E ? '<button class="add" data-act="add-section" data-tab="inventory">+</button>' : '');
+  if (!st.items.length && !st.tracks.treasure && !st.tracks.hoard) return fillHTML() + more;
+  const ti = st.sections.findIndex(s => s.tab === 'inventory' && s.title.toLowerCase() === 'treasure');
+  const ts = st.sections[ti];
+  const row = (label, name) => {
+    const t = track(name) || { name, pips: [] };
+    return `<div class="wrow"><span class="lbl">${label}</span><span class="pips">${pips(`t:${t.name}`, t.pips, label)}</span>` +
+      (can && name === 'treasure' ? '<span class="pm"><button class="mini" data-act="treasure" data-n="-1" aria-label="Spend 1-treasure">−</button><button class="mini" data-act="treasure" data-n="1" aria-label="Gain 1-treasure">+</button></span>' : '') + '</div>';
+  };
+  let h = '<div class="cols"><section class="card wealth"><div class="shead"><h2>Treasure</h2></div>' +
+    `<div class="note">${escTxt(ts?.note || `(${TREASURE_PER_HOARD}-treasure = 1-hoard)`)}</div>` + row('Treasure', 'treasure') + row('Hoard', 'hoard');
+  if (ts && E) h += `<textarea class="in rtext" data-bind="sec:${ti}:text" aria-label="Treasure notes" placeholder="When you got it">${escTxt(ts.text || '')}</textarea>`;
+  else if (ts?.text) h += `<div class="rich" data-sec="${ti}">${md(ts.text)}</div>`;
+  else if (!ts && E) h += '<button class="add sm" data-act="add-tnotes">+ Notes</button>';
+  h += '</section><section class="card"><div class="shead"><h2>Items</h2><span class="cnt">' + st.items.length + '</span></div><ul class="items">' +
+    st.items.map((it, j) => '<li class="item">' +
+      (E ? `<input class="in" data-bind="item:${j}" value="${esc(it.name)}" aria-label="Item">` : `<span class="iname">${escTxt(it.name)}</span>`) +
+      (can ? `<button class="mini del" data-act="rm-item" data-j="${j}" title="Remove" aria-label="Remove ${esc(it.name)}">×</button>` : '') + '</li>').join('') +
+    '</ul>' + (can ? '<div class="additem"><input class="in" id="newitem" placeholder="Add an item" aria-label="New item" autocomplete="off"><button class="pbtn" data-act="add-item">Add</button></div>' : '') +
+    '</section></div>';
+  return h + more;
+}
+
+// A sheet made before the Inventory tab still has its kit as one card: offer to split it into items.
+function fillHTML() {
+  if (!canEdit()) return '<div class="empty">No inventory yet.</div>';
+  const kits = (playbook()?.kits || []).filter(k => !k.meta.extra);
+  const mine = st.sections.find(s => s.tab === 'sheet' && s.title.toLowerCase() === 'kit');
+  const match = mine && kits.find(k => [k.text, k.orig?.text].some(t => t && plain(t) === plain(mine.text)));
+  const cur = match ? match.name : mine ? '@sheet' : kits[0]?.name;
+  const opt = (v, label) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${escTxt(label)}</option>`;
+  if (!kits.length && !mine) return '<section class="card setup"><h2>Inventory</h2><div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv" data-src="">Start an empty inventory</button></div></section>';
+  return `<section class="card setup"><h2>Start the inventory</h2>
+    <div class="status">Each item in the kit becomes its own line, and its treasure goes on the pips.${mine ? ' This replaces the Kit card on the Sheet tab.' : ''}</div>
+    <label class="field"><span class="lbl">From</span><select class="in" id="kitpick">${mine ? opt('@sheet', `This sheet’s Kit card: ${short(mine.text)}`) : ''}${kits.map(k => opt(k.name, `${k.name}: ${short(k.text)}`)).join('')}</select></label>
+    <div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv">Fill the inventory</button></div></section>`;
+}
+
+function fillInventory(src) {
+  const kit = src === '@sheet' ? st.sections.find(s => s.tab === 'sheet' && s.title.toLowerCase() === 'kit')?.text : playbook()?.kits.find(k => k.name === src)?.text;
+  const inv = parseSheet(inventoryRows(kit || ''));
+  Object.assign(st.tracks, inv.tracks);
+  if (!st.sections.some(s => s.tab === 'inventory' && s.title.toLowerCase() === 'treasure')) st.sections.push(...inv.sections);
+  st.items = inv.items;
+  st.sections = st.sections.filter(s => !(s.tab === 'sheet' && s.title.toLowerCase() === 'kit'));
+}
+
+function addItem() {
+  const el = document.getElementById('newitem');
+  const v = el?.value.trim();
+  if (!v || !canEdit()) return;
+  st.items.push({ name: uniqueName(v, st.items.map(i => i.name)), note: '' });
+  changed();
+  render();
+  document.getElementById('newitem')?.focus();
+}
+
 /* ---------- a new game has no Ship tab yet: set one up from a ship playbook ---------- */
 const setup = { name: '', playbook: '', kit: '', oddity: '' };
 const short = (t, n = 70) => { const p = plain(t); return p.length > n ? p.slice(0, n - 1) + '…' : p; };
@@ -259,6 +324,7 @@ function render() {
   else if (!store.loaded) main = '<div class="empty">Loading…</div>';
   else if (ui.tab === 'moves') main = movesHTML();
   else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing, ro);
+  else if (ui.tab === 'inventory' && !SHIP) main = inventoryHTML();
   else main = sectionsHTML(ui.tab);
   const hdr = store.loaded && !store.missing ? headerHTML() : '';
   let body = document.getElementById('sheet');
@@ -280,6 +346,17 @@ function clickPip(btn) {
   const bond = btn.hasAttribute('data-bond');
   const arr = path.startsWith('b:') ? st.bonds[+path.slice(2)]?.pips : st.tracks[path.slice(2).toLowerCase()]?.pips;
   if (!arr) return;
+  if (!bond && isWealth(path.slice(2))) { // treasure and hoard are counts: carry 5-treasure into hoard
+    const w = wealth(st);
+    const isT = path.slice(2).toLowerCase() === 'treasure';
+    const cur = isT ? w.treasure : w.hoard;
+    const n = cur === j + 1 ? j : j + 1;
+    const r = isT ? setWealth(st, n, w.hoard) : setWealth(st, w.treasure, n);
+    if (r.hoard > w.hoard && isT) toast(`${TREASURE_PER_HOARD}-treasure became 1-hoard.`);
+    changed();
+    render();
+    return;
+  }
   let v = arr[j] || 0;
   if (bond) {
     if (editing) v = v ? 0 : 1;      // mark / unmark
@@ -364,6 +441,24 @@ app.addEventListener('click', e => {
     case 'rm-log': if (armed(b)) { st.log.splice(i, 1); changed(); render(); } break;
     case 'dt-moves': ui.tab = 'moves'; ui.cat = 'downtime'; saveUi(); render(); break;
     case 'ship-create': if (canEdit()) createShip(); break;
+    case 'treasure': {
+      if (!canEdit()) break;
+      const before = wealth(st);
+      const r = addTreasure(st, +b.dataset.n);
+      if (!r) { toast('No treasure left to spend.'); break; }
+      if (r.hoard > before.hoard) toast(`${TREASURE_PER_HOARD}-treasure became 1-hoard.`);
+      else if (r.hoard < before.hoard) toast(`Broke 1-hoard into ${TREASURE_PER_HOARD}-treasure.`);
+      changed(); render(); break;
+    }
+    case 'add-item': addItem(); break;
+    case 'rm-item': if (canEdit() && armed(b)) { st.items.splice(+b.dataset.j, 1); changed(); render(); } break;
+    case 'add-tnotes': st.sections.push({ tab: 'inventory', title: 'Treasure', text: '', note: `(${TREASURE_PER_HOARD}-treasure = 1-hoard)` }); changed(); render(); break;
+    case 'fill-inv': {
+      if (!canEdit()) break;
+      const src = b.dataset.src ?? document.getElementById('kitpick')?.value ?? '';
+      if (src && st.sections.some(s => s.tab === 'sheet' && s.title.toLowerCase() === 'kit') && !armed(b)) break;
+      fillInventory(src); changed(); render(); break;
+    }
   }
 });
 
@@ -390,13 +485,18 @@ function bind(el, final) {
       s.title = nt;
     } else s[b] = v;
   } else if (what === 'bond') { if (!final || !v.trim()) return; st.bonds[+a].name = v.trim(); }
-  else if (what === 'move') {
+  else if (what === 'item') {
+    if (!final || !v.trim()) return;
+    const it = st.items[+a];
+    if (!it || v.trim() === it.name) return;
+    it.name = uniqueName(v.trim(), st.items.filter(x => x !== it).map(x => x.name));
+  } else if (what === 'move') {
     const m = charMove(a) || (() => { const lm = moveList().find(x => x.name === a); const n = { name: a, marked: !!lm?.marked, text: lm?.text || '' }; st.moves.push(n); return n; })();
     if (b === 'name') { if (!final || !v.trim()) return; m.name = v.trim(); }
     else m.text = v;
   }
   changed();
-  if (final && /title|name/.test(b || '') ) render();
+  if (final && (/title|name/.test(b || '') || what === 'item')) render();
 }
 
 app.addEventListener('input', e => {
@@ -406,7 +506,7 @@ app.addEventListener('input', e => {
   if (t.dataset.log != null) { st.log[+t.dataset.log].note = t.value; changed(); return; }
   if (t.matches('textarea')) { t.style.height = 'auto'; t.style.height = Math.max(60, t.scrollHeight + 4) + 'px'; }
   const spec = t.dataset.bind || '';
-  if (/:(title|name|k)$/.test(spec) || spec.startsWith('bond:')) return; // applied on change
+  if (/:(title|name|k)$/.test(spec) || spec.startsWith('bond:') || spec.startsWith('item:')) return; // applied on change
   bind(t, false);
 });
 app.addEventListener('change', e => {
@@ -422,6 +522,7 @@ app.addEventListener('toggle', e => {
 }, true);
 
 document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'newitem') { e.preventDefault(); addItem(); return; }
   if (e.key === '/' && !e.target.closest('input,textarea,select') && !document.getElementById('overlay')) {
     e.preventDefault();
     if (ui.tab !== 'moves') { ui.tab = 'moves'; saveUi(); render(); }

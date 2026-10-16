@@ -85,6 +85,7 @@ button.stat:hover{border-color:var(--pink)}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:600 12px/1 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transform:uppercase;padding:10px 12px;cursor:pointer}
 .tabs button:hover{color:var(--text)}
 .tabs button.on{color:var(--cyan);border-bottom-color:var(--cyan)}
+@media (max-width:480px){.tabs{overflow-x:auto;scrollbar-width:none}.tabs button{padding:10px 7px;letter-spacing:.06em}}
 
 /* sections */
 main{padding-top:14px}
@@ -103,6 +104,14 @@ h2{font:700 13px/1.2 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transfo
 .bonds{display:grid;gap:5px;margin-top:8px}
 .bond{display:flex;align-items:center;gap:10px}
 .bond .bn,.bond .in{flex:1;min-width:0}
+/* inventory */
+.wrow{display:flex;align-items:center;gap:10px;margin-top:8px}
+.wrow .lbl{width:64px}
+.items{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:4px}
+.item{display:flex;align-items:center;gap:8px}
+.item .iname,.item .in{flex:1;min-width:0;overflow-wrap:anywhere}
+.additem{display:flex;gap:6px;margin-top:10px}
+.additem .in{flex:1;min-width:0}
 
 /* moves */
 .mtools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}

@@ -1,9 +1,10 @@
 // Starting rows for a new character or ship, built from a playbook in the Rules tab.
 // Text (vice, oddity, kit, questions, last words) is copied from the Rules tab into the new
-// tab so the player can edit their own copy.
+// tab so the player can edit their own copy. A character's kit becomes inventory items.
 
 import { parseStat, formatStat, formatTrack } from './codec.js';
 import { luckFloorOf } from './rules.js';
+import { inventoryRows } from './inventory.js';
 
 const PIRATE_STATS = ['Blood', 'Vinegar', 'Polish', 'Spitfire'];
 const SHIP_STATS = ['Steadfast', 'Speed', 'Fortune'];
@@ -38,11 +39,11 @@ export function characterRows(R, { name, playbook, player = '', oddity, kit, ext
     ['track', 'Experience', circles(6), ''],
     ['sheet', 'Vice', pb.vices.map(v => `**${v.name}.** ${v.text}`).join('\n\n'), ''],
     ['sheet', 'Oddity', odd ? `**${odd.name}** (${odd.meta.traits || ''})\n\n${odd.text}` : '', ''],
-    ['sheet', 'Kit', kitRec ? kitRec.text : '', ''],
     ['sheet', 'Bonds', '', ''],
     ['sheet', 'Troubles', '', ''],
     ['sheet', 'Experience', '', ''],
   ];
+  rows.push(...inventoryRows(kitRec ? kitRec.text : '')); // the kit becomes items on the Inventory tab
   if (pb.questions.length) rows.push(['notes', 'Questions', pb.questions.map(q => `${q.name}. ${q.text}`).join('\n\n'), '']);
   if (pb.lastwords) rows.push(['notes', 'Last Words', pb.lastwords.text, '']);
   for (const m of pb.moves) if (m.meta.start || m.name === extraMove) rows.push(['move', m.name, '●', '']);
