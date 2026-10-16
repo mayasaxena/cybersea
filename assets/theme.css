@@ -233,6 +233,7 @@ button.mk{width:14px;height:14px;margin:0 6px;cursor:pointer}
 .optl .in{flex:1}
 .opt.off{opacity:.45}
 .opt .sub{margin-left:24px}
+.endm .mbody{padding:0;margin-left:21px;color:var(--muted)}
 .picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px}
 select.in{padding:5px 6px}
 .dtm{color:var(--text);text-transform:none;letter-spacing:0;font:500 12px/1.3 "IBM Plex Sans",sans-serif}

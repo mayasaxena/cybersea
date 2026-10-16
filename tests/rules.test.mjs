@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMeta, indexRules, rollFor } from '../assets/rules.js';
+import { parseMeta, indexRules, rollFor, atSessionEnd, gainsFrom } from '../assets/rules.js';
 
 test('meta: pairs, flags and quoted values', () => {
   assert.deepEqual(parseMeta('type=pirate harm=6 luck=8 pick=1'), { type: 'pirate', harm: '6', luck: '8', pick: '1' });
@@ -31,4 +31,17 @@ test('rolls: a stat on this sheet, roll blank, 1d6', () => {
   assert.equal(rollFor('roll +STEADFAST', stats), null);
   assert.deepEqual(rollFor('**roll blank**', stats), { label: '2d6', mod: 0, dice: 2 });
   assert.deepEqual(rollFor('one of the crew rolls **1d6**', stats), { label: '1d6', mod: 0, dice: 1 });
+});
+
+test('session end: which moves it touches, and what they mark', () => {
+  assert.ok(atSessionEnd('Mark 1-luck when you *end a session* Haunted.'));
+  assert.ok(atSessionEnd('At the end of each session, mark experience.'));
+  assert.ok(atSessionEnd('When the session ends, …'));
+  assert.ok(atSessionEnd('at session’s end'));
+  assert.ok(!atSessionEnd('At the start of a session, luck refills.'));
+  assert.ok(!atSessionEnd('When the chapter ends. Session over.'));
+  assert.deepEqual(gainsFrom('Mark **1-luck** when you end a session Haunted.'), { luck: 1, xp: 0 });
+  assert.deepEqual(gainsFrom('At the end of each session, mark experience.'), { luck: 0, xp: 1 });
+  assert.deepEqual(gainsFrom('mark 2-xp'), { luck: 0, xp: 2 });
+  assert.deepEqual(gainsFrom('take 1-harm, pay 1-luck'), { luck: 0, xp: 0 });
 });

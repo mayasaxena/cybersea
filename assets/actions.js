@@ -1,13 +1,15 @@
-// Session Begins, Chapter's End, Begin/Leave Downtime and Level Up for a character sheet.
+// Session Begins, Session Ends, Chapter's End, Begin/Leave Downtime and Level Up for a character sheet.
 // The rule text shown in each dialog comes from the Rules tab (procedure rows); the mechanics
 // live here. ctx = {st(), rules(), changed(), render(), editing()}.
 
 import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal } from './core.js';
 import { md } from './markup.js';
 import { logId } from './codec.js';
+import { atSessionEnd, gainsFrom } from './rules.js';
 
 export const ACTIONS = {
   session: 'Session Begins',
+  'session-end': 'Session Ends',
   chapter: 'Chapter’s End',
   'dt-begin': 'Begin Downtime',
   'dt-leave': 'Leave Downtime',
@@ -34,6 +36,24 @@ export function makeActions(ctx) {
   const unmarkedMoves = () => (playbook()?.moves || []).filter(m => !st().moves.some(x => x.name.toUpperCase() === m.name.toUpperCase() && x.marked));
   const section = title => st().sections.find(s => s.title.toLowerCase() === title.toLowerCase());
   const moveText = name => (R().moves('downtime').find(m => m.name.toUpperCase() === name) || {}).text || '';
+  // The character's vice and marked moves that do something when a session ends.
+  function sessionEndMoves() {
+    const pb = playbook();
+    const pbMoves = pb?.moves || [];
+    const mine = name => st().moves.find(x => x.name.toUpperCase() === name.toUpperCase());
+    let vices = pb?.vices || [];
+    if (vices.length > 1) { // a playbook that offers a choice: the one named on the sheet
+      const v = (section('vice')?.text || '').toLowerCase();
+      const named = vices.filter(x => v.includes(x.name.toLowerCase()));
+      if (named.length) vices = named;
+    }
+    const moves = [
+      ...pbMoves.filter(m => mine(m.name)?.marked).map(m => ({ name: m.name, text: mine(m.name).text || m.text })),
+      ...st().moves.filter(m => m.marked && !pbMoves.some(x => x.name.toUpperCase() === m.name.toUpperCase())),
+    ];
+    return [...vices, ...moves].filter(m => atSessionEnd(m.text)).map(m => ({ name: m.name, text: m.text, gains: gainsFrom(m.text) }));
+  }
+  let endMoves = [];
 
   function markN(pipsArr, n) {
     let done = 0;
@@ -68,6 +88,8 @@ export function makeActions(ctx) {
   const select = (k, items) => `<select class="in sub" data-sub="${k}">${items.map(([v, t]) => `<option value="${esc(v)}">${escTxt(t)}</option>`).join('')}</select>`;
 
   function ruleFor(kind) {
+    // Session steps are numbered; the first is how a session begins.
+    if (kind === 'session-end') return R().by('procedure', 'session').slice(1).find(r => /\b(END|CLOS)/i.test(r.name) || atSessionEnd(r.text)) || null;
     const map = { session: 'session', chapter: 'chapter', 'dt-begin': 'downtime', advance: 'advance' };
     return map[kind] ? R().procedure(map[kind]) : null;
   }
@@ -78,6 +100,14 @@ export function makeActions(ctx) {
       const have = (track('luck')?.pips || []).filter(v => v === 1).length;
       const t = luckTarget();
       return eff('luck', `Refresh luck up to ${t} (${have})`, have < t);
+    }
+    if (kind === 'session-end') {
+      endMoves = sessionEndMoves();
+      if (!endMoves.length) return '<div class="status">Nothing on this sheet happens at the end of a session.</div>';
+      const what = g => [g.luck && `+${g.luck} luck`, g.xp && `+${g.xp} experience`].filter(Boolean).join(', ');
+      return '<div class="opts">' + endMoves.map((m, k) =>
+        `<div class="opt endm"><label class="eff"><input type="checkbox" data-eff="end:${k}">${escTxt(m.name)}` +
+        `${what(m.gains) ? `<span class="cnt">${what(m.gains)}</span>` : ''}</label><div class="mbody">${md(m.text)}</div></div>`).join('') + '</div>';
     }
     if (kind === 'chapter') {
       const pick = n => `<select class="in" data-pick="${n}" aria-label="Choice ${n + 1}"><option value="">—</option>` +
@@ -153,6 +183,17 @@ export function makeActions(ctx) {
         const n = need > 0 ? markN(l.pips, need) : 0;
         if (n) items.push(`+${n} luck`);
       }
+    } else if (kind === 'session-end') {
+      endMoves.forEach((m, k) => {
+        if (!on(`end:${k}`)) return;
+        const got = [];
+        const luck = m.gains.luck && track('luck') ? markN(track('luck').pips, m.gains.luck) : 0;
+        if (luck) got.push(`+${luck} luck`);
+        let xp = 0;
+        while (xp < m.gains.xp && markXp(m.name)) xp++;
+        if (xp) got.push(`+${xp} experience`);
+        items.push(got.length ? `${m.name}: ${got.join(', ')}` : m.name);
+      });
     } else if (kind === 'chapter') {
       if (on('bonds')) {
         let n = 0;
@@ -233,6 +274,7 @@ export function makeActions(ctx) {
     const btn = (kind, label, cls = '', attrs = '') => `<button class="act${cls}" data-act="run" data-kind="${kind}"${attrs}>${label}</button>`;
     let h = readOnly ? '' : '<div class="actions">' +
       btn('session', ACTIONS.session) +
+      btn('session-end', ACTIONS['session-end']) +
       btn('chapter', ACTIONS.chapter) +
       (dt ? btn('dt-leave', ACTIONS['dt-leave'], ' live') : btn('dt-begin', ACTIONS['dt-begin'])) +
       btn('advance', `${ACTIONS.advance}<span class="cnt">${xp}/${need}</span>`, '', xp < need ? ' disabled' : '') +
