@@ -286,10 +286,17 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   await p.selectOption('[data-pick="1"]', 'heal');
   await p.click('[data-run]');
 
-  await p.click('[data-kind="dt-begin"]');
+  // Begin and Leave Downtime run from their moves on the Moves tab too
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('[data-act="cat"][data-cat="downtime"]');
+  assert.ok(await p.isDisabled('details[data-id="downtime:LEAVE DOWNTIME"] .chip'), 'not in downtime yet');
+  await p.click('details[data-id="downtime:BEGIN DOWNTIME"] .chip');
   await p.check('input[name=where][value=sea]');
   await p.click('[data-run]');
+  assert.ok(await p.isDisabled('details[data-id="downtime:BEGIN DOWNTIME"] .chip'), 'already in downtime');
+  await p.click('[data-act="tab"][data-tab="sheet"]');
   await p.click('.harm .pip[data-j="2"]'); // fresh harm during downtime
+  await p.click('[data-act="tab"][data-tab="log"]');
   await p.click('[data-act="dt-moves"]');
   await p.click('details[data-id="downtime:DICE GAME"] .chip');
   await p.click('#toast'); // closing the preview doesn't count the move
@@ -301,8 +308,10 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   await p.waitForSelector('#toast .tot');
   await p.click('[data-act="tab"][data-tab="log"]');
   assert.match(await p.textContent('.dtbar'), /At sea 1\/1/);
-  await p.click('[data-kind="dt-leave"]');
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('details[data-id="downtime:LEAVE DOWNTIME"] .chip');
   await p.click('[data-run]');
+  await p.click('[data-act="tab"][data-tab="log"]');
 
   const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.filter(x => x[0] === 'log').length === 4 && r; });
   const logs = rows.filter(x => x[0] === 'log').map(x => `${x[2]}: ${x[3].replace(/\n/g, ' ')}`);
@@ -329,6 +338,20 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   assert.equal(row(after, 'stat', 'Spitfire')[2], '+3');
   assert.equal(row(after, 'track', 'Experience')[2], '○○○○○○○');
   assert.equal(row(after, 'advance', 'trait')[2], '1');
+});
+
+test('moves that spend luck have a button that spends it', async () => {
+  const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
+  await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('[data-act="cat"][data-cat="basic"]');
+  assert.equal(await p.$('details[data-id="basic:POKE AROUND"] [data-act="spend-luck"]'), null, 'no luck button on a plain roll');
+  await p.click('details[data-id="basic:FLIP A COIN"] [data-act="spend-luck"]');
+  assert.match(await p.textContent('#toast'), /Spent 1 luck: FLIP A COIN \(3 left\)/);
+  assert.equal(await track(p, 'luck'), '●●●○○○○○');
+  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Luck')[2] === '●●●○○○○○' && r; });
+  assert.ok(rows, 'saved to the sheet');
 });
 
 test('importing the old one-page sheet replaces the character', async () => {
