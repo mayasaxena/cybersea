@@ -3,8 +3,23 @@ import { parseSheet, isSignedIn } from './codec.js';
 import { href } from './games.js';
 import { plain } from './markup.js';
 import { esc, escTxt, fmt, pipClass } from './core.js';
+import { wealth } from './inventory.js';
 
 export const staticPips = (arr, bond = false) => arr.map(v => `<span class="pip${pipClass(v, bond)}" aria-hidden="true"></span>`).join('');
+
+// The GM's at-a-glance lines: the name a section starts with in bold, and a list's first-level lines.
+const section = (st, title) => st.sections.find(x => x.title.toLowerCase() === title)?.text || '';
+const boldName = t => (String(t).match(/^\*\*(.+?)\*\*/)?.[1] || '').replace(/[.:]$/, '').trim();
+const listNames = t => String(t).split('\n').filter(l => /^- /.test(l)).map(l => plain(l.slice(2)).split(/[,.]/)[0].trim()).filter(Boolean);
+const line = (label, text) => (text ? `<div class="cc-row"><span class="lbl">${label}</span> <span class="cc-text">${escTxt(text)}</span></div>` : '');
+
+function gmLinesHTML(st) {
+  const moves = st.moves.filter(m => m.marked).map(m => m.name);
+  const { treasure, hoard } = wealth(st);
+  return line('Vice', boldName(section(st, 'vice'))) + line('Oddity', boldName(section(st, 'oddity'))) +
+    line('Moves', moves.join(', ')) +
+    (st.tracks.treasure || st.tracks.hoard ? line('Wealth', `${hoard}-hoard, ${treasure}-treasure · ${st.items.length} items`) : '');
+}
 
 export function crewCardHTML(client, name, { gm = false, me = false } = {}) {
   const rows = client.tab(name).rows;
@@ -22,11 +37,12 @@ export function crewCardHTML(client, name, { gm = false, me = false } = {}) {
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
     ${st.bonds.length ? `<div class="cc-bonds">${st.bonds.map(b => `<span class="cc-bond">${escTxt(b.name)} <span class="pips">${staticPips(b.pips, true)}</span></span>`).join('')}</div>` : ''}
     ${troubles.trim() ? `<div class="cc-row"><span class="lbl">Troubles</span> <span class="cc-text">${escTxt(plain(troubles))}</span></div>` : ''}
+    ${gm ? gmLinesHTML(st) : ''}
     <div class="cc-row"><span class="lbl">Level ${parseInt(st.info.level, 10) || 0}</span><span class="cnt">${xp} exp</span></div>
   </a>`;
 }
 
-export function shipCardHTML(client) {
+export function shipCardHTML(client, { gm = false } = {}) {
   const s = client.tab('Ship');
   if (s.missing) return `<a class="card crewcard" href="${esc(href('ship.html', client.game))}"><h2>Ship</h2><div class="note">Not set up yet.</div></a>`;
   const st = parseSheet(s.rows);
@@ -36,5 +52,8 @@ export function shipCardHTML(client) {
     <div class="cc-row"><span class="lbl">Wreck</span><span class="pips harm">${staticPips(st.tracks.wreck?.pips || [])}</span></div>
     <div class="cc-row"><span class="lbl">Renown</span><span class="pips luck">${staticPips(st.tracks.renown?.pips || [])}</span></div>
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
+    ${gm ? line('Oddity', boldName(section(st, 'oddity'))) + line('Moves', st.moves.filter(m => m.marked).map(m => m.name).join(', ')) +
+      line('Specials', [...section(st, 'specials').matchAll(/^\[x\]\s*(.+)$/gim)].map(m => m[1].trim()).join(', ')) +
+      line('Crew', listNames(section(st, 'crew')).join(', ')) + line('Cargo', listNames(section(st, 'cargo')).join(', ')) : ''}
   </a>`;
 }
