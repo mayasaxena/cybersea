@@ -9,6 +9,7 @@ export { esc, escTxt };
 export const ICON = {
   pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+  sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.3 4.9"/><path d="M4 12a8 8 0 0 1 14.3-4.9"/><path d="M18.5 3v4.2h-4.2"/><path d="M5.5 21v-4.2h4.2"/></svg>',
   die: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="15.5" cy="15.5" r="1.4"/></g></svg>',
 };
 
@@ -195,8 +196,17 @@ export function navHTML(client, page) {
     <a class="gname" href="${esc(href('index.html', g))}">${escTxt(g?.name || 'Cybersea')}</a>
     <div class="glinks">${links}</div>
     ${whoChip(client)}
-    <button class="ic" data-nav="menu" title="Menu" aria-label="Menu">${ICON.dots}<i class="sdot ${client ? client.status === 'idle' ? 'busy' : client.status : 'off'}"></i></button>
+    ${menuButton(client)}
   </nav>`;
+}
+
+// The menu button doubles as the sync indicator: turning arrows while the sheet is loading or saving,
+// the usual dots otherwise (tinted red when the last sync failed).
+function menuButton(client) {
+  const s = client ? client.status : 'off';
+  const syncing = s === 'idle' || s === 'busy';
+  const title = syncing ? 'Menu (syncing with the sheet)' : s === 'err' ? `Menu (${client.error || 'sync failed'})` : 'Menu';
+  return `<button class="ic menu${syncing ? ' syncing' : s === 'err' ? ' err' : ''}" data-nav="menu" title="${esc(title)}" aria-label="${esc(title)}">${syncing ? ICON.sync : ICON.dots}</button>`;
 }
 
 /* ---------- who you're signed in as ---------- */
@@ -286,8 +296,12 @@ export function wireNav(root, client) {
       if (w) w.outerHTML = whoChip(client);
     }
     if (e.status) {
-      const dot = document.querySelector('.gnav .sdot');
-      if (dot) { dot.className = 'sdot ' + client.status; dot.title = client.error || ''; }
+      const m = document.querySelector('.gnav [data-nav="menu"]');
+      if (m) { // in place, so focus and a click in progress survive
+        const n = document.createRange().createContextualFragment(menuButton(client)).firstElementChild;
+        m.className = n.className; m.title = n.title; m.setAttribute('aria-label', n.getAttribute('aria-label'));
+        if (m.innerHTML !== n.innerHTML) m.innerHTML = n.innerHTML;
+      }
       const line = document.getElementById('sync-status');
       if (line) line.textContent = statusText(client);
     }
