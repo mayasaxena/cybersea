@@ -6,11 +6,21 @@ privately, never committed (.gitignore blocks *.xlsx).
 
   python3 -I tools/xlsx/build.py --rules rules.json --out blank-game.xlsx
   python3 -I tools/xlsx/build.py --rules rules.json --tab Nexa=nexa-rows.json \
-      --house house.json --out cybersea.xlsx
+      --house house.json --theme cybersea-theme.json --out cybersea.xlsx
+  python3 -I tools/xlsx/build.py --theme cybersea-theme.json --out theme-only.xlsx
 
 rules.json: [{kind, group, name, text, meta, vis}, ...] (from tools/extract)
 --tab Name=rows.json: a tab's rows as [[Kind, Name, Value, Notes], ...]
 --house house.json: extra Rules rows (same shape as rules.json), e.g. house rules
+--theme theme.json: a setting laid over the book, {rules, lore, gm}:
+  rules: Rules rows, optionally with override_name, override_text, override_meta. One with the
+    same Kind + Group + Name as a book row fills in that row's Override columns from those (or
+    from its own text and meta); the book's columns stay as they are. One with only overrides
+    (no text) that matches no book row goes in the _Overrides tab, to copy across by hand. Any
+    other is a new row.
+  lore, gm, map: rows for the Lore, GM and Map tabs, as [[Kind, Name, Value, Notes], ...]. Map rows
+    are the places the Map page shows the crew: ['place', the location's book name, 'on', '']
+Without --rules, the workbook holds only the theme's rows, to paste into an existing game.
 """
 import argparse
 import json
@@ -20,7 +30,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 HEADER = ['Kind', 'Name', 'Value', 'Notes']
-RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis']
+RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta']
+OVERRIDES = ['override_name', 'override_text', 'override_meta']
 CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,move,special,advance,log,state'
 BOLD = Font(bold=True)
 HEAD_FILL = PatternFill('solid', fgColor='E8EEF3')
@@ -30,9 +41,16 @@ README = [
     '',
     'Tabs',
     '  Rules: the game’s rules text (Kind | Group | Name | Text | Meta | Vis). Vis "gm" rows are only shown with the GM passphrase.',
+    '    Override name | Override text | Override meta: the game’s own wording for a row (e.g. the Cybersea theme). The site uses',
+    '    them instead of the book’s and keeps the book’s under "Rapscallion original". Override meta adds to Meta; "hide" there',
+    '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
+    '    Kinds for the Map page: map (img=… a world map), location (Group = region; img=… optional), level (Group = the location’s',
+    '    name; img=… one floor or level, in order). img= is a path on the site (assets/world/…) or an https address.',
+    '    The crew see a location only once the GM puts it on the map (the Map tab).',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',
     '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
+    '  Map: which places the Map page shows the crew: "place | the location’s book name | on". The GM sets these on the Map page.',
     '  Every other tab is a character sheet. Tabs starting with _ are ignored.',
     '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
     '',
@@ -55,7 +73,7 @@ def text_sheet(ws, header, rows, widths):
     ws.append(header)
     for r in rows:
         ws.append([str(v) if v is not None else '' for v in r])
-    for col, w in zip('ABCDEF', widths):
+    for col, w in zip('ABCDEFGHI', widths):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows(min_row=1, max_row=max(ws.max_row, 1000), max_col=len(header)):
         for cell in row:
@@ -69,18 +87,50 @@ def text_sheet(ws, header, rows, widths):
     ws.freeze_panes = 'A2'
 
 
+def overlay(recs, theme_rules):
+    """The book's rows with the theme's laid over them: matching rows get Override columns.
+    Returns (rows, overrides for book rows that aren't here: override-only theme rows, to fill in by hand)."""
+    key = lambda r: tuple(str(r.get(k, '')).strip().lower() for k in ('kind', 'group', 'name'))
+    out = [dict(r) for r in recs]
+    loose = []
+    at = {}
+    for i, r in enumerate(out):
+        at.setdefault(key(r), i)
+    for t in theme_rules:
+        i = at.get(key(t))
+        if i is not None:
+            # A theme row's own text and meta stand in for the book's, unless it names overrides.
+            ov = {'override_text': t.get('text', ''), 'override_meta': t.get('meta', '')}
+            ov.update({k: t[k] for k in OVERRIDES if t.get(k)})
+            for k, v in ov.items():
+                if v and v != out[i].get(k[len('override_'):], ''):
+                    out[i][k] = v
+        elif not str(t.get('text', '')).strip() and any(t.get(k) for k in OVERRIDES):
+            loose.append(t)  # a change to a book row this workbook doesn't have
+        else:
+            out.append(dict(t))
+            at[key(t)] = len(out) - 1
+    return out, loose
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--rules', required=True)
+    ap.add_argument('--rules', help='the book’s rows; leave out for a theme-only workbook')
+    ap.add_argument('--theme', help='a setting over the book: {rules, lore, gm}')
     ap.add_argument('--house', help='extra Rules rows, e.g. house rules')
     ap.add_argument('--tab', action='append', default=[], help='Name=rows.json (a character tab)')
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
 
-    recs = json.load(open(a.rules, encoding='utf-8'))
+    recs = json.load(open(a.rules, encoding='utf-8')) if a.rules else []
     if a.house:
         recs = recs + json.load(open(a.house, encoding='utf-8'))
-    rules_rows = [[r.get('kind', ''), r.get('group', ''), r.get('name', ''), r.get('text', ''), r.get('meta', ''), r.get('vis', 'crew')] for r in recs]
+    theme = json.load(open(a.theme, encoding='utf-8')) if a.theme else {}
+    recs, loose = overlay(recs, theme.get('rules', []))
+    if loose and a.rules:
+        print(f'warning: {len(loose)} override(s) match no book row; see the Overrides tab')
+    rules_rows = [[r.get('kind', ''), r.get('group', ''), r.get('name', ''), r.get('text', ''), r.get('meta', ''), r.get('vis', 'crew')]
+                  + [r.get(k, '') for k in OVERRIDES] for r in recs]
 
     wb = Workbook()
     readme = wb.active
@@ -90,9 +140,15 @@ def main():
     readme.column_dimensions['A'].width = 120
     readme['A1'].font = Font(bold=True, size=13)
 
-    text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6])
-    text_sheet(wb.create_sheet('GM'), HEADER, [], [10, 26, 60, 60])
-    text_sheet(wb.create_sheet('Lore'), HEADER, [], [14, 26, 70, 16])
+    text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6, 26, 90, 28])
+    text_sheet(wb.create_sheet('GM'), HEADER, theme.get('gm', []), [10, 26, 60, 60])
+    text_sheet(wb.create_sheet('Lore'), HEADER, theme.get('lore', []), [14, 26, 70, 16])
+    text_sheet(wb.create_sheet('Map'), HEADER, theme.get('map', []), [10, 30, 8, 30])
+    if loose:
+        # Not a game tab (the site ignores tabs starting with _): copy each into the matching Rules row.
+        text_sheet(wb.create_sheet('_Overrides'), ['Kind', 'Group', 'Name', 'Override name', 'Override text', 'Override meta'],
+                   [[t.get('kind', ''), t.get('group', ''), t.get('name', '')] + [t.get(k, '') for k in OVERRIDES] for t in loose],
+                   [10, 16, 12, 20, 90, 20])
 
     for spec in a.tab:
         name, path = spec.split('=', 1)

@@ -85,6 +85,43 @@ edit wasn't saved. Leave that column alone. The one change the script can't noti
 row being deleted, so a page that missed it could add the row back: to remove a row, clear its
 cells instead.
 
+## Theming the rules (Cybersea over Rapscallion)
+
+The Rules tab keeps the book's rows as they are. Three more columns, after **Vis**, hold the
+game's own wording, and the site uses them first:
+
+- **Override name**: a new name. Moves keep the book's name, because character sheets remember
+  moves by it; give a move new text instead.
+- **Override text**: new text (a kit's items, a location's description, …).
+- **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere;
+  `img=assets/world/…` (or an `https://` address) shows an image with it.
+
+The Rules page shows the book's wording under each overridden row, as "Rapscallion original".
+The columns are found by their headers, so add the three headers to an existing game's Rules tab
+and update the script (below). A script older than version 4 ignores them.
+
+The **Map** page, open to everyone, shows Rules rows of these kinds:
+
+- `map`: a world map. Its image is `img=…` in Meta.
+- `location`: a place, listed under its Group. The book's locations show here too; theme them
+  with the Override columns. A new location is a new `location` row.
+- `level`: a floor or level of a place: Group is the location's name, then one row per level in
+  order, each with `img=…`.
+
+The GM chooses which places the crew see. On the Map page, each place has an **On the map** /
+**Hidden** button (only the GM sees it), and every place starts hidden, the book's and new ones
+alike. The choices are kept in a **Map** tab (`place | the location's book name | on`), which the
+site makes the first time the GM turns a place on. Everyone can read it, but only the GM can
+change it. A themed place stays on the map under its new name. Maps always show, and levels
+show with their place.
+
+Images in `assets/world/` are part of this site, so anyone can open them.
+
+`tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
+template, or, without `--rules`, makes a workbook of just the theme's rows to paste into an
+existing game. A theme's change to a book row this workbook doesn't have (a kit's Override text, say)
+goes in an `_Overrides` tab, to copy into that row by hand.
+
 ## Updating the script later
 
 When [`apps-script/Code.gs`](apps-script/Code.gs) changes in this repository:

@@ -124,3 +124,12 @@ export function htmlToMarkup(html) {
   block(doc.body);
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
+
+// An image a Rules row points to (img=… in its meta): a path on this site, or an https address.
+// Anything else (another scheme, a way out of the site) gives ''.
+export function imgSrc(u) {
+  const s = String(u || '').trim();
+  if (/^https:\/\/[^\s"'<>]+$/i.test(s)) return s;
+  if (/^\w[\w.\/%-]*$/.test(s) && !s.includes('..') && !s.includes('//')) return s;
+  return '';
+}

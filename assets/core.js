@@ -53,29 +53,82 @@ function toastEl() {
     el.className = 'toast';
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.addEventListener('click', () => el.classList.remove('show'));
+    el.addEventListener('click', () => {
+      if (el.classList.contains('preview')) { rollSeq++; document.activeElement?.blur(); } // closing a preview drops the roll
+      el.classList.remove('show');
+    });
     document.body.append(el);
   }
   return el;
 }
 
-export function doRoll(label, mod = 0, dice = 2) {
-  const ds = Array.from({ length: dice }, d6);
-  const total = ds.reduce((a, b) => a + b, 0) + mod;
-  const band = dice === 2 ? (total >= 10 ? ['hi', '10+'] : total >= 7 ? ['mid', '7-9'] : ['lo', '6-']) : ['', ''];
+// Show what a roll will be (label, dice, modifier) with a Roll button; nothing is rolled until it's pressed.
+// Then the dice tumble briefly, settle, and onRolled gets { dice, total }.
+// ask ("Bonds spent"), per ("-1 per scar") and adj (a free +/-) add counters the player sets before rolling.
+let rollSeq = 0;
+export function doRoll(label, mod = 0, dice = 2, onRolled, { ask, per, adj } = {}) {
+  const seq = ++rollSeq;
   const el = toastEl();
-  el.innerHTML = `<span class="tl">${escTxt(label)}</span>` + ds.map(d => `<span class="die">${d}</span>`).join('') +
-    (mod ? `<span class="mod">${fmt(mod)}</span>` : '') + `<span class="mod">=</span><span class="tot">${total}</span>` +
-    (band[1] ? `<span class="band">${band[1]}</span>` : '');
+  const faces = ds => ds.map(d => `<span class="die">${d}</span>`).join('');
+  const counters = [];
+  if (ask) counters.push({ name: ask, step: 1, n: 0, min: 0 });
+  if (per) counters.push({ name: per, step: parseInt(per, 10) || -1, n: 0, min: 0 });
+  if (adj) counters.push({ name: adj, step: 1, n: 0, min: -10, signed: true });
+  const base = mod;
+  const modNow = () => base + counters.reduce((a, c) => a + c.step * c.n, 0);
+  el.innerHTML = `<span class="tl">${escTxt(label)}</span><span class="dice">${faces(Array(dice).fill('?'))}</span>` +
+    (mod || counters.length ? `<span class="mod pm">${fmt(mod)}</span>` : '') +
+    `<button type="button" class="roll-go">${ICON.die}<span>Roll ${dice}d6</span></button>` +
+    counters.map((c, k) => `<span class="adj"><span class="an">${escTxt(c.name)}</span>` +
+      `<button type="button" class="ab" data-k="${k}" data-d="-1" aria-label="Fewer">−</button><span class="av">${c.signed ? fmt(0) : 0}</span>` +
+      `<button type="button" class="ab" data-k="${k}" data-d="1" aria-label="More">+</button></span>`).join('');
+  el.querySelectorAll('.ab').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const c = counters[+b.dataset.k];
+    c.n = Math.max(c.min, Math.min(20, c.n + +b.dataset.d));
+    b.parentElement.querySelector('.av').textContent = c.signed ? fmt(c.n) : c.n;
+    el.querySelector('.pm').textContent = fmt(modNow());
+  }));
   el.className = 'toast';
   void el.offsetWidth;
-  el.className = 'toast show ' + band[0];
+  el.className = 'toast show preview';
   clearTimeout(toastT);
-  toastT = setTimeout(() => el.classList.remove('show'), 12000);
-  return { dice: ds, total };
+  const go = el.querySelector('.roll-go');
+  go.focus({ preventScroll: true });
+  go.addEventListener('click', e => {
+    e.stopPropagation();
+    if (seq !== rollSeq) return;
+    mod = modNow();
+    el.querySelectorAll('.adj').forEach(a => a.remove());
+    const pm = el.querySelector('.pm');
+    if (pm && !mod) pm.remove(); else if (pm) pm.textContent = fmt(mod);
+    const ds = Array.from({ length: dice }, d6);
+    const total = ds.reduce((a, b) => a + b, 0) + mod;
+    const band = dice === 2 ? (total >= 10 ? ['hi', '10+'] : total >= 7 ? ['mid', '7-9'] : ['lo', '6-']) : ['', ''];
+    go.remove();
+    el.className = 'toast show rolling';
+    const box = el.querySelector('.dice');
+    const settle = () => {
+      if (seq !== rollSeq) return;
+      box.innerHTML = faces(ds);
+      el.insertAdjacentHTML('beforeend', `<span class="mod">=</span><span class="tot">${total}</span>` +
+        (band[1] ? `<span class="band">${band[1]}</span>` : ''));
+      el.className = 'toast show ' + band[0];
+      toastT = setTimeout(() => el.classList.remove('show'), 12000);
+      onRolled?.({ dice: ds, total });
+    };
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return settle();
+    const start = performance.now();
+    const tick = setInterval(() => {
+      if (seq !== rollSeq) return clearInterval(tick);
+      if (performance.now() - start >= 600) { clearInterval(tick); return settle(); }
+      box.innerHTML = faces(Array.from({ length: dice }, d6));
+    }, 70);
+  });
 }
 
 export function toast(message, kind = '') {
+  rollSeq++;
   const el = toastEl();
   el.innerHTML = `<span class="tl msg">${escTxt(message)}</span>`;
   el.className = 'toast show ' + kind;
@@ -132,7 +185,7 @@ export function askKey(client, message = '') {
 }
 
 /* ---------- top bar ---------- */
-const PAGES = [['home', 'index.html', 'Crew'], ['ship', 'ship.html', 'Ship'], ['lore', 'lore.html', 'Lore'], ['rules', 'rules.html', 'Rules'], ['gm', 'gm.html', 'GM']];
+const PAGES = [['home', 'index.html', 'Crew'], ['ship', 'ship.html', 'Ship'], ['lore', 'lore.html', 'Lore'], ['map', 'map.html', 'Map'], ['rules', 'rules.html', 'Rules'], ['gm', 'gm.html', 'GM']];
 
 export function navHTML(client, page) {
   const g = client?.game;

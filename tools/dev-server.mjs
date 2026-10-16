@@ -26,6 +26,7 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
 };
 
 function parseLatency(spec) {
@@ -38,7 +39,7 @@ function parseLatency(spec) {
 export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codePath, codeTransform } = {}) {
   if (rulesJson) {
     const recs = JSON.parse(readFileSync(rulesJson, 'utf8'));
-    tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew'])] };
+    tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew', r.override_name || '', r.override_text || '', r.override_meta || ''])] };
   }
   const gas = createGas({ name, tabs, props: keys, asText: true });
   return { gas, api: loadCodeGs(gas, codePath, codeTransform) };

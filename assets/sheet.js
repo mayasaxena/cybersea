@@ -6,7 +6,7 @@ import { parseSheet, serializeSheet, logId } from './codec.js';
 import { md, toggleCheck, htmlToMarkup } from './markup.js';
 import { indexRules, rollFor } from './rules.js';
 import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
-import { makeActions } from './actions.js';
+import { makeActions, ACTIONS } from './actions.js';
 import { shipRows } from './build.js';
 import { plain } from './markup.js';
 
@@ -178,8 +178,12 @@ function moveHTML(m, i, forceOpen) {
   }
   const r = rollFor(m.text, st.stats);
   const chip = r ? `<button class="chip" data-act="roll-move" data-i="${i}" title="Roll">${ICON.die}<span>${escTxt(r.label)}${r.stat ? ' ' + fmt(r.mod) : ''}</span></button>` : '';
+  const a = canEdit() && actions.forMove(m);
+  const act = a ? `<button class="chip" data-act="run" data-kind="${a.kind}"${a.ok ? ` title="${esc(ACTIONS[a.kind])}"` : ` title="${esc(a.why)}" disabled`}>${escTxt(a.label)}</button>` : '';
+  const lc = canEdit() && !SHIP && actions.luckCost(m);
+  const luck = lc ? `<button class="chip" data-act="spend-luck" data-i="${i}" title="${lc.ok ? 'Spend luck' : 'Not enough luck'}"${lc.ok ? '' : ' disabled'}>${lc.n ? `${lc.n} luck` : 'Luck'}</button>` : '';
   const open = forceOpen || openSet.has(id);
-  return `<details class="move${m.cat === 'playbook' && !m.marked ? ' off' : ''}" data-id="${esc(id)}"${open ? ' open' : ''}><summary>${mk}<span class="mn">${escTxt(m.name)}</span>${chip}</summary>` +
+  return `<details class="move${m.cat === 'playbook' && !m.marked ? ' off' : ''}" data-id="${esc(id)}"${open ? ' open' : ''}><summary>${mk}<span class="mn">${escTxt(m.name)}</span>${chip}${luck}${act}</summary>` +
     `<div class="mbody"${m.own ? ` data-move="${esc(m.name)}"` : ''}>${md(m.text)}</div></details>`;
 }
 
@@ -337,8 +341,9 @@ app.addEventListener('click', e => {
       const m = lastMoves[i];
       const r = m && rollFor(m.text, st.stats);
       if (!r) break;
-      const { total } = doRoll(r.stat ? `${m.name} · ${r.label}` : m.name, r.mod, r.dice);
-      if (canEdit() && actions.noteRoll(m, total)) changed();
+      doRoll(r.stat || r.ask ? `${m.name} · ${r.label}` : m.name, r.mod, r.dice, ({ total }) => {
+        if (canEdit() && actions.noteRoll(m, total)) changed();
+      }, r);
       break;
     }
     case 'add-pip': setTrack(b.dataset.path, p => { if (p.length < 20) p.push(0); }); changed(); render(); break;
@@ -355,6 +360,7 @@ app.addEventListener('click', e => {
     case 'add-move': st.moves.push({ name: uniqueMove('NEW MOVE'), marked: true, text: '' }); changed(); render(); break;
     case 'rm-move': if (armed(b)) { st.moves = st.moves.filter(m => m.name !== b.dataset.name); changed(); render(); } break;
     case 'run': if (canEdit()) actions.open(b.dataset.kind); break;
+    case 'spend-luck': if (canEdit() && lastMoves[i]) actions.spendLuck(lastMoves[i]); break;
     case 'rm-log': if (armed(b)) { st.log.splice(i, 1); changed(); render(); } break;
     case 'dt-moves': ui.tab = 'moves'; ui.cat = 'downtime'; saveUi(); render(); break;
     case 'ship-create': if (canEdit()) createShip(); break;

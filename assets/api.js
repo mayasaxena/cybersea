@@ -19,8 +19,8 @@ import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } fr
 
 // The latest Code.gs version (its ping answers {v}). Older deployments still work: before 2, only
 // with a passphrase (crew without one are turned away); before 3, without row versions, so
-// changes always go ahead.
-export const API_VERSION = 3;
+// changes always go ahead; before 4, without the Rules tab's override columns.
+export const API_VERSION = 4;
 const CREW_SIGNIN_VERSION = 2;
 
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
@@ -303,7 +303,8 @@ export class GameClient extends Emitter {
   }
 
   // Honor system, kept by the site rather than the sheet: the GM edits everything; crew edit once
-  // signed in as a character: that character's sheet, and the shared Ship and Lore tabs.
+  // signed in as a character: that character's sheet, and the shared Ship and Lore tabs. (The Map
+  // tab, like the GM tab, is the GM's alone; the sheet holds to that too.)
   canEdit(tab) {
     if (this.role === 'gm') return true;
     const me = this.me;

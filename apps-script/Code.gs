@@ -10,16 +10,21 @@
  * Every request is a POST whose body is JSON sent as text/plain (no CORS preflight),
  * carrying any passphrase as "key".
  *
- * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis), GM, Lore, Ship, and one tab per character
+ * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis, plus optional Override name|Override text|Override
+ * meta columns, found by their headers), GM, Lore, Ship, Map (which places the Map page shows: everyone
+ * reads it, only the GM writes it), and one tab per character
  * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 3; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions
+const API_VERSION = 4; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
+// A game's own wording for a Rules row, kept beside the book's (which stays as it is). Found by
+// header, so they can sit in any column after Vis; sent as the 7th to 9th cells of each row.
+const OVERRIDE_HEADERS = ['Override name', 'Override text', 'Override meta'];
 const VER_HEADER = 'Version';
 const MAX_CELL = 50000;
 const MAX_TAB_NAME = 40;
@@ -106,7 +111,7 @@ function forbidden_() {
 function tabKind_(name) {
   const n = String(name).trim().toLowerCase();
   if (!n || n.charAt(0) === '_' || n === 'readme') return null;
-  if (n === 'rules' || n === 'gm' || n === 'lore' || n === 'ship') return n;
+  if (n === 'rules' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map') return n;
   return 'character';
 }
 
@@ -115,7 +120,7 @@ function canRead_(role, kind) {
 }
 
 function canWrite_(role, kind) {
-  return !!kind && kind !== 'rules' && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'rules' && ((kind !== 'gm' && kind !== 'map') || role === 'gm');
 }
 
 function findSheet_(ss, name) {
@@ -132,17 +137,28 @@ function table_(sh, kind, role) {
   const rules = kind === 'rules';
   const width = rules ? RULES_HEADER.length : HEADER.length;
   const vc = rules ? 0 : verColIn_(grid[0]);
+  const oc = rules ? overrideCols_(grid[0]) : [];
   const rows = [];
   const vers = [];
   grid.slice(1).forEach(line => {
     const r = line.slice(0, width);
     while (r.length < width) r.push('');
+    if (oc.some(c => c >= 0)) oc.forEach(c => r.push(c >= 0 && line[c] != null ? line[c] : ''));
     if (r.join('').trim() === '') return;
     if (rules && role !== 'gm' && String(r[5]).trim().toLowerCase() === 'gm') return;
     rows.push(r);
     if (!rules) vers.push(version_(vc ? line[vc - 1] : '', r));
   });
   return rules ? { d: digest_(rows), rows } : { d: digest_([rows, vers]), rows, vers };
+}
+
+// Where the Rules tab's override columns are (-1 for one it doesn't have).
+function overrideCols_(header) {
+  const hs = (header || []).map(h => String(h).trim().toLowerCase());
+  return OVERRIDE_HEADERS.map(h => {
+    const i = hs.indexOf(h.toLowerCase());
+    return i >= RULES_HEADER.length ? i : -1;
+  });
 }
 
 function digest_(rows) {
@@ -458,14 +474,14 @@ function patch_(role, req) {
   return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, skipped };
 }
 
-/* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; GM tab needs the GM key) */
+/* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; GM and Map tabs need the GM key) */
 function create_(role, req) {
   const name = String(req.tab || '').trim();
   if (!name || name.length > MAX_TAB_NAME || /[\[\]*?\/\\:]/.test(name)) {
     return { ok: false, code: 'name', error: 'Pick a different name: up to ' + MAX_TAB_NAME + ' characters, without [ ] * ? / \\ :' };
   }
   const kind = tabKind_(name);
-  if (!kind || kind === 'rules' || (kind === 'gm' && role !== 'gm')) {
+  if (!kind || kind === 'rules' || ((kind === 'gm' || kind === 'map') && role !== 'gm')) {
     return { ok: false, code: 'name', error: '"' + name + '" is a reserved name.' };
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
