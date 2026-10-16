@@ -305,3 +305,20 @@ test('the GM link only shows with the GM passphrase', async () => {
   assert.ok(await until(async () => (await p.$$eval('.glinks a', as => as.map(a => a.textContent))).includes('GM')));
   assert.deepEqual(h.errors, []);
 });
+
+test('the menu button shows turning sync arrows while loading, then the dots', async () => {
+  const slow = await harness({ latency: 800 });
+  try {
+    const p = await slow.page();
+    await p.goto(`${slow.srv.site}/#join=${invite(slow.srv.apis[0].url)}`);
+    await p.waitForSelector('.gnav [data-nav="menu"].syncing svg');
+    assert.equal(await p.$eval('.gnav .syncing svg', el => getComputedStyle(el).animationName), 'spin');
+    await p.waitForSelector('.gnav [data-nav="menu"]:not(.syncing)', { timeout: 8000 });
+    assert.equal(await p.$$eval('.gnav [data-nav="menu"] circle', c => c.length), 3);
+    assert.equal(await p.$('.sdot'), null);
+    await p.emulateMedia({ reducedMotion: 'reduce' });
+    await p.reload();
+    await p.waitForSelector('.gnav [data-nav="menu"].syncing svg');
+    assert.equal(await p.$eval('.gnav .syncing svg', el => getComputedStyle(el).animationName), 'none');
+  } finally { await slow.close(); }
+});
