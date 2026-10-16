@@ -224,13 +224,17 @@ main.addEventListener('change', e => {
 });
 
 /* ---------- start ---------- */
+// Every poll reports the tab list. Redraw only when it (or our access) changed: a redraw resets
+// half-typed fields and the first click of a two-click delete. Tab contents redraw on their own.
+let listSig = null;
 client.on(e => {
   if (e.list) {
     refreshNav(client, 'gm');
     const fresh = ['Ship', ...characters()].filter(n => !client.watched.has(n));
     fresh.forEach(n => { client.watch(n); client.tab(n).on(() => { if (tab === 'crew') render(); }); });
     if (fresh.length) client.read().catch(() => {});
-    render();
+    const sig = JSON.stringify([client.role, client.list]);
+    if (sig !== listSig) { listSig = sig; render(); }
   }
 });
 render();

@@ -65,6 +65,20 @@ test('NPCs: tag definitions, harm by size, renames carry harm, deletes', async (
   assert.ok(await until(async () => { const r = await h.tab(api, 'GM'); return !row(r, 'npc', 'Dockmaster Ilse') && !row(r, 'track', 'Dockmaster Ilse'); }));
 });
 
+test('polls don\'t redraw the page under the GM\'s cursor', async () => {
+  const p = await openGm();
+  await p.waitForSelector('[data-tab="npcs"]');
+  await p.click('[data-tab="npcs"]');
+  await p.click('[data-act="edit"]');
+  await p.click('[data-act="add-npc"][data-harm="1"]');
+  const field = p.locator('input[data-f="name"]').last();
+  await field.click();
+  await p.evaluate(() => { window.__field = document.activeElement; });
+  await sleep(1500); // several polls (every 400 ms here)
+  assert.equal(await p.evaluate(() => document.activeElement === window.__field && document.contains(window.__field)), true);
+  await p.click('[data-act="edit"]');
+});
+
 test('notes: secrets and clocks', async () => {
   const p = await openGm();
   await p.waitForSelector('[data-tab="notes"]');
