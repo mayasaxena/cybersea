@@ -1,6 +1,7 @@
 // Session Begins, Session Ends, Chapter's End, Begin/Leave Downtime and Level Up for a character sheet.
 // The rule text shown in each dialog comes from the Rules tab (procedure rows); the mechanics
-// live here. ctx = {st(), rules(), changed(), render(), editing()}.
+// live here. ctx = {st(), rules(), changed(), render(), editing(), used(key, n, line)}; used offers
+// a change for the log (usage.js).
 
 import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal, toast } from './core.js';
 import { md, plain } from './markup.js';
@@ -341,6 +342,8 @@ export function makeActions(ctx) {
       ctx.changed();
       ctx.render();
       toast(`Spent ${done} luck: ${move.name} (${c.have - done} left)`);
+      const name = track('luck').name;
+      ctx.used?.(`spend:${move.name}`, done, k => `${move.name}: ${name} −${k}`);
     };
     if (c.n) { spend(c.n); return; }
     const o = modal(`<div class="prow"><h2>${escTxt(move.name)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>

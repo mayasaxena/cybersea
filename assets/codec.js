@@ -24,6 +24,11 @@ export const parseStat = s => {
   const n = parseInt(String(s ?? '').replace(/[−–]/g, '-').replace(/^\+/, ''), 10);
   return Number.isFinite(n) ? n : 0;
 };
+// An item's count: blank for items that aren't counted.
+export const parseCount = s => {
+  const n = parseInt(String(s ?? '').trim(), 10);
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+};
 export const formatStat = v => (v > 0 ? `+${v}` : String(v | 0));
 
 /* ---------- log entries ---------- */
@@ -68,7 +73,7 @@ export function parseSheet(rows) {
       case 'sheet': case 'notes': case 'inventory': st.sections.push({ tab: k, title: n, text: value, note: notes }); break;
       case 'move': st.moves.push({ name: n, marked: parseTrack(value)[0] === 1, text: notes }); break;
       case 'special': st.specials.push({ name: n, marked: parseTrack(value)[0] === 1, text: notes }); break;
-      case 'item': st.items.push({ name: n, note: notes }); break;
+      case 'item': st.items.push({ name: n, count: parseCount(value), note: notes }); break;
       case 'advance': st.advances[n] = parseInt(value, 10) || 0; break;
       case 'log': st.log.push(parseLog(n, value, notes)); break;
       case 'state': try { st.state[n.toLowerCase()] = value ? JSON.parse(value) : null; } catch { st.state[n.toLowerCase()] = null; } break;
@@ -97,7 +102,7 @@ export function serializeSheet(st) {
   for (const t of Object.values(st.tracks)) rows.push(['track', t.name, formatTrack(t.pips), '']);
   for (const b of st.bonds) rows.push(['bond', b.name, formatBond(b.pips), '']);
   for (const s of st.sections) rows.push([SECTION_KINDS.includes(s.tab) ? s.tab : 'sheet', s.title, s.text || '', s.note || '']);
-  for (const it of st.items || []) rows.push(['item', it.name, '', it.note || '']);
+  for (const it of st.items || []) rows.push(['item', it.name, it.count == null ? '' : String(it.count), it.note || '']);
   for (const m of st.moves) rows.push(['move', m.name, m.marked ? '●' : '○', m.text || '']);
   for (const m of st.specials) rows.push(['special', m.name, m.marked ? '●' : '○', m.text || '']);
   for (const [k, n] of Object.entries(st.advances)) rows.push(['advance', k, String(n), '']);
