@@ -37,6 +37,8 @@ README = [
     '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
     '',
     'Rows on every tab except Rules: Kind | Name | Value | Notes. Kind + Name identify a row, so keep them unique.',
+    'The site adds a hidden Version column to the tabs it edits, so a late edit (from a page that was offline) can’t undo a newer one. Leave it alone.',
+    'To remove a row, clear its cells rather than deleting the row: a deleted row isn’t noticed, so a page that missed it could add it back.',
     '',
     'Symbols',
     '  Tracks (harm, luck, experience, wreck, clocks): ● marked, ○ open, ✕ crossed out. Typing x, o, 1 or 0 also works.',

@@ -1,7 +1,7 @@
 // Shared UI pieces: icons, pips, dice, toast, dialogs, theme, the top bar and its menu.
 
 import { esc, escTxt } from './markup.js';
-import { isSignedIn } from './codec.js';
+import { isSignedIn, isSigninRow } from './codec.js';
 import { ls, listGames, inviteUrl, href, joinGame, forgetGame, inviteFromText } from './games.js';
 
 export { esc, escTxt };
@@ -239,7 +239,15 @@ export function wireNav(root, client) {
       if (line) line.textContent = statusText(client);
     }
     if (e.auth) askKey(client, client.error);
+    if (e.skipped) toast(notSaved(e.skipped.rows));
   });
+}
+
+// Rows the sheet turned down because they'd changed there since this page's copy.
+function notSaved(rows) {
+  const names = [...new Set(rows.map(r => (isSigninRow(r) ? 'who’s signed in' : String(r[0]).trim().toLowerCase() === 'log' ? 'a log entry' : String(r[1]))))];
+  const list = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
+  return `Not saved: ${list} changed on the sheet first.`;
 }
 
 const statusText = c => (c.status === 'err' ? c.error : c.status === 'busy' ? 'Saving…' : c.status === 'ok' ? 'Saved to the sheet' : '');

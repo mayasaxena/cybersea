@@ -25,8 +25,12 @@ form.addEventListener('submit', async e => {
   try {
     const r = await ping(api);
     html += line(r.ok, 'Reaching the script', `Answered in ${ms(t0)} (API version ${escTxt(r.v)}).`);
-    if ((r.v || 0) < API_VERSION) {
-      html += line(false, 'Script version', `This deployment runs an older Code.gs (version ${escTxt(r.v || 0)}; the site needs ${API_VERSION}). Paste the latest <code>apps-script/Code.gs</code> into the Apps Script editor and save, then <b>Deploy → Manage deployments</b>, click the pencil, set <b>Version: New version</b> and click <b>Deploy</b>. Saving alone doesn’t change what’s deployed.`);
+    const v = Number(r.v) || 0;
+    if (v < API_VERSION) {
+      const missing = v < 2
+        ? 'Players can’t join without a passphrase until it’s updated.'
+        : 'It works, but an edit sent again after being offline can undo newer changes to the same rows.';
+      html += line(false, 'Script version', `This deployment runs an older Code.gs (version ${v}; the latest is ${API_VERSION}). ${missing} Paste the latest <code>apps-script/Code.gs</code> into the Apps Script editor and save, then <b>Deploy → Manage deployments</b>, click the pencil, set <b>Version: New version</b> and click <b>Deploy</b>. Saving alone doesn’t change what’s deployed.`);
     }
   } catch {
     html += line(false, 'Reaching the script', 'No answer. Check the URL, and that the deployment’s “Who has access” is “Anyone”. If you just deployed, wait a minute and try again.');

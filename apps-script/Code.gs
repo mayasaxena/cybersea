@@ -11,16 +11,19 @@
  * carrying any passphrase as "key".
  *
  * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis), GM, Lore, Ship, and one tab per character
- * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored.
+ * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
+ * edits also get a hidden Version column (see "row versions" below).
  *
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 2; // 2: crew need no passphrase unless CREW_KEY is set
+const API_VERSION = 3; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
+const VER_HEADER = 'Version';
 const MAX_CELL = 50000;
 const MAX_TAB_NAME = 40;
+const MAX_GONE = 150;          // removed rows remembered per tab (see gone_)
 const BAD_KEY_LIMIT = 10;      // wrong passphrases per minute before pausing
 const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this long
 
@@ -120,13 +123,26 @@ function findSheet_(ss, name) {
   return ss.getSheets().find(sh => sh.getName().trim().toLowerCase() === want) || null;
 }
 
-function rows_(sh, kind, role) {
-  const width = kind === 'rules' ? RULES_HEADER.length : HEADER.length;
-  const last = sh.getLastRow();
-  if (last < 2) return [];
-  return sh.getRange(2, 1, last - 1, width).getDisplayValues().filter(r =>
-    r.join('').trim() !== '' &&
-    !(kind === 'rules' && role !== 'gm' && String(r[5]).trim().toLowerCase() === 'gm'));
+/*
+ * A tab's rows as the site sees them, and a digest of them. Rules rows are as typed; other tabs'
+ * rows each come with their version (vers[i] is rows[i]'s), and the digest covers both.
+ */
+function table_(sh, kind, role) {
+  const grid = sh.getDataRange().getDisplayValues();
+  const rules = kind === 'rules';
+  const width = rules ? RULES_HEADER.length : HEADER.length;
+  const vc = rules ? 0 : verColIn_(grid[0]);
+  const rows = [];
+  const vers = [];
+  grid.slice(1).forEach(line => {
+    const r = line.slice(0, width);
+    while (r.length < width) r.push('');
+    if (r.join('').trim() === '') return;
+    if (rules && role !== 'gm' && String(r[5]).trim().toLowerCase() === 'gm') return;
+    rows.push(r);
+    if (!rules) vers.push(version_(vc ? line[vc - 1] : '', r));
+  });
+  return rules ? { d: digest_(rows), rows } : { d: digest_([rows, vers]), rows, vers };
 }
 
 function digest_(rows) {
@@ -153,10 +169,12 @@ function cells_(row, width) {
   return out;
 }
 
-function writeRow_(sh, rowNum, cells) {
+// A row's cells, as plain text, and its mark in the Version column (column vc).
+function writeRow_(sh, rowNum, cells, vc, mark) {
   const range = sh.getRange(rowNum, 1, 1, cells.length);
   range.setNumberFormat('@');
   range.setValues([cells.map(safe_)]);
+  putMarks_(sh, rowNum, vc, [mark]);
 }
 
 function withLock_(fn) {
@@ -169,10 +187,143 @@ function withLock_(fn) {
   }
 }
 
+/* ---------- row versions ----------
+ * Each row on a tab the site edits has a version, so that a change made to an out-of-date copy of
+ * a row (sent again after the page was offline, say) is turned down instead of undoing newer
+ * changes. The hidden Version column holds "stamp:hash of the row:hash of its Kind+Name". Every
+ * write gives the row a new stamp: patch_ (the page picks it, so it knows what its own
+ * unconfirmed changes leave), create_, and onEdit for edits made in Sheets. If the hash doesn't
+ * match, the row was changed some other way (or was never stamped), and its version is "~" and
+ * its hash instead, so the change still shows.
+ *
+ * Rows that go away (deleted, renamed, or their Kind+Name cleared or typed over) are remembered
+ * for a while in the document's properties, so a change made before that doesn't bring them
+ * back. Whole rows deleted by hand aren't noticed: Sheets runs no onEdit for that.
+ */
+
+// cyrb53: a quick 53-bit string hash, in base 36.
+function hash_(s) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+// The site makes stamps the same way (assets/api.js).
+function stamp_() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function mark_(stamp, cells) {
+  return stamp + ':' + hash_(cells.join('\u0001')) + ':' + hash_(key_(cells[0], cells[1]));
+}
+
+function version_(mark, cells) {
+  const m = String(mark || '').split(':');
+  const h = hash_(cells.join('\u0001'));
+  return m[0] && m[1] === h ? m[0] : '~' + h;
+}
+
+function verColIn_(header) {
+  return (header || []).findIndex(h => String(h).trim().toLowerCase() === VER_HEADER.toLowerCase()) + 1;
+}
+
+// The tab's Version column, added (hidden, plain text) after any other columns if it has none yet.
+function verCol_(sh) {
+  const width = Math.max(sh.getLastColumn(), 1);
+  const found = verColIn_(sh.getRange(1, 1, 1, width).getDisplayValues()[0]);
+  if (found) return found;
+  const col = Math.max(width, HEADER.length) + 1;
+  if (col > sh.getMaxColumns()) sh.insertColumnsAfter(sh.getMaxColumns(), col - sh.getMaxColumns());
+  sh.getRange(1, col, sh.getMaxRows(), 1).setNumberFormat('@');
+  sh.getRange(1, col).setValues([[VER_HEADER]]);
+  sh.hideColumns(col);
+  return col;
+}
+
+function putMarks_(sh, rowNum, vc, marks) {
+  if (!marks.length) return;
+  const range = sh.getRange(rowNum, vc, marks.length, 1);
+  range.setNumberFormat('@');
+  range.setValues(marks.map(m => [m]));
+}
+
+// Rows that went away from a tab: {hash of Kind+Name: [when, stamp of the change that removed it]}.
+function gone_(sh) {
+  try {
+    return JSON.parse(PropertiesService.getDocumentProperties().getProperty('gone:' + sh.getName().trim().toLowerCase()) || '{}');
+  } catch (err) {
+    return {};
+  }
+}
+
+function saveGone_(sh, gone) {
+  const keep = {};
+  Object.keys(gone).sort((a, b) => gone[b][0] - gone[a][0]).slice(0, MAX_GONE).forEach(k => { keep[k] = gone[k]; });
+  PropertiesService.getDocumentProperties().setProperty('gone:' + sh.getName().trim().toLowerCase(), JSON.stringify(keep));
+}
+
+/*
+ * What a change is based on. The site ends each ren, set and del entry with
+ *   {base: [versions], seen, stamp}
+ * base: the versions the row may have for the change to go ahead ('' for no row): the one the page
+ *   last saw, then any its own unconfirmed changes would have left.
+ * seen: when the page last heard from the sheet (the "at" of a read or patch).
+ * stamp: the row's new version.
+ * Pages from before version 3 send none of this; their changes go ahead regardless.
+ */
+function when_(x) {
+  const w = x && typeof x === 'object' && !Array.isArray(x) ? x : {};
+  const stamp = typeof w.stamp === 'string' && /^[a-z0-9]{6,32}$/i.test(w.stamp) ? w.stamp : stamp_();
+  const ours = Array.isArray(w.base) ? w.base.slice(0, 100).map(String).concat(stamp) : null;
+  return { stamp, ours, seen: Number(w.seen) || 0 };
+}
+
+/*
+ * Sheets runs this (a simple trigger) after someone edits the spreadsheet by hand. The edited
+ * rows get a new stamp, and rows whose Kind+Name went away are remembered as removed.
+ */
+function onEdit(e) {
+  const range = e && e.range;
+  if (!range || range.getColumn() > HEADER.length) return;
+  const sh = range.getSheet();
+  const kind = tabKind_(sh.getName());
+  if (!kind || kind === 'rules') return;
+  const top = Math.max(range.getRow(), 2);
+  const n = range.getLastRow() - top + 1;
+  if (n < 1) return;
+  const vc = verCol_(sh);
+  const stamp = stamp_();
+  const removed = [];
+  const marks = sh.getRange(top, 1, n, vc).getDisplayValues().map(line => {
+    const cells = line.slice(0, HEADER.length);
+    const was = String(line[vc - 1] || '').split(':')[2];
+    const keyed = !!(cells[0].trim() || cells[1].trim());
+    if (was && (!keyed || was !== hash_(key_(cells[0], cells[1])))) removed.push(was);
+    return cells.join('').trim() ? mark_(stamp, cells) : '';
+  });
+  putMarks_(sh, top, vc, marks);
+  if (removed.length) {
+    const gone = gone_(sh);
+    removed.forEach(k => { gone[k] = [Date.now(), stamp]; });
+    saveGone_(sh, gone);
+  }
+}
+
 /* ---------- ops ---------- */
 
-/* read {tabs: '*' | [names], have: {name: digest}} -> rows only for tabs whose digest changed */
+/*
+ * read {tabs: '*' | [names], have: {name: digest}} -> rows (and versions) only for tabs whose
+ * digest changed. "at" is when the read started.
+ */
 function read_(role, req) {
+  const at = Date.now();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const want = Array.isArray(req.tabs) ? req.tabs.map(t => String(t).trim().toLowerCase()) : null;
   const have = req.have || {};
@@ -184,20 +335,21 @@ function read_(role, req) {
     if (!canRead_(role, kind)) return;
     list.push({ name, kind });
     if (want && want.indexOf(name.trim().toLowerCase()) < 0) return;
-    const rows = rows_(sh, kind, role);
-    const d = digest_(rows);
-    tabs[name] = have[name] === d ? { d } : { d, rows };
+    const t = table_(sh, kind, role);
+    tabs[name] = have[name] === t.d ? { d: t.d } : t;
   });
-  const res = { ok: true, v: API_VERSION, role, game: ss.getName(), list, tabs };
+  const res = { ok: true, v: API_VERSION, role, game: ss.getName(), at, list, tabs };
   if (role === 'gm') res.crewKey = keys_().crew; // lets the GM copy a crew invite link
   return res;
 }
 
 /*
- * patch {tab, ren: [[Kind, From, To]...], set: [[Kind, Name, Value, Notes]...], del: [[Kind, Name]...]}
+ * patch {tab, ren: [[Kind, From, To, when]...], set: [[Kind, Name, Value, Notes, when]...], del: [[Kind, Name, when]...]}
  * Rows are keyed by Kind+Name (case-insensitive; the first match wins). Renames happen first and
  * in place, so a renamed row keeps its position. Only touched rows are written, so formulas,
  * formatting and rows added by hand elsewhere in the tab are kept.
+ * A change whose row isn't as it was when the change was made (see when_) is skipped, and listed
+ * in "skipped" as [Kind, Name]. So are changes to the new name of a skipped rename.
  */
 function patch_(role, req) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -206,50 +358,104 @@ function patch_(role, req) {
   const kind = tabKind_(sh.getName());
   if (!canWrite_(role, kind)) return kind === 'rules' ? { ok: false, code: 'forbidden', error: 'Rules are edited in the spreadsheet itself.' } : forbidden_();
 
-  const sets = (req.set || []).map(r => cells_(r, 4));
-  const dels = (req.del || []).map(r => key_(r[0], r[1]));
+  const sets = (req.set || []).map(r => ({ cells: cells_(r, 4), w: when_(r[4]) }));
+  const vc = verCol_(sh);
   const last = sh.getLastRow();
-  const vals = last >= 2 ? sh.getRange(2, 1, last - 1, 4).getDisplayValues() : [];
+  const grid = last >= 2 ? sh.getRange(2, 1, last - 1, vc).getDisplayValues() : [];
+  const vals = grid.map(r => r.slice(0, 4));
+  const marks = grid.map(r => r[vc - 1]);
   const find = k => vals.findIndex(r => key_(r[0], r[1]) === k);
+  let gone = null;
+  const goneNow = () => gone || (gone = gone_(sh));
+  let buried = false;
+  const bury = (k, w) => { goneNow()[hash_(k)] = [Date.now(), w.stamp]; buried = true; };
+  const renamed = {}; // names rows were renamed to here: the rename checked them already
+  const blocked = {}; // names a skipped rename would have made
+  const skipped = [];
+
+  // Whether a change to the row keyed k (at index i; -1 if it isn't there) may go ahead.
+  const fits = (k, i, w) => {
+    if (!w.ours || renamed[k]) return true;
+    if (i >= 0) return w.ours.indexOf(version_(marks[i], vals[i])) >= 0;
+    const g = goneNow()[hash_(k)];
+    if (g && w.ours.indexOf(g[1]) >= 0) return true; // one of our own changes removed it
+    return w.ours.indexOf('') >= 0 && !(g && g[0] > w.seen); // there was none, and none was removed since
+  };
 
   (req.ren || []).forEach(r => {
-    const from = find(key_(r[0], r[1]));
+    const w = when_(r[3]);
     const to = String(r[2] == null ? '' : r[2]);
-    if (from < 0 || !to.trim() || find(key_(r[0], to)) >= 0) return;
+    if (!to.trim()) return;
     if (to.length > MAX_CELL) throw new Error('A cell is too long (over ' + MAX_CELL + ' characters).');
+    const k = key_(r[0], r[1]);
+    const from = find(k);
+    if (from < 0) {
+      // Renamed already (this is a retry), or never reached the sheet: the set queued under the
+      // new name brings the row. Removed by someone else since: it stays removed.
+      if (blocked[k] || !fits(k, -1, w)) { blocked[key_(r[0], to)] = true; skipped.push([r[0], r[1]]); }
+      return;
+    }
+    if (find(key_(r[0], to)) >= 0 || !fits(k, from, w)) {
+      if (w.ours) { blocked[key_(r[0], to)] = true; skipped.push([r[0], r[1]]); }
+      return;
+    }
     const cell = sh.getRange(from + 2, 2);
     cell.setNumberFormat('@');
     cell.setValues([[safe_(to)]]);
     vals[from][1] = to;
+    marks[from] = mark_(w.stamp, vals[from]);
+    putMarks_(sh, from + 2, vc, [marks[from]]);
+    bury(k, w);
+    renamed[key_(r[0], to)] = true;
   });
 
   const doomed = [];
-  dels.forEach(k => { const i = find(k); if (i >= 0 && doomed.indexOf(i) < 0) doomed.push(i); });
-  doomed.sort((a, b) => b - a).forEach(i => { sh.deleteRow(i + 2); vals.splice(i, 1); });
+  (req.del || []).forEach(r => {
+    const w = when_(r[2]);
+    const k = key_(r[0], r[1]);
+    const i = find(k);
+    if (i < 0 || doomed.indexOf(i) >= 0) return;
+    if (blocked[k] || !fits(k, i, w)) { skipped.push([r[0], r[1]]); return; }
+    doomed.push(i);
+    bury(k, w);
+  });
+  doomed.sort((a, b) => b - a).forEach(i => { sh.deleteRow(i + 2); vals.splice(i, 1); marks.splice(i, 1); });
 
-  sets.forEach(cells => {
+  sets.forEach(({ cells, w }) => {
     if (!cells[0].trim() && !cells[1].trim()) return;
-    const at = find(key_(cells[0], cells[1]));
+    const k = key_(cells[0], cells[1]);
+    const at = find(k);
+    // Already so (a retry of a change that landed, say): nothing to do. After a rename, the row
+    // is written anyway, so it carries this change's stamp.
+    if (at >= 0 && !renamed[k] && vals[at].join('\u0001') === cells.join('\u0001')) return;
+    if (blocked[k] || !fits(k, at, w)) { skipped.push([cells[0], cells[1]]); return; }
+    const mark = mark_(w.stamp, cells);
     if (at >= 0) {
-      if (vals[at].join('\u0001') !== cells.join('\u0001')) { writeRow_(sh, at + 2, cells); vals[at] = cells; }
+      writeRow_(sh, at + 2, cells, vc, mark);
+      vals[at] = cells;
+      marks[at] = mark;
       return;
     }
     // New rows go after the last row of the same Kind, so the tab stays grouped for people reading it.
-    const k = cells[0].trim().toLowerCase();
+    const kk = cells[0].trim().toLowerCase();
     let pos = -1;
-    vals.forEach((r, j) => { if (String(r[0]).trim().toLowerCase() === k) pos = j; });
+    vals.forEach((r, j) => { if (String(r[0]).trim().toLowerCase() === kk) pos = j; });
     if (pos >= 0 && pos < vals.length - 1) {
       sh.insertRowAfter(pos + 2);
-      writeRow_(sh, pos + 3, cells);
+      writeRow_(sh, pos + 3, cells, vc, mark);
       vals.splice(pos + 1, 0, cells);
+      marks.splice(pos + 1, 0, mark);
     } else {
-      writeRow_(sh, vals.length + 2, cells);
+      writeRow_(sh, vals.length + 2, cells, vc, mark);
       vals.push(cells);
+      marks.push(mark);
     }
   });
 
-  const rows = rows_(sh, kind, role);
-  return { ok: true, tab: sh.getName(), d: digest_(rows), rows };
+  if (buried) saveGone_(sh, gone);
+  const at = Date.now();
+  const t = table_(sh, kind, role);
+  return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, skipped };
 }
 
 /* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; GM tab needs the GM key) */
@@ -270,9 +476,15 @@ function create_(role, req) {
   sh.getRange(1, 1, 1, 4).setValues([HEADER]);
   sh.setFrozenRows(1);
   sh.getRange(2, 1, Math.max(sh.getMaxRows() - 1, 1), 4).setNumberFormat('@');
-  if (rows.length) sh.getRange(2, 1, rows.length, 4).setValues(rows.map(c => c.map(safe_)));
-  const out = rows_(sh, kind, role);
-  return { ok: true, tab: name, kind, d: digest_(out), rows: out };
+  const vc = verCol_(sh);
+  if (rows.length) {
+    sh.getRange(2, 1, rows.length, 4).setValues(rows.map(c => c.map(safe_)));
+    const stamp = stamp_();
+    putMarks_(sh, 2, vc, rows.map(c => mark_(stamp, c)));
+  }
+  const at = Date.now();
+  const t = table_(sh, kind, role);
+  return { ok: true, tab: name, kind, at, d: t.d, rows: t.rows, vers: t.vers };
 }
 
 /* selftest (GM): checks that values survive a round trip through this sheet unchanged */

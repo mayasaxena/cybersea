@@ -4,20 +4,30 @@
 // without a CORS preflight (Apps Script can't answer preflights).
 //
 // GameClient keeps one TabStore per tab:
-//   server  = last rows + digest the sheet sent (cached in localStorage)
+//   server  = last rows, their versions and the digest the sheet sent (cached in localStorage)
 //   pending = rows changed here but not yet confirmed (also in localStorage, so edits made
 //             offline or right before closing the page aren't lost)
 //   rows    = server rows with pending changes applied: what the page shows
 // Pages report changes as (previous serialization, next serialization); only rows that differ
-// become pending, so a stale page never overwrites rows someone else changed.
+// become pending, so a stale page never overwrites rows someone else changed. Each pending
+// change also says which version of its row it was made to, and the sheet turns it down if the
+// row has changed since (see "row versions" in Code.gs).
 
 import { CONFIG } from '../config.js';
 import { ls, gkey, upsertGame } from './games.js';
 import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } from './codec.js';
 
-// The Code.gs version this site expects (its ping answers {v}). Older deployments still work for
-// the GM, but turn away crew without a passphrase.
-export const API_VERSION = 2;
+// The latest Code.gs version (its ping answers {v}). Older deployments still work: before 2, only
+// with a passphrase (crew without one are turned away); before 3, without row versions, so
+// changes always go ahead.
+export const API_VERSION = 3;
+const CREW_SIGNIN_VERSION = 2;
+
+// The most versions a pending change carries for what earlier unconfirmed changes may have left.
+const MAX_ALTS = 20;
+
+// A new row version (Code.gs makes them the same way).
+const newStamp = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 export class ApiError extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -49,7 +59,7 @@ export async function ping(api) {
 // An old script answers "wrong passphrase" when none was sent, which is baffling; say what's wrong.
 async function outdatedScript(api) {
   try {
-    if (((await ping(api)).v || 0) < API_VERSION) {
+    if (((await ping(api)).v || 0) < CREW_SIGNIN_VERSION) {
       return 'This game’s script is out of date, so it still wants a passphrase from everyone. The GM needs to paste the latest Code.gs into it and deploy a new version (SETUP.md, “Updating the script”). The GM passphrase still works.';
     }
   } catch { /* unreachable: keep the original message */ }
@@ -82,12 +92,32 @@ export class TabStore extends Emitter {
 
   get rows() { return applyPending(this.server.rows, [...this.pending.values()]); }
 
-  receive(d, rows) {
-    this.server = { d, rows };
+  // The version the sheet last sent for a row ('' when it had none), or null if it sent none
+  // (nothing read yet, or a script older than version 3): a change made then goes ahead anyway.
+  version(key) {
+    const { rows, vers } = this.server;
+    if (!this.loaded || !Array.isArray(vers)) return null;
+    const i = rows.findIndex(r => rowKey(r[0], r[1]) === key);
+    return i < 0 ? '' : vers[i] ?? null;
+  }
+
+  // A tab from the sheet ({d, rows, vers}), read at `at` (the sheet's clock). Rows read before
+  // the copy we have (by a read that started before our last patch, say) are older, so they're
+  // dropped.
+  receive(t, at) {
+    if (!(at && this.server.at > at)) {
+      this.server = { d: t.d, rows: t.rows, vers: t.vers, at };
+      ls.set(this.cacheKey, this.server);
+    }
     this.loaded = true;
     this.missing = false;
-    ls.set(this.cacheKey, this.server);
     this.emit({ fromServer: true });
+  }
+
+  // The sheet says our copy is still current, as of `at`.
+  unchanged(at) {
+    if (at > (this.server.at || 0)) this.server.at = at;
+    if (!this.loaded) { this.loaded = true; this.emit({ fromServer: true }); }
   }
 
   markMissing() { this.missing = true; this.emit({ missing: true }); }
@@ -97,15 +127,36 @@ export class TabStore extends Emitter {
     for (const r of ren) {
       // Anything still queued under the old name would recreate the old row after the rename;
       // the set queued under the new name already carries the latest values.
-      this.pending.delete(rowKey(r[0], r[1]));
-      this.pending.set(`ren:${rowKey(r[0], r[1])}`, { ren: r, row: r.slice(0, 2), seq: ++this.seq });
+      const k = rowKey(r[0], r[1]);
+      const was = this.pending.get(k);
+      this.pending.delete(k);
+      this.queue(`ren:${k}`, { ren: r, row: r.slice(0, 2) }, was);
     }
-    for (const row of set) this.pending.set(rowKey(row[0], row[1]), { row, seq: ++this.seq });
-    for (const [k, n] of del) this.pending.set(rowKey(k, n), { row: [k, n, '', ''], del: true, seq: ++this.seq });
+    for (const row of set) this.queue(rowKey(row[0], row[1]), { row });
+    for (const [k, n] of del) this.queue(rowKey(k, n), { row: [k, n, '', ''], del: true });
     if (!set.length && !del.length && !ren.length) return false;
     this.persist();
     this.schedule();
     return true;
+  }
+
+  // Queue a change to a row, with what it's based on (see when_ in Code.gs): the row's version
+  // when the sheet last sent it, or, if a change to the row is queued already, whatever that one
+  // was based on. A queued change that was sent may have reached the sheet even though we never
+  // heard back, so the version it would have left counts too: base and alts list them all.
+  queue(id, change, was = this.pending.get(id)) {
+    const key = rowKey(change.row[0], change.row[1]);
+    const alts = was ? [...(was.alts || []), ...(was.sent && was.st ? [was.st] : [])] : [];
+    const away = !change.ren && this.pending.get(`ren:${key}`); // a queued rename takes the row away first
+    if (away && !alts.includes(away.st)) alts.push(away.st);
+    this.pending.set(id, {
+      ...change,
+      base: was ? was.base : this.version(key),
+      seen: was ? was.seen : this.server.at,
+      alts: alts.slice(-MAX_ALTS),
+      st: newStamp(),
+      seq: ++this.seq,
+    });
   }
 
   persist() { ls.set(this.pendKey, Object.fromEntries(this.pending)); }
@@ -120,29 +171,37 @@ export class TabStore extends Emitter {
     if (!this.pending.size) return;
     const sent = [...this.pending.entries()];
     const ordered = sent.map(([, p]) => p).sort((x, y) => x.seq - y.seq);
+    // Each change ends with what it's based on; scripts older than version 3 ignore it.
+    const when = p => ({ base: p.base == null ? undefined : [p.base, ...(p.alts || [])], seen: p.seen, stamp: p.st });
     const body = {
       op: 'patch',
       tab: this.name,
-      ren: ordered.filter(p => p.ren).map(p => p.ren),
-      set: ordered.filter(p => !p.del && !p.ren).map(p => p.row),
-      del: ordered.filter(p => p.del).map(p => p.row.slice(0, 2)),
+      ren: ordered.filter(p => p.ren).map(p => [...p.ren, when(p)]),
+      set: ordered.filter(p => !p.del && !p.ren).map(p => [...p.row, when(p)]),
+      del: ordered.filter(p => p.del).map(p => [...p.row.slice(0, 2), when(p)]),
     };
+    // From here on these changes may reach the sheet even if we never hear back.
+    const sending = () => { for (const p of ordered) p.sent = true; this.persist(); };
     if (beacon) {
       // The page is going away: hand the patch to the browser. It stays pending until a later
-      // load confirms it (patches are safe to repeat).
-      try { navigator.sendBeacon(this.client.game.api, JSON.stringify({ ...body, key: this.client.game.key || undefined })); } catch { /* ignore */ }
+      // load confirms it; if it did land, the sheet sees that the retry changes nothing.
+      try {
+        if (navigator.sendBeacon(this.client.game.api, JSON.stringify({ ...body, key: this.client.game.key || undefined }))) sending();
+      } catch { /* ignore */ }
       return;
     }
     if (this.inflight) { this.again = true; return; }
     this.inflight = true;
     clearTimeout(this.timer);
+    if (navigator.onLine !== false) sending(); // offline, it can't leave the browser
     try {
       const r = await this.client.request(body);
-      for (const [k, p] of sent) if (this.pending.get(k)?.seq === p.seq) this.pending.delete(k);
+      this.settle(sent, r);
       this.confirmedAt = Date.now();
       this.persist();
       this.failures = 0;
-      this.receive(r.d, r.rows);
+      this.receive(r, r.at);
+      if (r.skipped?.length) this.client.emit({ skipped: { tab: this.name, rows: r.skipped } });
       this.client.setStatus(this.client.anyPending() ? 'busy' : 'ok');
     } catch (e) {
       this.failures++;
@@ -152,6 +211,24 @@ export class TabStore extends Emitter {
     } finally {
       this.inflight = false;
       if (this.again) { this.again = false; if (this.pending.size) this.schedule(200); }
+    }
+  }
+
+  // The sheet answered a patch: the changes it carried are done with, applied or turned down
+  // ("skipped"). A row changed again while the patch was on its way is now based on the
+  // sheet's new version of it, or dropped if the sheet turned that row down: the newer change
+  // was made on top of the refused one.
+  settle(sent, r) {
+    const skipped = new Set((r.skipped || []).map(x => rowKey(x[0], x[1])));
+    const vers = new Map();
+    if (Array.isArray(r.vers)) r.rows.forEach((row, i) => { const k = rowKey(row[0], row[1]); if (!vers.has(k)) vers.set(k, r.vers[i]); });
+    for (const [id, p] of sent) {
+      const cur = this.pending.get(id);
+      if (!cur) continue;
+      if (cur.seq === p.seq) { this.pending.delete(id); continue; }
+      const key = rowKey(cur.row[0], cur.row[1]);
+      if (skipped.has(key)) this.pending.delete(id);
+      else Object.assign(cur, { base: Array.isArray(r.vers) ? vers.get(key) ?? '' : null, seen: r.at, alts: [] });
     }
   }
 }
@@ -274,7 +351,7 @@ export class GameClient extends Emitter {
       for (const [name, t] of Object.entries(r.tabs)) {
         const s = this.tab(name);
         s.name = name;
-        if (t.rows) s.receive(t.d, t.rows); else if (!s.loaded) { s.loaded = true; s.emit({ fromServer: true }); }
+        if (t.rows) s.receive(t, r.at); else s.unchanged(r.at);
       }
       for (const n of names) if (!got.includes(n.toLowerCase())) this.tab(n).markMissing();
       this.reconcileMe(names, startedAt);
