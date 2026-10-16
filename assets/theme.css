@@ -135,6 +135,25 @@ h2{font:700 13px/1.2 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transfo
 .item .iname,.item .in{flex:1;min-width:0;overflow-wrap:anywhere}
 .additem{display:flex;gap:6px;margin-top:10px}
 .additem .in{flex:1;min-width:0}
+.item .ibody{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px}
+.item .inote{flex-basis:100%;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .ibody .iname{flex:0 1 auto}
+.item.out .iname{color:var(--muted);text-decoration:line-through}
+.item.edit{display:grid;gap:4px;padding-bottom:6px}
+.item .irow{display:flex;align-items:center;gap:8px}
+.item .icount{flex:0 0 64px}
+.item textarea.inote{min-height:60px;white-space:normal}
+.kept .kn h3{margin:12px 0 2px;font:700 12px/1.2 "Chakra Petch",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kept .kn:first-of-type h3{margin-top:6px}
+/* changes made outside edit mode, waiting to be logged (usage.js) */
+.usage{position:fixed;left:50%;bottom:14px;z-index:21;transform:translateX(-50%);width:min(440px,calc(100% - 32px));display:grid;gap:8px;
+  padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--pink);border-radius:4px;box-shadow:var(--shadow)}
+.ulines{margin:0;padding-left:1.1em;font:600 13px/1.4 "Chakra Petch",sans-serif}
+.ulines li::marker{color:var(--pink)}
+.urow{display:flex;gap:6px;align-items:center}
+.urow .in{flex:1;min-width:0}
+.has-usage .toast{bottom:calc(14px + var(--usage-h, 0px))}
+.has-usage main{padding-bottom:var(--usage-h, 0px)}
 
 /* moves */
 .mtools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -383,6 +402,9 @@ a.pbtn{display:inline-block;text-decoration:none}
 .mapimg,.rimg{display:block;margin-top:8px;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#000}
 .mapimg img,.rimg img{display:block;width:100%;height:auto}
 .mapimg img{max-height:85vh;object-fit:contain}
+/* a spreadsheet image while the script sends it, or the reason it couldn't */
+.mapimg img[data-row]:not([src]),.rimg img[data-row]:not([src]){min-height:120px}
+.mapimg .imgfail,.rimg .imgfail{display:block;padding:12px;color:#ccc;font-size:.9em}
 .levels{margin-top:10px}
 .levels .cats{margin:0}
 details.orig{margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);color:var(--muted);font-size:.92em}

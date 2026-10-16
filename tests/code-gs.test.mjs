@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 4 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 6 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 4 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 6 });
 });
 
 test('explains missing passphrases', () => {
@@ -220,19 +220,6 @@ test('permissions: crew cannot write GM or Rules; GM can write GM but not Rules'
   assert.equal(gm(api, { op: 'patch', tab: 'GM', set: [['note', 'Session 3', 'Ambush at dawn', '']] }).ok, true);
   assert.equal(crew(api, { op: 'patch', tab: 'Nobody', set: [] }).code, 'missing');
   assert.equal(crew(api, { op: 'selftest' }).code, 'forbidden');
-});
-
-test('the Map tab: everyone reads it, only the GM writes or makes it', () => {
-  const { api } = setup();
-  assert.equal(crew(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] }).code, 'name');
-  const made = gm(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] });
-  assert.equal(made.ok, true);
-  assert.equal(made.kind, 'map');
-  const r = crew(api, { op: 'read', tabs: ['Map'] });
-  assert.ok(r.list.some(t => t.name === 'Map' && t.kind === 'map'), 'not a character');
-  assert.deepEqual(r.tabs.Map.rows, [['place', 'Gull Rock', 'on', '']]);
-  assert.equal(crew(api, { op: 'patch', tab: 'Map', set: [['place', 'Gull Rock', '', '']] }).code, 'forbidden');
-  assert.equal(gm(api, { op: 'patch', tab: 'Map', set: [['place', 'Old Mill', 'on', '']] }).ok, true);
 });
 
 test('oversize cells are refused', () => {
@@ -494,4 +481,155 @@ test('removed rows are remembered within a property’s size', () => {
   const gone = gas.docProps['gone:lore'];
   assert.equal(Object.keys(JSON.parse(gone)).length, 150);
   assert.ok(gone.length < 9000, `${gone.length} characters`); // Apps Script allows 9 kB per property
+});
+
+const MAP_H = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
+function mapGame() {
+  const b = n => Buffer.from(Array.from({ length: n }, (_, i) => (i * 37) & 255));
+  const pics = { region: { type: 'image/png', bytes: b(300) }, hidden: { type: 'image/jpeg', bytes: b(10) }, level: { type: 'image/png', bytes: b(20) } };
+  const gas = createGas({
+    props: KEYS,
+    tabs: {
+      Rules: [['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis']],
+      Map: [MAP_H,
+        ['Vega', '', '', { image: pics.region }, 'The server.', 'Upside down.', ''],
+        ['Vega', 'Haven', '', '', 'A port.', 'Secret door.', 'on'],
+        ['', 'Haven', 'Level 1', { image: pics.level }, 'Docks.', '', ''],
+        ['', 'Haven', 'Level 2', '=IMAGE("https://example.com/l2.png")', 'Market.', '', ''],
+        ['Vega', 'Lair', '', { image: pics.hidden }, 'Hidden.', '', ''],
+        ['', 'Lair', 'Basement', '', 'Deeper.', '', ''],
+      ],
+    },
+  });
+  return { gas, api: loadCodeGs(gas), pics };
+}
+
+test('the Map tab: places, levels and pictures; crew get only what the GM has shown, without GM notes', () => {
+  const { api } = mapGame();
+  const crewRows = crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows;
+  assert.deepEqual(crewRows, [
+    ['Vega', '', '', 'row:2', 'The server.', '', ''],
+    ['Vega', 'Haven', '', '', 'A port.', '', 'on'],
+    ['', 'Haven', 'Level 1', 'row:4', 'Docks.', '', ''],
+    ['', 'Haven', 'Level 2', 'https://example.com/l2.png', 'Market.', '', ''],
+  ], 'a placed picture goes as its row; a hidden place and its levels stay out');
+  const gmRows = gm(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows;
+  assert.equal(gmRows.length, 6);
+  assert.equal(gmRows[1][5], 'Secret door.');
+  const d = crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.d;
+  assert.equal(crew(api, { op: 'read', tabs: ['Map'], have: { Map: d } }).tabs.Map.rows, undefined, 'the digest holds still between reads');
+  assert.equal(gm(api, { op: 'patch', tab: 'Map', set: [['x', 'y', 'z', '']] }).code, 'forbidden', 'edited in the sheet, not by patch');
+  assert.equal(gm(api, { op: 'create', tab: 'Map', rows: [] }).code, 'name');
+});
+
+test('show: the GM puts a place on the crew\'s map, or takes it off', () => {
+  const { api, gas } = mapGame();
+  assert.equal(crew(api, { op: 'show', location: 'Lair', on: true }).code, 'forbidden');
+  const r = gm(api, { op: 'show', location: 'lair', on: true });
+  assert.equal(r.ok, true);
+  assert.equal(gas.ss.getSheetByName('Map').getRange(6, 7).getDisplayValues()[0][0], 'on');
+  assert.deepEqual(crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows.map(x => x[2] || x[1]), ['', 'Haven', 'Level 1', 'Level 2', 'Lair', 'Basement'], 'Lair and its level now reach the crew');
+  gm(api, { op: 'show', location: 'Haven', on: false });
+  assert.equal(gas.ss.getSheetByName('Map').getRange(3, 7).getDisplayValues()[0][0], '');
+  assert.equal(gm(api, { op: 'show', location: 'Nowhere', on: true }).code, 'missing');
+});
+
+test('image: sends a picture placed in a Map cell, only to someone who can see its row', () => {
+  const { api, pics } = mapGame();
+  const r = crew(api, { op: 'image', row: 2 });
+  assert.equal(r.ok, true);
+  assert.equal(r.type, 'image/png');
+  assert.deepEqual(Buffer.from(r.data, 'base64'), pics.region.bytes, 'the bytes come through unchanged');
+  assert.equal(crew(api, { op: 'image', row: 4 }).ok, true, 'a level of a shown place');
+  assert.equal(crew(api, { op: 'image', row: 6 }).code, 'missing', 'a hidden place\'s picture isn\'t sent to crew');
+  assert.equal(gm(api, { op: 'image', row: 6 }).type, 'image/jpeg', 'but is to the GM');
+  for (const row of [3, 5, 1, 99, 2.5, 'x']) assert.equal(gm(api, { op: 'image', row }).ok, false, `row ${row}`);
+  assert.equal(api.call({ op: 'image', row: 2, key: 'wrong' }).code, 'auth');
+});
+
+test('Lore: an Image column after Notes; pictures go beside the rows, which stay Kind|Name|Value|Notes', () => {
+  const pic = { type: 'image/png', bytes: Buffer.from([1, 2, 3, 200]) };
+  const gas = createGas({
+    props: KEYS,
+    tabs: {
+      Lore: [['Kind', 'Name', 'Value', 'Notes', 'Image'],
+        ['Cybersea', 'Welcome', 'Hello.', '', { image: pic }],
+        ['Cybersea', 'Timeline', '- 2000', '', '=IMAGE("https://example.com/t.png")'],
+        ['place', 'Harbor', 'Rainy.', 'Sam', ''],
+      ],
+    },
+  });
+  const api = loadCodeGs(gas);
+  const t = crew(api, { op: 'read', tabs: ['Lore'] }).tabs.Lore;
+  assert.deepEqual(t.rows.map(r => r.length), [4, 4, 4]);
+  assert.deepEqual(t.imgs, ['row:2', 'https://example.com/t.png', '']);
+  const r = crew(api, { op: 'image', tab: 'Lore', row: 2 });
+  assert.deepEqual(Buffer.from(r.data, 'base64'), pic.bytes);
+  assert.equal(crew(api, { op: 'image', tab: 'Lore', row: 3 }).code, 'missing', 'a formula is fetched by the browser itself');
+  // A crew edit keeps the picture with its row.
+  const p = crew(api, { op: 'patch', tab: 'Lore', set: [['Cybersea', 'Welcome', 'Hello again.', '']] });
+  assert.equal(p.ok, true);
+  assert.deepEqual(p.imgs, ['row:2', 'https://example.com/t.png', '']);
+  assert.equal(crew(api, { op: 'image', tab: 'Lore', row: 2 }).ok, true);
+});
+
+test('Lore without an Image column sends no imgs', () => {
+  const { api } = setup();
+  assert.equal(crew(api, { op: 'read', tabs: ['Lore'] }).tabs.Lore.imgs, undefined);
+});
+
+test('setUpChecks guards the rules and the sheets against accidental edits, once', () => {
+  const { api, gas } = setup();
+  crew(api, { op: 'patch', tab: 'Nexa', set: [['stat', 'Blood', '+1', '']] }); // gives Nexa its Version column
+  gas.ss.insertSheet('System').getRange(1, 1, 1, 5).setValues([['Kind', 'Group', 'Name', 'Text', 'Meta']]);
+  const done = api.run('setUpChecks');
+  assert.deepEqual([...done].sort(), ['GM', 'Lore', 'Nexa', 'README', 'Rules', 'Ship', 'System'].sort());
+  const sys = gas.ss.getSheetByName('System');
+  assert.equal(sys.getProtections('SHEET').length, 1);
+  assert.deepEqual([...sys.validations.find(v => v.col === 1).rule.list], ['stat', 'track', 'section', 'choice']);
+  api.run('setUpChecks');
+  const sheet = n => gas.ss.getSheetByName(n);
+  for (const n of ['Rules', 'System', 'README']) {
+    const ps = sheet(n).getProtections('SHEET');
+    assert.equal(ps.length, 1, `${n}: protected once, however often it runs`);
+    assert.ok(ps[0].isWarningOnly(), 'a warning, so the owner can still edit on purpose');
+  }
+  assert.equal(sheet('Nexa').getProtections('SHEET').length, 0, 'players’ tabs stay open');
+  assert.equal(sheet('Nexa').getProtections('RANGE').length, 1, 'but the Version column warns');
+  const rules = sheet('Rules').validations.filter(v => v.col === 1).at(-1).rule;
+  assert.ok(rules.list.includes('move') && !rules.list.includes('track') && !rules.allowInvalid, 'Rules kinds: only ones the site knows');
+  const vis = sheet('Rules').validations.find(v => v.col === 6).rule;
+  assert.deepEqual([[...vis.list], vis.allowInvalid], [['crew', 'gm'], false]);
+  const value = sheet('Nexa').validations.find(v => v.col === 3).rule;
+  assert.equal(value.allowInvalid, false);
+  // The formula's patterns, as Sheets (RE2) would read them.
+  const res = [...value.formula.matchAll(/\$A2="(\w+)",REGEXMATCH\(TO_TEXT\(C2\),"([^"]+)"\)/g)].map(m => [m[1], new RegExp(m[2])]);
+  const ok = (kind, v) => res.find(r => r[0] === kind)[1].test(v);
+  assert.deepEqual(res.map(r => r[0]), ['stat', 'track', 'bond']);
+  for (const v of ['+2', '-1', '0', '−1', ' 3 ']) assert.ok(ok('stat', v), v);
+  for (const v of ['two', '+', '1.5']) assert.ok(!ok('stat', v), v);
+  for (const v of ['●○✕', '', 'xxo1', '● ○']) assert.ok(ok('track', v), v);
+  for (const v of ['3', 'harm', '●a']) assert.ok(!ok('track', v), v);
+  for (const v of ['●○·', 'oo*']) assert.ok(ok('bond', v), v);
+  assert.ok(!ok('bond', '✕'));
+  const kinds = sheet('Nexa').validations.find(v => v.col === 1).rule;
+  assert.equal(kinds.allowInvalid, true, 'unknown kinds are only flagged: the site leaves them alone');
+  assert.equal(sheet('_scratch').validations.length, 0);
+});
+
+test('a tab the site makes gets the checks itself', () => {
+  const { api, gas } = setup();
+  crew(api, { op: 'create', tab: 'Matt', rows: [['info', 'Name', 'Matt', '']] });
+  const sh = gas.ss.getSheetByName('Matt');
+  assert.ok(sh.validations.some(v => v.col === 3 && v.rule.formula));
+  assert.equal(sh.getProtections('RANGE').length, 1);
+});
+
+test('the System tab: everyone reads it, nobody writes or makes it through the site', () => {
+  const { api, gas } = setup();
+  gas.ss.insertSheet('System').getRange(1, 1, 2, 5).setValues([['Kind', 'Group', 'Name', 'Text', 'Meta'], ['stat', 'pirate', 'Blood', '', '']]);
+  assert.deepEqual(look(api, 'System').rows, [['stat', 'pirate', 'Blood', '', '']]);
+  assert.equal(gm(api, { op: 'patch', tab: 'System', set: [['stat', 'pirate', 'x', '']] }).code, 'forbidden');
+  gas.ss.deleteSheet(gas.ss.getSheetByName('System'));
+  assert.equal(gm(api, { op: 'create', tab: 'System' }).code, 'name');
 });

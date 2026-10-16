@@ -111,8 +111,8 @@ test('pips: tracks toggle; bonds are used and restored, unmarked bonds ignore cl
 test('edit mode: text, renamed sections, new pips, and marking bonds', async () => {
   const p = await openSheet();
   await p.click('[data-act="edit"]');
-  await p.fill('textarea[data-bind="sec:1:text"]', '- Dagger\n- Cloak\n- Lantern');
-  const title = p.locator('input[data-bind="sec:2:title"]');
+  await p.fill('textarea[data-bind="sec:2:text"]', '- Dagger\n- Cloak\n- Lantern');
+  const title = p.locator('input[data-bind="sec:3:title"]');
   await title.fill('Problems');
   await title.press('Tab');
   await p.click('[data-path="t:Experience"][data-act="add-pip"]');
@@ -123,7 +123,7 @@ test('edit mode: text, renamed sections, new pips, and marking bonds', async () 
   assert.equal(row(rows, 'sheet', 'Troubles'), undefined, 'old title removed');
   assert.equal(row(rows, 'track', 'Experience')[2], '●●○○○○○');
   assert.equal(row(rows, 'bond', 'Passenger')[2], '●○●');
-  assert.equal(await p.textContent('.cols .card:nth-child(3) h2').catch(() => ''), 'Problems');
+  assert.equal(await p.textContent('.cols .card:nth-child(4) h2').catch(() => ''), 'Problems');
 });
 
 test('checklists on playbook moves save per character', async () => {
@@ -252,19 +252,19 @@ test('an edit made on top of one the sheet never answered still saves', async ()
 test('a game whose script predates row versions saves edits as before', async () => {
   const p = await openSheet(undefined, { game: v2 });
   assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'signin', 'Signed in')?.[2] === 'yes'));
-  await p.click('.harm .pip[data-j="1"]');
-  const mine = await track(p, 'harm');
-  assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'track', 'Harm')[2] === mine));
+  // Experience: a script this old sends the System tab without its Meta, so harm and luck aren't known.
+  const xp = async () => row(await h.tab(v2, 'Testa'), 'track', 'Experience')[2];
+  await p.click('[data-pip="t:Experience"][data-j="2"]');
+  assert.ok(await until(async () => (await xp()) === '●●●○○○'));
   assert.equal((await h.tab(v2, 'Testa'))[0][4], '', 'no Version column');
   // offline edits survive, and are sent as they are
   await fail(50, v2);
-  await p.click('.harm .pip[data-j="2"]');
-  const next = await track(p, 'harm');
+  await p.click('[data-pip="t:Experience"][data-j="3"]');
   await sleep(300);
   await p.reload();
   await p.waitForSelector('h1.name');
   await fail(0, v2);
-  assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'track', 'Harm')[2] === next && !(await queued(p)), 30000));
+  assert.ok(await until(async () => (await xp()) === '●●●●○○' && !(await queued(p)), 30000));
 });
 
 test('actions: session, chapter’s end, downtime with a rolled move, level up', async () => {
@@ -274,16 +274,16 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   const p = await openSheet();
   await p.click('[data-act="tab"][data-tab="log"]');
 
-  await p.click('[data-kind="session"]');
+  await p.click('[data-kind="session-begin"]');
   assert.match(await p.textContent('.eff'), /up to 2 \(4\)/); // already has 4 luck, Spitfire +2
   await p.click('[data-run]');
 
   await p.click('[data-act="tab"][data-tab="sheet"]');
   await p.click('[data-pip="b:0"][data-j="0"]'); // use a bond
   await p.click('[data-act="tab"][data-tab="log"]');
-  await p.click('[data-kind="chapter"]');
-  await p.selectOption('[data-pick="0"]', 'xp');
-  await p.selectOption('[data-pick="1"]', 'heal');
+  await p.click('[data-kind="chapter-end"]');
+  await p.selectOption('[data-pick="0"]', { label: '+1 experience' }); // the choice rows in the Rules tab
+  await p.selectOption('[data-pick="1"]', { label: 'Heal 2 harm' });
   await p.click('[data-run]');
 
   // Begin and Leave Downtime run from their moves on the Moves tab too
@@ -291,7 +291,7 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   await p.click('[data-act="cat"][data-cat="downtime"]');
   assert.ok(await p.isDisabled('details[data-id="downtime:LEAVE DOWNTIME"] .chip'), 'not in downtime yet');
   await p.click('details[data-id="downtime:BEGIN DOWNTIME"] .chip');
-  await p.check('input[name=where][value=sea]');
+  await p.check('input[name=where][value="1"]'); // At sea, the second choice
   await p.click('[data-run]');
   assert.ok(await p.isDisabled('details[data-id="downtime:BEGIN DOWNTIME"] .chip'), 'already in downtime');
   await p.click('[data-act="tab"][data-tab="sheet"]');
@@ -317,7 +317,7 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   const logs = rows.filter(x => x[0] === 'log').map(x => `${x[2]}: ${x[3].replace(/\n/g, ' ')}`);
   assert.deepEqual(logs, [
     'Session Begins: ',
-    'Chapter’s End: - Replenished 2 bonds - +1 experience - Healed 1 harm',
+    'Chapter’s End: - Replenish all bonds (2) - +1 experience - Healed 1 harm',
     'Begin Downtime: - At sea',
     `Leave Downtime: - DICE GAME (${logs[3].match(/\((\d+)\)/)?.[1]})`,
   ]);
@@ -330,8 +330,8 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   // level up: fill experience, raise Spitfire
   await h.setTab(api, 'Testa', [HEADER, ...rows.map(r => r.slice(0, 4)).filter(r => r[0] !== 'Kind').map(r => (r[1] === 'Experience' && r[0] === 'track' ? ['track', 'Experience', '●●●●●●', ''] : r))]);
   await p.reload();
-  await p.waitForSelector('[data-kind="advance"]:not([disabled])');
-  await p.click('[data-kind="advance"]');
+  await p.waitForSelector('[data-kind="level-up"]:not([disabled])');
+  await p.click('[data-kind="level-up"]');
   await p.selectOption('[data-sub="0"]', 'Spitfire');
   await p.click('[data-run]');
   const after = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'info', 'Level')?.[2] === '1' && r; });
@@ -346,8 +346,8 @@ test('moves that spend luck have a button that spends it', async () => {
   const p = await openSheet();
   await p.click('[data-act="tab"][data-tab="moves"]');
   await p.click('[data-act="cat"][data-cat="basic"]');
-  assert.equal(await p.$('details[data-id="basic:POKE AROUND"] [data-act="spend-luck"]'), null, 'no luck button on a plain roll');
-  await p.click('details[data-id="basic:FLIP A COIN"] [data-act="spend-luck"]');
+  assert.equal(await p.$('details[data-id="basic:POKE AROUND"] [data-act="spend"]'), null, 'no luck button on a plain roll');
+  await p.click('details[data-id="basic:FLIP A COIN"] [data-act="spend"]');
   assert.match(await p.textContent('#toast'), /Spent 1 luck: FLIP A COIN \(3 left\)/);
   assert.equal(await track(p, 'luck'), '●●●○○○○○');
   const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Luck')[2] === '●●●○○○○○' && r; });
@@ -382,7 +382,7 @@ test('session begins: marked moves that start a session, and their hold at the e
   await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter, ['move', 'OMEN', '●', ''], ['move', 'BAD PENNY', '●', '']]);
   const p = await openSheet();
   await p.click('[data-act="tab"][data-tab="log"]');
-  await p.click('[data-kind="session"]');
+  await p.click('[data-kind="session-begin"]');
   const listed = await p.$$eval('.endm .eff', ls => ls.map(l => l.textContent));
   assert.deepEqual(listed, ['OMENroll Spitfire +2 on the Moves tab', 'BAD PENNY'], 'not LUCKY BREAK or the vice');
   await p.check('[data-eff="sess:0"]');
@@ -393,33 +393,6 @@ test('session begins: marked moves that start a session, and their hold at the e
   const atEnd = await p.$$eval('.endm .eff', ls => ls.map(l => l.textContent));
   assert.ok(atEnd.includes('OMENroll Spitfire +2 on the Moves tab'), 'its hold ends with the session');
   assert.ok(!atEnd.includes('BAD PENNY'));
-});
-
-test('importing the old one-page sheet replaces the character', async () => {
-  const p = await openSheet();
-  const old = {
-    name: 'Nexa', playbook: 'Trickster', level: 0, harm: [1, 0, 0, 2, 2, 2], luck: [1, 1, 0, 0, 0, 0, 0, 0],
-    stats: [{ k: 'Blood', v: 0 }, { k: 'Spitfire', v: 2 }],
-    sections: [
-      { id: 'vice', tab: 'sheet', title: 'Vice', track: [1], html: '<p><b>Haunted:</b> test.</p>' },
-      { id: 'kit', tab: 'sheet', title: 'Kit', html: '<ul><li>Dagger,<ul><li>rusty</li></ul></li><li>Cloak</li></ul>' },
-      { id: 'bonds', tab: 'sheet', type: 'bonds', title: 'Bonds', note: '(up to 8)', rows: [{ name: 'Ship', pips: [1, 2, 0] }] },
-    ],
-    moves: [{ id: 'm0', cat: 'playbook', name: 'SUMMON', html: '<ul class="ck"><li class="on">Shadow cloak.</li><li>Fire burst.</li></ul>' }, { id: 'm5', cat: 'basic', name: 'POKE AROUND', html: '<p>x</p>' }],
-    log: [{ at: 1760000000000, title: 'Chapter’s End', items: ['+1 experience'], note: 'n' }],
-  };
-  await p.click('[data-act="sheet-menu"]');
-  await p.fill('.panel textarea', JSON.stringify(old));
-  await p.click('[data-s="import"]');
-  await p.click('[data-s="import"]');
-  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'info', 'Name')?.[2] === 'Nexa' && row(r, 'move', 'SUMMON')?.[3].startsWith('[x]') && r; });
-  assert.equal(row(rows, 'sheet', 'Kit')[2], '- Dagger,\n  - rusty\n- Cloak');
-  assert.equal(row(rows, 'sheet', 'Vice')[2], '**Haunted:** test.');
-  assert.equal(row(rows, 'track', 'Vice')[2], '●');
-  assert.equal(row(rows, 'bond', 'Ship')[2], '●○·');
-  assert.equal(row(rows, 'sheet', 'Bonds')[3], '(up to 8)');
-  assert.equal(row(rows, 'move', 'POKE AROUND'), undefined, 'shared moves are not copied');
-  assert.equal(rows.filter(r => r[0] === 'log').length, 1);
 });
 
 test('a wrong passphrase asks for the right one, or you can carry on as crew', async () => {
@@ -443,33 +416,94 @@ test('a wrong passphrase asks for the right one, or you can carry on as crew', a
   assert.equal(await q.textContent('.gnav .who'), 'Sign in');
 });
 
-test('inventory: fill from the Kit card, add and remove items, treasure carries into hoard', async () => {
+test('inventory: fill from a kit, add and remove items, treasure carries into hoard', async () => {
+  const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
+  await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter]);
   const p = await openSheet();
   await p.click('[data-act="tab"][data-tab="inventory"]');
   await p.waitForSelector('#kitpick');
-  assert.equal(await p.$eval('#kitpick', s => s.value), '@sheet', 'starts from the sheet’s own kit');
   await p.selectOption('#kitpick', 'Kit 2');
   await p.click('[data-act="fill-inv"]');
-  await p.click('[data-act="fill-inv"]'); // second click confirms replacing the Kit card
   await p.waitForSelector('.items');
   let rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'item') && r; });
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Bone dice', 'A lantern (cracked, still works)']);
-  assert.equal(row(rows, 'sheet', 'Kit'), undefined, 'the Kit card is gone');
+  assert.equal(row(rows, 'inventory', 'Treasure')[3], '(5-treasure = 1-hoard)', 'the note is the Rules tab’s');
   assert.equal(row(rows, 'track', 'Treasure')[2], '●○○○○', '6-treasure is 1-hoard and 1-treasure');
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
 
+  assert.equal(await p.$('#newitem'), null, 'adding items needs edit mode');
+  assert.equal(await p.$('[data-act="rm-item"]'), null, 'so does removing them');
+  await p.click('[data-act="edit"]');
   await p.fill('#newitem', 'Rope');
   await p.press('#newitem', 'Enter');
   await p.fill('#newitem', 'Rope');
   await p.click('[data-act="add-item"]');
   await p.click('[data-act="rm-item"][data-j="0"]');
   await p.click('[data-act="rm-item"][data-j="0"]');
+  await p.click('[data-act="edit"]');
   await p.click('.wealth [data-pip="t:Treasure"][data-j="4"]'); // fill treasure: it rolls over into hoard
   await p.click('[data-act="treasure"][data-n="-1"]'); // spending with no loose treasure breaks a hoard
   rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Treasure')?.[2] === '●●●●○' && r; });
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['A lantern (cracked, still works)', 'Rope', 'Rope (2)']);
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
   assert.match(row(rows, 'inventory', 'Treasure')[2], /6-treasure/);
+});
+
+test('items have counts and notes; using one, or changing the sheet outside edit mode, can go in the log', async () => {
+  const base = (await h.tab(api, 'Testa')).map(r => r.slice(0, 4)).filter(r => r[0] !== 'item' && r[0] !== 'log');
+  await h.setTab(api, 'Testa', [...base, ['item', 'Medkit', '2', 'From the clinic.'], ['item', 'Rope', '', '']]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.waitForSelector('[data-act="use-item"]');
+  assert.match(await p.textContent('.items'), /×2/);
+
+  // edit mode sets counts and notes
+  await p.click('[data-act="edit"]');
+  await p.fill('[data-bind="item:1:count"]', '5');
+  await p.fill('[data-bind="item:1:note"]', 'Fifty feet.');
+  await p.click('[data-act="edit"]');
+  let rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'item', 'Rope')?.[2] === '5' && r; });
+  assert.deepEqual(row(rows, 'item', 'Rope').slice(2, 4), ['5', 'Fifty feet.']);
+
+  // notes show on the Notes tab under the item's name
+  await p.click('[data-act="tab"][data-tab="notes"]');
+  assert.match(await p.textContent('.kept'), /Medkit\s*From the clinic\.\s*Rope\s*Fifty feet\./);
+
+  // using an item takes from its count and logs, with a note
+  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="use-item"][data-j="0"]');
+  await p.fill('[role="dialog"] [data-n]', '2');
+  await p.fill('[role="dialog"] textarea', 'Patched up');
+  await p.click('[role="dialog"] [data-use]');
+  await p.waitForSelector('[data-act="use-item"][data-j="0"][disabled]');
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log' && x[2] === 'Medkit') && r; });
+  assert.equal(row(rows, 'item', 'Medkit')[2], '0');
+  assert.equal(rows.find(x => x[0] === 'log' && x[2] === 'Medkit')[3], '- Used 2, 0 left\n\nPatched up');
+
+  // pips changed outside edit mode gather in one panel; clicks that cancel out drop off
+  await p.click('[data-act="tab"][data-tab="sheet"]');
+  await p.click('.harm .pip[data-j="1"]');
+  await p.click('.harm .pip[data-j="2"]');
+  await p.click('.luck .pip[data-j="0"]');
+  await p.click('.luck .pip[data-j="0"]');
+  assert.deepEqual(await p.$$eval('.usage li', ls => ls.map(l => l.textContent)), ['Harm +2']);
+  await p.fill('.usage input', 'Dock fight');
+  await p.click('.usage [data-log]');
+  assert.equal(await p.$('.usage'), null);
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log' && x[2] === 'Harm +2') && r; });
+  assert.equal(rows.find(x => x[0] === 'log' && x[2] === 'Harm +2')[3], 'Dock fight');
+
+  // closing the panel keeps the change but leaves it out of the log
+  await p.click('.harm .pip[data-j="2"]');
+  await p.click('.usage [data-skip]');
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Harm')[2].startsWith('●●○') && r; });
+  assert.equal(rows.filter(x => x[0] === 'log').length, 2);
+
+  // edit mode changes don't offer to log
+  await p.click('[data-act="edit"]');
+  await p.click('.luck .pip[data-j="0"]');
+  assert.equal(await p.$('.usage'), null);
+  await p.click('[data-act="edit"]');
 });
 
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {

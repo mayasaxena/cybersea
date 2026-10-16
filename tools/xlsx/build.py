@@ -18,8 +18,9 @@ rules.json: [{kind, group, name, text, meta, vis}, ...] (from tools/extract)
     from its own text and meta); the book's columns stay as they are. One with only overrides
     (no text) that matches no book row goes in the _Overrides tab, to copy across by hand. Any
     other is a new row.
-  lore, gm, map: rows for the Lore, GM and Map tabs, as [[Kind, Name, Value, Notes], ...]. Map rows
-    are the places the Map page shows the crew: ['place', the location's book name, 'on', '']
+  lore, gm: rows for the Lore and GM tabs, as [[Kind, Name, Value, Notes], ...].
+  map: rows for the Map tab, as [[Region, Location, Level, Image, Text, GM notes, Shown], ...]
+    (Image left blank: pictures are placed in the cells in Sheets).
 Without --rules, the workbook holds only the theme's rows, to paste into an existing game.
 """
 import argparse
@@ -31,8 +32,9 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 HEADER = ['Kind', 'Name', 'Value', 'Notes']
 RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta']
+MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown']
 OVERRIDES = ['override_name', 'override_text', 'override_meta']
-CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,move,special,advance,log,state'
+CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,inventory,item,move,special,advance,log,state,signin'
 BOLD = Font(bold=True)
 HEAD_FILL = PatternFill('solid', fgColor='E8EEF3')
 
@@ -44,22 +46,26 @@ README = [
     '    Override name | Override text | Override meta: the game’s own wording for a row (e.g. the Cybersea theme). The site uses',
     '    them instead of the book’s and keeps the book’s under "Rapscallion original". Override meta adds to Meta; "hide" there',
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
-    '    Kinds for the Map page: map (img=… a world map), location (Group = region; img=… optional), level (Group = the location’s',
-    '    name; img=… one floor or level, in order). img= is a path on the site (assets/world/…) or an https address.',
-    '    The crew see a location only once the GM puts it on the map (the Map tab).',
+    '    What a row does is in its Meta: roll=, session=, gain=, spend=, action= (see SETUP.md, "The game’s mechanics").',
+    '  System: the game’s mechanics (Kind | Group | Name | Text | Meta): stat, track, section and choice rows. The site has no',
+    '    stat names or numbers of its own. Run setUpChecks in the Apps Script editor to protect Rules and System and add checks.',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
-    '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',
+    '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
+    '    (placed in the cell, or =IMAGE("https://…")).',
     '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
-    '  Map: which places the Map page shows the crew: "place | the location’s book name | on". The GM sets these on the Map page.',
+    '  Map: the world (Region | Location | Level | Image | Text | GM notes | Shown). A row with no Location is a region’s map;',
+    '    one with a Location and no Level is a place; one with both is a floor of that place, in order (no Level rows: one picture).',
+    '    Image: a picture placed in the cell (Insert > Image > Insert image in cell) or =IMAGE("https://…"). GM notes: GM only.',
+    '    Shown: "on" puts a place on the crew’s map (the GM’s button on the Map page sets it). Every place starts hidden.',
     '  Every other tab is a character sheet. Tabs starting with _ are ignored.',
     '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
     '',
-    'Rows on every tab except Rules: Kind | Name | Value | Notes. Kind + Name identify a row, so keep them unique.',
+    'Rows on every tab except Rules and Map: Kind | Name | Value | Notes. Kind + Name identify a row, so keep them unique.',
     'The site adds a hidden Version column to the tabs it edits, so a late edit (from a page that was offline) can’t undo a newer one. Leave it alone.',
     'To remove a row, clear its cells rather than deleting the row: a deleted row isn’t noticed, so a page that missed it could add it back.',
     '',
     'Symbols',
-    '  Tracks (harm, luck, experience, wreck, clocks): ● marked, ○ open, ✕ crossed out. Typing x, o, 1 or 0 also works.',
+    '  Tracks and clocks: ● marked, ○ open, ✕ crossed out. Typing x, o, 1 or 0 also works.',
     '  Bonds: ● marked, ○ marked but used, · not marked.',
     '',
     'Text: a blank line starts a new paragraph; "- " starts a bullet (indent two spaces to nest);',
@@ -69,7 +75,9 @@ README = [
 ]
 
 
-def text_sheet(ws, header, rows, widths):
+def text_sheet(ws, header, rows, widths, free=()):
+    """A tab of plain-text cells, except the columns named in free (an Image column: a picture or
+    an =IMAGE() formula, which plain text would show as typed)."""
     ws.append(header)
     for r in rows:
         ws.append([str(v) if v is not None else '' for v in r])
@@ -77,6 +85,8 @@ def text_sheet(ws, header, rows, widths):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows(min_row=1, max_row=max(ws.max_row, 1000), max_col=len(header)):
         for cell in row:
+            if header[cell.column - 1] in free:
+                continue
             cell.number_format = '@'
             if cell.row > 1 and isinstance(cell.value, str) and cell.value.startswith('='):
                 cell.data_type = 's'  # keep as text, never a formula
@@ -142,8 +152,13 @@ def main():
 
     text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6, 26, 90, 28])
     text_sheet(wb.create_sheet('GM'), HEADER, theme.get('gm', []), [10, 26, 60, 60])
-    text_sheet(wb.create_sheet('Lore'), HEADER, theme.get('lore', []), [14, 26, 70, 16])
-    text_sheet(wb.create_sheet('Map'), HEADER, theme.get('map', []), [10, 30, 8, 30])
+    text_sheet(wb.create_sheet('Lore'), HEADER + ['Image'], theme.get('lore', []), [14, 26, 70, 16, 40], free=('Image',))
+    maps = wb.create_sheet('Map')
+    text_sheet(maps, MAP_HEADER, theme.get('map', []), [18, 26, 12, 40, 60, 40, 8], free=('Image',))
+    shown = DataValidation(type='list', formula1='"on"', allow_blank=True, showErrorMessage=True,
+                           error='Type "on" to show the place to the crew, or leave it blank.')
+    maps.add_data_validation(shown)
+    shown.add('G2:G1000')
     if loose:
         # Not a game tab (the site ignores tabs starting with _): copy each into the matching Rules row.
         text_sheet(wb.create_sheet('_Overrides'), ['Kind', 'Group', 'Name', 'Override name', 'Override text', 'Override meta'],

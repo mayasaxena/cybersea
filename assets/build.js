@@ -1,53 +1,62 @@
-// Starting rows for a new character or ship, built from a playbook in the Rules tab.
-// Text (vice, oddity, kit, questions, last words) is copied from the Rules tab into the new
-// tab so the player can edit their own copy. A character's kit becomes inventory items.
+// Starting rows for a new character or ship, built from a playbook and the game's stat, track and
+// section rows in the System tab (see system.js). Text (vice, oddity, kit, questions, last words) is
+// copied from the Rules tab into the new tab so the player can edit their own copy. A
+// character's kit becomes inventory items.
 
-import { parseStat, formatStat, formatTrack } from './codec.js';
-import { luckFloorOf } from './rules.js';
+import { parseStat, formatStat } from './codec.js';
 import { inventoryRows } from './inventory.js';
-
-const PIRATE_STATS = ['Blood', 'Vinegar', 'Polish', 'Spitfire'];
-const SHIP_STATS = ['Steadfast', 'Speed', 'Fortune'];
+import { systemOf, typeOf, floorOf, trackSize, circles, sum, fillIn, SHIP } from './system.js';
 
 const traitsOf = (rec, n) => {
   const t = String(rec?.meta?.traits || '').split(',').map(parseStat);
   return Array.from({ length: n }, (_, i) => t[i] || 0);
 };
-const circles = (n, marked = 0) => formatTrack(Array.from({ length: Math.max(0, n) }, (_, i) => (i < marked ? 1 : 0)));
-const list = items => items.map(t => `- ${t}`).join('\n');
+
+// The playbook text a section starts with (fill=…).
+function filled(sec, pb, { odd, kitRec }) {
+  switch (sec.fill) {
+    case 'vices': return pb.vices.map(v => `**${v.name}.** ${v.text}`).join('\n\n');
+    case 'oddity': return odd ? `**${odd.name}**${odd.meta.traits ? ` (${odd.meta.traits})` : ''}\n\n${odd.text}` : '';
+    case 'kit': return kitRec ? kitRec.text : '';
+    case 'specials': return String(pb.meta.specials || '').split(/[|,]/).map(s => s.trim()).filter(Boolean).map(s => `[ ] ${s}`).join('\n');
+    case 'questions': return pb.questions.map(q => `${q.name}. ${q.text}`).join('\n\n');
+    case 'lastwords': return pb.lastwords ? pb.lastwords.text : '';
+    default: return '';
+  }
+}
+
+function rowsFor(R, sys, pb, { name, player, traitsFrom, odd, kitRec, moves }) {
+  const stats = sys.stats.map((k, i) => ({ k, v: traitsOf(traitsFrom, sys.stats.length)[i] }));
+  const ctx = { stats, level: 0 };
+  const rows = [['info', 'Name', name, ''], ['info', 'Playbook', pb.name, '']];
+  if (player != null) rows.push(['info', 'Player', player, ''], ['info', 'Level', '0', '']);
+  rows.push(...stats.map(s => ['stat', s.k, formatStat(s.v), '']));
+  const wealthRoles = ['treasure', 'hoard'];
+  for (const t of sys.tracks) {
+    if (wealthRoles.includes(t.role)) continue; // the inventory's own (below)
+    const n = trackSize(t, { pb, ...ctx });
+    const start = t.start ? Math.min(n, Math.max(floorOf(R, t.role), sum(t.start, ctx))) : 0;
+    rows.push(['track', t.name, circles(n, start), '']);
+  }
+  const wealth = sys.tracks.some(t => wealthRoles.includes(t.role)) || sys.section('treasure');
+  for (const s of sys.sections) {
+    if (s.role === 'treasure') continue;
+    const text = filled(s, pb, { odd, kitRec });
+    if (s.fill && !text) continue;
+    rows.push([s.tab === 'notes' || s.tab === 'inventory' ? s.tab : 'sheet', s.title, text, fillIn(s.note, ctx)]);
+  }
+  if (wealth) rows.push(...inventoryRows(sys, kitRec ? kitRec.text : '')); // the kit becomes items on the Inventory tab
+  for (const m of moves) rows.push(['move', m.name, '●', '']);
+  return rows;
+}
 
 export function characterRows(R, { name, playbook, player = '', oddity, kit, extraMove }) {
   const pb = R.playbook(playbook);
   if (!pb) throw new Error(`No playbook called ${playbook} in the Rules tab.`);
   const odd = pb.oddities.find(o => o.name === oddity) || pb.oddities[0] || null;
-  const stats = traitsOf(odd, 4);
-  const harm = parseInt(pb.meta.harm, 10) || 6;
-  const luckLen = parseInt(pb.meta.luck, 10) || 5;
-  const floor = Math.max(0, ...R.house('session').map(luckFloorOf));
-  const luck = Math.min(luckLen, Math.max(floor, stats[3])); // luck starts at SPITFIRE
   const kitRec = pb.kits.find(k => k.name === kit) || null;
-
-  const rows = [
-    ['info', 'Name', name, ''],
-    ['info', 'Playbook', pb.name, ''],
-    ['info', 'Player', player, ''],
-    ['info', 'Level', '0', ''],
-    ...PIRATE_STATS.map((k, i) => ['stat', k, formatStat(stats[i]), '']),
-    ['track', 'Harm', circles(harm), ''],
-    ['track', 'Luck', circles(luckLen, luck), ''],
-    ['track', 'Vice', '○', ''],
-    ['track', 'Experience', circles(6), ''],
-    ['sheet', 'Vice', pb.vices.map(v => `**${v.name}.** ${v.text}`).join('\n\n'), ''],
-    ['sheet', 'Oddity', odd ? `**${odd.name}** (${odd.meta.traits || ''})\n\n${odd.text}` : '', ''],
-    ['sheet', 'Bonds', '', ''],
-    ['sheet', 'Troubles', '', ''],
-    ['sheet', 'Experience', '', ''],
-  ];
-  rows.push(...inventoryRows(kitRec ? kitRec.text : '')); // the kit becomes items on the Inventory tab
-  if (pb.questions.length) rows.push(['notes', 'Questions', pb.questions.map(q => `${q.name}. ${q.text}`).join('\n\n'), '']);
-  if (pb.lastwords) rows.push(['notes', 'Last Words', pb.lastwords.text, '']);
-  for (const m of pb.moves) if (m.meta.start || m.name === extraMove) rows.push(['move', m.name, '●', '']);
-  return rows;
+  const sys = systemOf(R, typeOf(R, playbook));
+  return rowsFor(R, sys, pb, { name, player, traitsFrom: odd, odd, kitRec, moves: pb.moves.filter(m => m.meta.start || m.name === extraMove) });
 }
 
 export function shipRows(R, { name, playbook, kit, oddity }) {
@@ -55,24 +64,5 @@ export function shipRows(R, { name, playbook, kit, oddity }) {
   if (!pb) throw new Error(`No ship playbook called ${playbook} in the Rules tab.`);
   const kitRec = pb.kits.find(k => k.name === kit) || pb.kits[0] || null;
   const odd = pb.oddities.find(o => o.name === oddity) || null;
-  const stats = traitsOf(kitRec, 3);
-  const specials = String(pb.meta.specials || '').split(/[|,]/).map(s => s.trim()).filter(Boolean);
-  const rows = [
-    ['info', 'Name', name, ''],
-    ['info', 'Playbook', pb.name, ''],
-    ...SHIP_STATS.map((k, i) => ['stat', k, formatStat(stats[i]), '']),
-    ['track', 'Wreck', circles(Math.max(1, stats[0] + 3)), ''], // wreck tally is STEADFAST + 3
-    ['track', 'Renown', circles(5), ''],
-    ['sheet', 'Oddity', odd ? `**${odd.name}**\n\n${odd.text}` : '', ''],
-    ['sheet', 'Kit', kitRec ? kitRec.text : '', ''],
-    ['sheet', 'Cargo', '', `(${stats[2] + 5} cargo space)`],
-    ['sheet', 'Crew', '', `(${stats[2] + 5} crew space)`],
-    ['sheet', 'Specials', specials.map(s => `[ ] ${s}`).join('\n'), ''],
-  ];
-  if (pb.questions.length) rows.push(['notes', 'Questions', pb.questions.map(q => `${q.name}. ${q.text}`).join('\n\n'), '']);
-  for (const m of pb.smoves) rows.push(['move', m.name, '●', '']);
-  return rows;
+  return rowsFor(R, systemOf(R, SHIP), pb, { name, traitsFrom: kitRec, odd, kitRec, moves: pb.smoves });
 }
-
-export const statNames = { pirate: PIRATE_STATS, ship: SHIP_STATS };
-export { list };

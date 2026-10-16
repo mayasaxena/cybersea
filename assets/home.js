@@ -1,8 +1,9 @@
 // Crew home: index.html?g=<game>. Without a game: your games, and joining one by invite.
 import { bootstrap, href, listGames, joinGame, inviteFromText } from './games.js';
 import { GameClient } from './api.js';
-import { indexRules } from './rules.js';
+import { gameRules, TABS } from './rules.js';
 import { characterRows } from './build.js';
+import { SHIP } from './system.js';
 import { md, plain } from './markup.js';
 import { esc, escTxt, pageShell, refreshNav, modal, closeModal, pickerHTML, pick } from './core.js';
 import { crewCardHTML } from './cards.js';
@@ -36,9 +37,8 @@ if (!game) {
   pageShell(app, client, 'home');
   const main = document.createElement('main');
   app.append(main);
-  const rules = client.tab('Rules');
-  let R = indexRules(rules.rows);
-  rules.on(() => { R = indexRules(rules.rows); });
+  let R = gameRules(client);
+  for (const t of TABS) client.tab(t).on(() => { R = gameRules(client); render(); }); // crew cards name tracks as the System tab does
 
   const characters = () => client.list.filter(t => t.kind === 'character').map(t => t.name);
 
@@ -61,7 +61,7 @@ if (!game) {
   }
 
   function newCharacter() {
-    const pbs = R.playbooks('pirate');
+    const pbs = R.playbooks().filter(p => String(p.meta.type || '').toLowerCase() !== SHIP);
     if (!pbs.length) { modal('<p>The Rules tab has no playbooks yet.</p><div class="prow"><span class="grow"></span><button class="pbtn" data-close>OK</button></div>'); return; }
     const form = { name: '', player: '', playbook: pbs[0].name, oddity: '', kit: '', extraMove: '' };
     const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${escTxt(label)}</option>`;
@@ -122,6 +122,6 @@ if (!game) {
   client.on(e => { if (e.list) { listed = true; for (const n of characters()) client.tab(n).on(render); render(); } });
   // Rules is read once per visit (cached by digest); only the crew's tabs are polled.
   client.watch(...characters());
-  client.read(['Rules', ...client.watched]).catch(() => render());
+  client.read([...TABS, ...client.watched]).catch(() => render());
   client.startPolling();
 }

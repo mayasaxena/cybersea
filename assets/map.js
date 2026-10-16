@@ -1,19 +1,15 @@
-// The world: map.html?g=<game>. Everyone sees it. From the Rules tab (edited in the spreadsheet):
-//   map      | Group | Name     | Text | img=…        a map of the whole world (or a region)
-//   location | Group | Name     | Text | img=…        a place; Group is the region it's listed under
-//   level    | Place | Level 1  | Text | img=…        a floor or level of a place, in order
-// The book's locations and new ones alike; Override name/text/meta give a book location the
-// game's own name, text and image (see rules.js).
-//
-// The GM picks which places are on the map, here or in the Map tab (the GM's alone):
-//   place | the location's book name | on | its name as shown (a reminder for people reading the tab)
-// Crew see only places that are on; maps always show, and levels show with their place.
+// The world: map.html?g=<game>. Everyone sees it. From the Map tab (edited in the spreadsheet):
+//   Region | Location | Level   | Image | Text | GM notes | Shown
+//   Vega   |          |         | 🖼    | …    |          |          a region's own map: always shows
+//   Vega   | Haven    |         | 🖼    | …    | …        | on       a place: crew see it once Shown is on
+//          | Haven    | Level 1 | 🖼    | …    |          |          a floor or level of the place, in order
+// A place with no levels is one picture. Image is a picture placed in the cell, or =IMAGE(…).
+// GM notes reach only the GM; the script leaves hidden places out of what the crew get.
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
-import { indexRules } from './rules.js';
 import { md } from './markup.js';
+import { pictureHTML, showPictures } from './pictures.js';
 import { esc, escTxt, pageShell, refreshNav } from './core.js';
-import { imgHTML, origHTML } from './refview.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -24,87 +20,108 @@ if (!game) {
 }
 const client = new GameClient(game);
 pageShell(app, client, 'map');
-const store = client.tab('Rules');
-const placesStore = client.tab('Map');
+const store = client.tab('Map');
 const main = document.createElement('main');
 app.append(main);
-let R = indexRules(store.rows);
 let query = '';
 let showAll = true; // the GM's view: every place, or only those on the map
-const shownLevel = {}; // location index -> which of its levels is showing
+const shownLevel = {}; // place index -> which of its levels is showing
 
-const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+const key = s => String(s || '').trim().toLowerCase();
 const isGm = () => client.role === 'gm';
-const levelsOf = loc => R.by('level').filter(l => same(l.group, loc.name) || (loc.orig && same(l.group, loc.orig.name)));
-const matches = (r, q) => !q || r.search.includes(q) || levelsOf(r).some(l => l.search.includes(q));
 
-// A place is keyed by its book name, so theming it (a new name) keeps it on the map.
-const placeKey = loc => (loc.orig ? loc.orig.name : loc.name);
-const placeRow = loc => placesStore.rows.find(r => same(String(r[0]).trim(), 'place') && same(String(r[1]).trim(), placeKey(loc)));
-const isOn = loc => /^(on|yes|y|x|true|●|1)$/i.test(String(placeRow(loc)?.[2] ?? '').trim());
-
-function locationHTML(loc) {
-  const levels = levelsOf(loc);
-  const at = Math.min(shownLevel[loc.i] || 0, Math.max(levels.length - 1, 0));
-  const lv = levels[at];
-  const on = isOn(loc);
-  const toggle = isGm()
-    ? `<button class="pbtn mapon${on ? ' on' : ''}" data-place="${loc.i}" aria-pressed="${on}" title="${on ? 'Take it off the crew’s map' : 'Put it on the crew’s map'}">${on ? 'On the map' : 'Hidden'}</button>`
-    : '';
-  return `<section class="card loc${on ? '' : ' off'}" id="loc-${loc.i}"><div class="shead"><h2>${escTxt(loc.name)}</h2>${loc.vis === 'gm' ? '<span class="cnt">GM</span>' : ''}${toggle}</div>
-    ${loc.text.trim() ? `<div class="rich">${md(loc.text)}</div>` : ''}
-    ${imgHTML(loc, 'rimg')}
-    ${levels.length ? `<div class="levels">
-      <div class="cats" role="tablist">${levels.map((l, k) => `<button role="tab" data-loc="${loc.i}" data-lv="${k}" aria-selected="${k === at}" class="${k === at ? 'on' : ''}">${escTxt(l.name)}</button>`).join('')}</div>
-      ${lv.text.trim() ? `<div class="rich">${md(lv.text)}</div>` : ''}${imgHTML(lv, 'rimg')}</div>` : ''}
-    ${origHTML(loc)}</section>`;
+// The Map tab as regions, each with its maps and places; a place has its levels.
+function world(rows) {
+  const regions = [];
+  const region = name => {
+    let r = regions.find(x => key(x.name) === key(name));
+    if (!r) regions.push(r = { name: String(name || '').trim(), maps: [], places: [] });
+    return r;
+  };
+  const places = new Map();
+  const levels = [];
+  rows.forEach(([reg, loc, level, image, text, notes, shown]) => {
+    const item = { name: String(level || loc || reg || '').trim(), image, text: String(text || ''), notes: String(notes || '') };
+    if (!String(loc || '').trim()) { region(reg).maps.push(item); return; }
+    if (String(level || '').trim()) { levels.push([key(loc), item]); return; }
+    if (places.has(key(loc))) return;
+    const p = { ...item, i: places.size, on: shown === 'on', levels: [] };
+    places.set(key(loc), p);
+    region(reg).places.push(p);
+  });
+  for (const [k, lv] of levels) places.get(k)?.levels.push(lv);
+  for (const p of places.values()) p.search = [p.name, p.text, p.notes, ...p.levels.flatMap(l => [l.name, l.text])].join(' ').toLowerCase();
+  return regions;
 }
 
+const imgHTML = (item, cls) => pictureHTML('Map', item.image, item.name, cls);
+showPictures(main, client);
+
+/* ---------- the page ---------- */
+
+const notesHTML = it => (isGm() && it.notes.trim() ? `<details class="orig"><summary>GM notes</summary>${md(it.notes)}</details>` : '');
+
+function placeHTML(p) {
+  const at = Math.min(shownLevel[p.i] || 0, Math.max(p.levels.length - 1, 0));
+  const lv = p.levels[at];
+  const toggle = isGm()
+    ? `<button class="pbtn mapon${p.on ? ' on' : ''}" data-place="${p.i}" aria-pressed="${p.on}" title="${p.on ? 'Take it off the crew’s map' : 'Put it on the crew’s map'}">${p.on ? 'On the map' : 'Hidden'}</button>`
+    : '';
+  return `<section class="card loc${p.on ? '' : ' off'}" id="loc-${p.i}"><div class="shead"><h2>${escTxt(p.name)}</h2>${toggle}</div>
+    ${p.text.trim() ? `<div class="rich">${md(p.text)}</div>` : ''}
+    ${imgHTML(p, 'rimg')}
+    ${p.levels.length ? `<div class="levels">
+      <div class="cats" role="tablist">${p.levels.map((l, k) => `<button role="tab" data-loc="${p.i}" data-lv="${k}" aria-selected="${k === at}" class="${k === at ? 'on' : ''}">${escTxt(l.name)}</button>`).join('')}</div>
+      ${lv.text.trim() ? `<div class="rich">${md(lv.text)}</div>` : ''}${imgHTML(lv, 'rimg')}</div>` : ''}
+    ${notesHTML(p)}</section>`;
+}
+
+let W = [];
+const allPlaces = () => W.flatMap(r => r.places);
+
 function render() {
-  if (!store.loaded || (!placesStore.loaded && !placesStore.missing)) { main.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  if (!store.loaded && !store.missing) { main.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  if (store.missing) { main.innerHTML = `<div class="empty">${isGm() ? 'Add a Map tab to the spreadsheet (see SETUP.md) to fill this page.' : 'Nothing on the map yet.'}</div>`; return; }
   const q = query.trim().toLowerCase();
   const gm = isGm();
-  const maps = R.by('map').filter(m => !q || m.search.includes(q));
-  const all = R.by('location');
-  const onCount = all.filter(isOn).length;
-  const locs = all.filter(l => matches(l, q) && ((gm && showAll) || isOn(l)));
-  const groups = [...new Set(locs.map(l => l.group))];
-  const none = gm ? (q ? 'No matches.' : showAll ? 'No locations in the Rules tab yet.' : 'No places on the map yet: show every place and turn some on.')
+  const onCount = allPlaces().filter(p => p.on).length;
+  const visible = p => (!q || p.search.includes(q)) && ((gm && showAll) || p.on);
+  const none = gm ? (q ? 'No matches.' : showAll ? 'No places in the Map tab yet.' : 'No places on the map yet: show every place and turn some on.')
     : (q ? 'No matches.' : 'Nothing on the map yet.');
+  const regions = W.map(r => ({ ...r, maps: r.maps.filter(m => !q || `${m.name} ${m.text}`.toLowerCase().includes(q)), places: r.places.filter(visible) }))
+    .filter(r => r.maps.length || r.places.length);
   main.innerHTML = `
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search places" value="${esc(query)}" aria-label="Search places" autocomplete="off">
       ${gm ? `<div class="cats"><button data-show="all" class="${showAll ? 'on' : ''}">Every place</button><button data-show="on" class="${showAll ? '' : 'on'}">On the map (${onCount})</button></div>` : ''}
     </div>
-    ${gm ? '<div class="robar"><span>You choose which places the crew see. Book locations and new ones alike start hidden.</span></div>' : ''}
+    ${gm ? '<div class="robar"><span>You choose which places the crew see; every place starts hidden.</span></div>' : ''}
     <div id="world">
-      ${maps.map(m => `<section class="worldmap"><h2>${escTxt(m.name)}</h2>${imgHTML(m, 'mapimg')}${m.text.trim() ? `<div class="rich">${md(m.text)}</div>` : ''}${origHTML(m)}</section>`).join('')}
-      ${groups.map(g => `<div class="mgroup"><h3>${escTxt(g || 'Places')}</h3><div class="cols">${locs.filter(l => l.group === g).map(locationHTML).join('')}</div></div>`).join('')}
-      ${!locs.length ? `<div class="empty">${none}</div>` : ''}
+      ${regions.map(r => `
+        ${r.maps.map(m => `<section class="worldmap"><h2>${escTxt(m.name)}</h2>${imgHTML(m, 'mapimg')}${m.text.trim() ? `<div class="rich">${md(m.text)}</div>` : ''}${notesHTML(m)}</section>`).join('')}
+        ${r.places.length ? `<div class="mgroup"><h3>${escTxt(r.name || 'Places')}</h3><div class="cols">${r.places.map(placeHTML).join('')}</div></div>` : ''}`).join('')}
+      ${!regions.some(r => r.places.length) ? `<div class="empty">${none}</div>` : ''}
     </div>`;
 }
 
-const rerenderCard = loc => { const el = document.getElementById(`loc-${loc.i}`); if (el) el.outerHTML = locationHTML(loc); };
+const rerenderCard = p => { const el = document.getElementById(`loc-${p.i}`); if (el) el.outerHTML = placeHTML(p); };
 
-let creating = null;
-async function setOn(loc, on) {
-  const row = ['place', placeKey(loc), on ? 'on' : '', loc.name !== placeKey(loc) ? loc.name : ''];
-  if (placesStore.missing) {
-    // No Map tab yet: the GM's first choice makes it.
-    creating ||= client.request({ op: 'create', tab: 'Map', rows: [row] }).then(() => client.read(['Map'])).finally(() => { creating = null; });
-    await creating;
-    return;
-  }
-  const was = placeRow(loc);
-  placesStore.change(was ? [was] : [], [row]);
+async function setOn(p, on) {
+  p.on = on; // shows at once; the read that follows has the sheet's word
   render();
+  try {
+    const r = await client.request({ op: 'show', location: p.name, on });
+    if (!r.ok) throw new Error(r.error);
+  } finally {
+    await client.read(['Map']).catch(() => {});
+  }
 }
 
 main.addEventListener('click', e => {
   const t = e.target.closest('[data-place]');
   if (t && isGm()) {
-    const loc = R.recs.find(r => r.kind === 'location' && String(r.i) === t.dataset.place);
-    if (loc) setOn(loc, !isOn(loc)).catch(err => alert(err.message));
+    const p = allPlaces().find(x => String(x.i) === t.dataset.place);
+    if (p) setOn(p, !p.on).catch(err => alert(err.message));
     return;
   }
   const s = e.target.closest('[data-show]');
@@ -112,8 +129,8 @@ main.addEventListener('click', e => {
   const b = e.target.closest('[data-lv]');
   if (!b) return;
   shownLevel[b.dataset.loc] = +b.dataset.lv;
-  const loc = R.recs.find(r => r.kind === 'location' && String(r.i) === b.dataset.loc);
-  if (loc) rerenderCard(loc);
+  const p = allPlaces().find(x => String(x.i) === b.dataset.loc);
+  if (p) rerenderCard(p);
 });
 main.addEventListener('input', e => {
   if (e.target.id !== 'q') return;
@@ -124,13 +141,12 @@ main.addEventListener('input', e => {
   q.focus();
   q.setSelectionRange(pos, pos);
 });
-store.on(() => { R = indexRules(store.rows); render(); });
-placesStore.on(() => render());
+store.on(() => { W = world(store.rows); render(); });
 client.on(e => {
   if (e.list) refreshNav(client, 'map');
   if (e.list || e.key || e.auth) render();
 });
 render();
 client.watch('Map');
-client.read(['Rules', 'Map']).catch(() => render());
+client.read(['Map']).catch(() => render());
 client.startPolling();

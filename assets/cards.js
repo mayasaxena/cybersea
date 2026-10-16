@@ -3,42 +3,63 @@ import { parseSheet, isSignedIn } from './codec.js';
 import { href } from './games.js';
 import { plain } from './markup.js';
 import { esc, escTxt, fmt, pipClass } from './core.js';
-import { wealth } from './inventory.js';
+import { wealth, wealthOf } from './inventory.js';
+import { gameRules } from './rules.js';
+import { systemOf, typeOf, SHIP } from './system.js';
+
+// The game's Rules and System tabs, indexed once per change.
+let seen = null;
+let rulesIdx = null;
+function rulesOf(client) {
+  const rows = [client.tab('Rules').rows, client.tab('System').rows];
+  if (!seen || rows.some((r, i) => r !== seen[i])) { seen = rows; rulesIdx = gameRules(client); }
+  return rulesIdx;
+}
+// A sheet's tracks with a role (harm, luck, …), under the game's names for them.
+const roleRow = (st, sys, role, cls) => {
+  const name = sys.name(role);
+  const t = name && st.tracks[name.toLowerCase()];
+  return t ? `<div class="cc-row"><span class="lbl">${escTxt(t.name)}</span><span class="pips ${cls}">${staticPips(t.pips)}</span></div>` : '';
+};
 
 export const staticPips = (arr, bond = false) => arr.map(v => `<span class="pip${pipClass(v, bond)}" aria-hidden="true"></span>`).join('');
 
 // The GM's at-a-glance lines: the name a section starts with in bold, and a list's first-level lines.
-const section = (st, title) => st.sections.find(x => x.title.toLowerCase() === title)?.text || '';
+const section = (st, title) => (title ? st.sections.find(x => x.title.toLowerCase() === title.toLowerCase())?.text || '' : '');
 const boldName = t => (String(t).match(/^\*\*(.+?)\*\*/)?.[1] || '').replace(/[.:]$/, '').trim();
 const listNames = t => String(t).split('\n').filter(l => /^- /.test(l)).map(l => plain(l.slice(2)).split(/[,.]/)[0].trim()).filter(Boolean);
 const line = (label, text) => (text ? `<div class="cc-row"><span class="lbl">${label}</span> <span class="cc-text">${escTxt(text)}</span></div>` : '');
 
-function gmLinesHTML(st) {
+const roleLine = (st, sys, role) => line(escTxt(sys.title(role)), boldName(section(st, sys.title(role))));
+
+function gmLinesHTML(st, sys) {
   const moves = st.moves.filter(m => m.marked).map(m => m.name);
-  const { treasure, hoard } = wealth(st);
-  return line('Vice', boldName(section(st, 'vice'))) + line('Oddity', boldName(section(st, 'oddity'))) +
+  const w = wealthOf(sys);
+  const { treasure, hoard } = wealth(st, w);
+  const has = n => n && st.tracks[n.toLowerCase()];
+  return roleLine(st, sys, 'vice') + roleLine(st, sys, 'oddity') +
     line('Moves', moves.join(', ')) +
-    (st.tracks.treasure || st.tracks.hoard ? line('Wealth', `${hoard}-hoard, ${treasure}-treasure · ${st.items.length} items`) : '');
+    (has(w.t) || has(w.h) ? line('Wealth', `${hoard}-${w.h.toLowerCase()}, ${treasure}-${w.t.toLowerCase()} · ${st.items.length} items`) : '');
 }
 
 export function crewCardHTML(client, name, { gm = false, me = false } = {}) {
   const rows = client.tab(name).rows;
   const st = parseSheet(rows);
-  const harm = st.tracks.harm?.pips || [];
-  const luck = st.tracks.luck?.pips || [];
-  const xp = (st.tracks.experience?.pips || []).filter(v => v === 1).length;
-  const vice = st.tracks.vice?.pips || [];
-  const troubles = st.sections.find(x => x.title.toLowerCase() === 'troubles')?.text || '';
+  const R = rulesOf(client);
+  const sys = systemOf(R, typeOf(R, st.info.playbook));
+  const pipsOf = role => (sys.name(role) && st.tracks[sys.name(role).toLowerCase()]?.pips) || [];
+  const xp = pipsOf('xp').filter(v => v === 1).length;
+  const vice = pipsOf('vice');
+  const troubles = section(st, sys.title('troubles'));
   return `<a class="card crewcard" href="${esc(href('sheet.html', client.game, { c: name }))}">
-    <div class="shead"><h2>${escTxt(st.info.name || name)}</h2>${me ? '<span class="pill me">You</span>' : isSignedIn(rows) ? '<span class="pill in">Signed in</span>' : ''}${st.state.downtime ? '<span class="pill">Downtime</span>' : ''}${gm && vice.includes(1) ? '<span class="pill vice">Vice</span>' : ''}</div>
+    <div class="shead"><h2>${escTxt(st.info.name || name)}</h2>${me ? '<span class="pill me">You</span>' : isSignedIn(rows) ? '<span class="pill in">Signed in</span>' : ''}${st.state.downtime ? '<span class="pill">Downtime</span>' : ''}${gm && vice.includes(1) ? `<span class="pill vice">${escTxt(sys.name('vice'))}</span>` : ''}</div>
     <div class="note">${escTxt([st.info.playbook, st.info.player].filter(Boolean).join(' · '))}</div>
-    <div class="cc-row"><span class="lbl">Harm</span><span class="pips harm">${staticPips(harm)}</span></div>
-    <div class="cc-row"><span class="lbl">Luck</span><span class="pips luck">${staticPips(luck)}</span></div>
+    ${roleRow(st, sys, 'harm', 'harm')}${roleRow(st, sys, 'luck', 'luck')}
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
     ${st.bonds.length ? `<div class="cc-bonds">${st.bonds.map(b => `<span class="cc-bond">${escTxt(b.name)} <span class="pips">${staticPips(b.pips, true)}</span></span>`).join('')}</div>` : ''}
-    ${troubles.trim() ? `<div class="cc-row"><span class="lbl">Troubles</span> <span class="cc-text">${escTxt(plain(troubles))}</span></div>` : ''}
-    ${gm ? gmLinesHTML(st) : ''}
-    <div class="cc-row"><span class="lbl">Level ${parseInt(st.info.level, 10) || 0}</span><span class="cnt">${xp} exp</span></div>
+    ${troubles.trim() ? `<div class="cc-row"><span class="lbl">${escTxt(sys.title('troubles'))}</span> <span class="cc-text">${escTxt(plain(troubles))}</span></div>` : ''}
+    ${gm ? gmLinesHTML(st, sys) : ''}
+    <div class="cc-row"><span class="lbl">Level ${parseInt(st.info.level, 10) || 0}</span>${sys.name('xp') ? `<span class="cnt">${xp} ${escTxt(sys.word('xp'))}</span>` : ''}</div>
   </a>`;
 }
 
@@ -46,14 +67,15 @@ export function shipCardHTML(client, { gm = false } = {}) {
   const s = client.tab('Ship');
   if (s.missing) return `<a class="card crewcard" href="${esc(href('ship.html', client.game))}"><h2>Ship</h2><div class="note">Not set up yet.</div></a>`;
   const st = parseSheet(s.rows);
+  const sys = systemOf(rulesOf(client), SHIP);
+  const list = role => listNames(section(st, sys.title(role))).join(', ');
   return `<a class="card crewcard" href="${esc(href('ship.html', client.game))}">
     <div class="shead"><h2>${escTxt(st.info.name || 'Ship')}</h2></div>
     <div class="note">${escTxt(st.info.playbook || '')}</div>
-    <div class="cc-row"><span class="lbl">Wreck</span><span class="pips harm">${staticPips(st.tracks.wreck?.pips || [])}</span></div>
-    <div class="cc-row"><span class="lbl">Renown</span><span class="pips luck">${staticPips(st.tracks.renown?.pips || [])}</span></div>
+    ${roleRow(st, sys, 'harm', 'harm')}${roleRow(st, sys, 'luck', 'luck')}
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
-    ${gm ? line('Oddity', boldName(section(st, 'oddity'))) + line('Moves', st.moves.filter(m => m.marked).map(m => m.name).join(', ')) +
-      line('Specials', [...section(st, 'specials').matchAll(/^\[x\]\s*(.+)$/gim)].map(m => m[1].trim()).join(', ')) +
-      line('Crew', listNames(section(st, 'crew')).join(', ')) + line('Cargo', listNames(section(st, 'cargo')).join(', ')) : ''}
+    ${gm ? roleLine(st, sys, 'oddity') + line('Moves', st.moves.filter(m => m.marked).map(m => m.name).join(', ')) +
+      line(escTxt(sys.title('specials')), [...section(st, sys.title('specials')).matchAll(/^\[x\]\s*(.+)$/gim)].map(m => m[1].trim()).join(', ')) +
+      line(escTxt(sys.title('crew')), list('crew')) + line(escTxt(sys.title('cargo')), list('cargo')) : ''}
   </a>`;
 }

@@ -34,7 +34,9 @@ also add `CREW_KEY` with the players' passphrase.
 4. Click **Deploy**, then **Authorize access** and pick your Google account.
    - Google will warn that it "hasn't verified this app". It's your own script, so click
      **Advanced → Go to (project name)** and **Allow**.
-   - It asks for access to "the spreadsheet it's attached to" only.
+   - It asks for access to "the spreadsheet it's attached to" (only this one), to show menus
+     and dialogs in it, and to "connect to an external service", which it uses to read the
+     pictures in the Map tab (see [The Map tab](#the-map-tab)).
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -92,42 +94,133 @@ game's own wording, and the site uses them first:
 
 - **Override name**: a new name. Moves keep the book's name, because character sheets remember
   moves by it; give a move new text instead.
-- **Override text**: new text (a kit's items, a location's description, …).
-- **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere;
-  `img=assets/world/…` (or an `https://` address) shows an image with it.
+- **Override text**: new text (a kit's items, …).
+- **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere.
 
 The Rules page shows the book's wording under each overridden row, as "Rapscallion original".
 The columns are found by their headers, so add the three headers to an existing game's Rules tab
 and update the script (below). A script older than version 4 ignores them.
 
-The **Map** page, open to everyone, shows Rules rows of these kinds:
+## The Map tab
 
-- `map`: a world map. Its image is `img=…` in Meta.
-- `location`: a place, listed under its Group. The book's locations show here too; theme them
-  with the Override columns. A new location is a new `location` row.
-- `level`: a floor or level of a place: Group is the location's name, then one row per level in
-  order, each with `img=…`.
+The **Map** page, open to everyone, shows the **Map** tab. Its columns (found by their headers):
 
-The GM chooses which places the crew see. On the Map page, each place has an **On the map** /
-**Hidden** button (only the GM sees it), and every place starts hidden, the book's and new ones
-alike. The choices are kept in a **Map** tab (`place | the location's book name | on`), which the
-site makes the first time the GM turns a place on. Everyone can read it, but only the GM can
-change it. A themed place stays on the map under its new name. Maps always show, and levels
-show with their place.
+| Region | Location | Level | Image | Text | GM notes | Shown |
+|---|---|---|---|---|---|---|
+| Vega Server | | | *(picture)* | The server's sea. | | |
+| Vega Server | Hacker's Haven | | | A city of scrap. | Who really runs it. | on |
+| | Hacker's Haven | Level 1 | *(picture)* | The docks. | | |
+| | Hacker's Haven | Level 2 | *(picture)* | The market. | | |
+| Vega Server | DeepPort | | *(picture)* | A pool of links. | | |
 
-Images in `assets/world/` are part of this site, so anyone can open them.
+- A row with a **Region** and no **Location** is that region's own map. It always shows.
+- A row with a **Location** and no **Level** is a place, listed under its region.
+- A row with a **Location** and a **Level** is a floor or level of that place, in order. The page
+  shows a tab for each level. A place with no level rows is a single picture (DeepPort above).
+- **Image**: click the cell and use **Insert → Image → Insert image in cell**, or type
+  `=IMAGE("https://…")` for a picture that's already online. To change a picture, replace the
+  one in the cell. Pictures floating over the grid (**Insert image over cells**) belong to no
+  row and aren't read.
+  Keep this column's format **Automatic**, not plain text, or Sheets shows a formula as typed.
+- **GM notes** are only sent to the GM.
+- **Shown**: the GM chooses which places the crew see, with the **On the map** / **Hidden**
+  button on each place (only the GM sees it), which writes `on` here; or type it. Every place
+  starts hidden. The script never sends the crew a hidden place, its levels or its pictures.
+
+Everything else on the tab is edited in the spreadsheet.
+
+The **Lore** tab can have an **Image** column too, after Notes: a picture for each entry, added
+the same way. Players edit lore on the site, but pictures are added in the spreadsheet.
+
+The Map tab and pictures need script version 5.
+Deploying it asks you to authorize again, for "connect to an external service": that's how the
+script reads a picture out of its cell.
 
 `tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
 template, or, without `--rules`, makes a workbook of just the theme's rows to paste into an
 existing game. A theme's change to a book row this workbook doesn't have (a kit's Override text, say)
 goes in an `_Overrides` tab, to copy into that row by hand.
 
+## Replacing the sheet with a fresh xlsx
+
+The spreadsheet has a **Cybersea** menu (it appears a few seconds after the sheet opens). Its
+**Replace with an xlsx…** picks an `.xlsx` file from your computer, such as a freshly built
+workbook, and replaces every tab with that file's tabs, in its order.
+
+- The spreadsheet, its script, the GM passphrase and the deployment stay as they are, so the
+  site's URL and everyone's invite links keep working.
+- Everything on the old tabs goes, including pictures placed in cells. **File → Version
+  history** brings the old tabs back if you need them.
+- The file needs a **Rules** tab; anything else is turned down without changing the sheet.
+- It keeps the file's values and formulas, plain-text, bold, fill and wrap formatting, column
+  widths, hidden tabs and columns, frozen rows and columns, and drop-down (list) data
+  validation. A protected sheet is protected for everyone but the spreadsheet's owner, except
+  Excel's "allow edit" ranges. Anything else (merged cells, other kinds of validation) is left
+  out, and the dialog lists it.
+- The first time you use it, Google asks you to authorize the script.
+
+The script reads the file itself, so it needs no access to anything but this spreadsheet. The new
+tabs get the checks **setUpChecks** makes (see below) as they come in.
+
+## The game's mechanics
+
+The site knows no stat, track or move names and no numbers of its own. The **System** tab holds
+them, as `Kind | Group | Name | Text | Meta` rows of these kinds (Group is a playbook type, as in a
+playbook's `type=`: a character type such as `pirate`, `ship`, or `npc`). Everyone can read it;
+it's edited only in the spreadsheet.
+
+- `stat`: a stat, in sheet order (Blood, Vinegar, …). An oddity's or ship kit's `traits=` follows that order.
+- `track`: a track new sheets start with. Meta: `role=` (what the site does with it: `harm`,
+  `luck`, `vice`, `xp`, `treasure`, `hoard`), `size=` (pips: `6`, `Steadfast+3`, `level+6`; a
+  playbook's `harm=8` overrides it), `start=` (marks it starts with, e.g. `Spitfire`), `refill=`
+  (Session Begins marks it back up to this).
+- `section`: a card new sheets start with. Meta: `role=`, `tab=` (sheet, notes or inventory),
+  `fill=` (vices, oddity, kit, specials, questions, lastwords: copied from the playbook). Its Text
+  is the card's starting note; `{Fortune+5}` in it is worked out. The bonds section's `size=` is
+  the pips per bond and `full=xp:1` what filling one gives.
+- `choice`: an option. Group `chapter-end` (`pick` for the two picks; `gain=xp:1`, `heal=harm:2`,
+  `refresh=bonds`), `begin-downtime` (`slots=2`), `npc` (NPC sizes: `size=` harm), `clock` (`size=`).
+
+Rules rows say what they do in their own Meta, instead of the site reading their wording:
+
+- Moves, vices and oddities: `roll=Vinegar` (or `2d6`, `1d6`, `"+bonds spent"` for a number the
+  player says), `per="-1 per scar"`, `adj` (a free modifier), `session=start` / `end` /
+  `start,end`, `gain=luck:1` (or `xp:1`, or `luck:unrest` for what the unrest track has marked),
+  `spend=luck:1` (or `luck:x`).
+- The log's actions: `action=session-begin`, `session-end`, `chapter-end`, `begin-downtime`,
+  `leave-downtime` or `level-up`, with `label="Session Begins"`, on the procedure (and downtime
+  move) rows whose text the action shows. Chapter's End takes `picks=2`.
+- House rules: `floor=luck:1`. The trait advance: `cap=3` (traits stop at +3).
+
+`tools/xlsx/mechanics.py` adds a game's System tab and Rules Meta to a workbook. The System tab
+needs script version 6.
+
+## Guarding the sheet
+
+Run **setUpChecks** once per game: in the Apps Script editor, pick it in the function list next
+to **Run** and click **Run**. Run it again after adding tabs by hand; tabs the site makes, and tabs
+replaced from an xlsx, get the checks themselves. It:
+
+- protects the Rules, System and README tabs with a warning, so editing them takes a deliberate click;
+- limits the Kind column on Rules and System, and Rules' Vis column, to what the site knows;
+- on character and Ship tabs, suggests the site's kinds and refuses a stat that isn't a number
+  or a track or bond that isn't pip symbols;
+- warns before anyone edits the hidden Version column.
+
+The site itself never edits the Rules or System tab, and the script isn't held back by any of this.
+
 ## Updating the script later
 
-When [`apps-script/Code.gs`](apps-script/Code.gs) changes in this repository:
-1. Paste the new version over `Code.gs` in the game's Apps Script editor and save.
+When a file in [`apps-script/`](apps-script/) changes in this repository:
+1. Paste the new version over the file of the same name in the game's Apps Script editor and
+   save (**+ → Script** adds a missing `.gs` file, such as `Import.gs`). To see
+   `appsscript.json`, turn on **Project Settings → Show "appsscript.json" manifest file in
+   editor**.
 2. Open **Deploy → Manage deployments**, click the pencil, set **Version: New version**, and
    click **Deploy**.
+3. If `appsscript.json` changed, Google doesn't ask for the new permissions when you deploy, and
+   the site can't reach the sheet until you approve them: pick **onOpen** in the editor's
+   function list, click **Run** and allow it.
 
 Editing the deployment keeps the same URL. Creating a *new* deployment gives a new URL, and
 everyone would need a new invite link.
@@ -135,7 +228,7 @@ everyone would need a new invite link.
 The site keeps working with an older script, without what came later; `diag.html` says when
 there's a newer one.
 
-Whoever owns the template should paste the new `Code.gs` into the template's script too, so new
+Whoever owns the template should paste the new files into the template's script too, so new
 games start with the current version.
 
 ## Handing the game to someone else (e.g. the GM)

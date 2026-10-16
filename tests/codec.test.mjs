@@ -29,10 +29,8 @@ test('log rows round-trip', () => {
 
 test('a sheet survives parse → serialize unchanged', () => {
   const st = parseSheet(sampleCharacter);
-  const rows = serializeSheet(st).filter(r => !(r[0] === 'sheet' && r[1] === 'Bonds'));
   const norm = rs => rs.map(r => r.join('|')).sort();
-  assert.deepEqual(norm(rows), norm(sampleCharacter));
-  assert.ok(st.sections.some(s => s.title === 'Bonds'), 'a Bonds card is added when there are bonds');
+  assert.deepEqual(norm(serializeSheet(st)), norm(sampleCharacter));
 });
 
 test('the sign-in row: read loosely, and left alone by the sheet', () => {
@@ -67,4 +65,10 @@ test('pending changes apply on top of server rows in order', () => {
     { row: ['sheet', 'Story', 'c', ''], seq: 4 },
   ]);
   assert.deepEqual(out, [['info', 'Name', 'Nexa', ''], ['sheet', 'Problems', 'a2', ''], ['sheet', 'Story', 'c', ''], ['track', 'Harm', '○', '']]);
+});
+
+test('items keep a count (blank when not counted) and notes', () => {
+  const st = parseSheet([['item', 'Medkit', '3', 'From the clinic.'], ['item', 'Rope', '', ''], ['item', 'Flare', 'lots', '']]);
+  assert.deepEqual(st.items, [{ name: 'Medkit', count: 3, note: 'From the clinic.' }, { name: 'Rope', count: null, note: '' }, { name: 'Flare', count: null, note: '' }]);
+  assert.deepEqual(serializeSheet(st).filter(r => r[0] === 'item'), [['item', 'Medkit', '3', 'From the clinic.'], ['item', 'Rope', '', ''], ['item', 'Flare', '', '']]);
 });
