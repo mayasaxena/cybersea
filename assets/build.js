@@ -3,6 +3,7 @@
 // tab so the player can edit their own copy.
 
 import { parseStat, formatStat, formatTrack } from './codec.js';
+import { luckFloorOf } from './rules.js';
 
 const PIRATE_STATS = ['Blood', 'Vinegar', 'Polish', 'Spitfire'];
 const SHIP_STATS = ['Steadfast', 'Speed', 'Fortune'];
@@ -21,7 +22,7 @@ export function characterRows(R, { name, playbook, player = '', oddity, kit, ext
   const stats = traitsOf(odd, 4);
   const harm = parseInt(pb.meta.harm, 10) || 6;
   const luckLen = parseInt(pb.meta.luck, 10) || 5;
-  const floor = Math.max(0, ...R.house('session').map(r => parseInt(r.meta.luckfloor, 10) || 0));
+  const floor = Math.max(0, ...R.house('session').map(luckFloorOf));
   const luck = Math.min(luckLen, Math.max(floor, stats[3])); // luck starts at SPITFIRE
   const kitRec = pb.kits.find(k => k.name === kit) || null;
 

@@ -44,6 +44,8 @@ export const rules = [
   R('pmove', 'Trickster', 'HAGGLE', 'When you haggle with your passenger, spend a bond and roll +POLISH.', 'start'),
   R('pmove', 'Trickster', 'HEX', 'Your enemy has a run of bad luck.', 'adv'),
   R('pmove', 'Trickster', 'LUCKY BREAK', 'Mark 1-luck when you end a session Haunted.', 'adv'),
+  R('pmove', 'Trickster', 'OMEN', 'At the start of each session, roll +SPITFIRE. On a hit, hold 1 until the end of the session.', 'adv'),
+  R('pmove', 'Trickster', 'BAD PENNY', 'Your passenger turns up when you least want it.', 'adv session=start'),
 
   R('playbook', 'Brute', 'Brute', 'Big and loud.', 'type=pirate harm=8 luck=5 pick=1'),
   R('vice', 'Brute', 'ANGRY', 'While Angry, you hit first. Endpoint: walk away.'),
