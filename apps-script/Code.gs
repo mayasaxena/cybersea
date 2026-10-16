@@ -11,17 +11,23 @@
  * carrying any passphrase as "key".
  *
  * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis, plus optional Override name|Override text|Override
- * meta columns, found by their headers), GM, Lore, Ship, Map (the world: see mapRows_), and one
+ * meta columns, found by their headers), System (the game's mechanics), GM, Lore, Ship, Map (the world: see mapRows_), and one
  * tab per character (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
  *
+ * The game's mechanics (stats, tracks, starting cards: Kind|Group|Name|Text|Meta) are in the System
+ * tab, and what a Rules row rolls or does is in its Meta, so the site has none of its own.
+ * setUpChecks (run it from the Apps Script editor) guards them: see "checks" below.
+ *
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 5; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures
+const API_VERSION = 6; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures. 6: the System tab, and checks on the tabs (setUpChecks)
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
+// The game's mechanics (stats, tracks, starting cards, options): read by everyone, edited only in Sheets.
+const SYSTEM_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta'];
 // A game's own wording for a Rules row, kept beside the book's (which stays as it is). Found by
 // header, so they can sit in any column after Vis; sent as the 7th to 9th cells of each row.
 const OVERRIDE_HEADERS = ['Override name', 'Override text', 'Override meta'];
@@ -116,7 +122,7 @@ function forbidden_() {
 function tabKind_(name) {
   const n = String(name).trim().toLowerCase();
   if (!n || n.charAt(0) === '_' || n === 'readme') return null;
-  if (n === 'rules' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map') return n;
+  if (n === 'rules' || n === 'system' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map') return n;
   return 'character';
 }
 
@@ -125,7 +131,7 @@ function canRead_(role, kind) {
 }
 
 function canWrite_(role, kind) {
-  return !!kind && kind !== 'rules' && kind !== 'map' && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'rules' && kind !== 'system' && kind !== 'map' && (kind !== 'gm' || role === 'gm');
 }
 
 function findSheet_(ss, name) {
@@ -140,9 +146,10 @@ function findSheet_(ss, name) {
 function table_(sh, kind, role) {
   if (kind === 'map') return mapTable_(sh, role);
   const grid = sh.getDataRange().getDisplayValues();
+  const fixed = kind === 'rules' || kind === 'system'; // edited only in Sheets: no versions
   const rules = kind === 'rules';
-  const width = rules ? RULES_HEADER.length : HEADER.length;
-  const vc = rules ? 0 : verColIn_(grid[0]);
+  const width = rules ? RULES_HEADER.length : kind === 'system' ? SYSTEM_HEADER.length : HEADER.length;
+  const vc = fixed ? 0 : verColIn_(grid[0]);
   const oc = rules ? overrideCols_(grid[0]) : [];
   const ic = kind === 'lore' ? grid[0].findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image') : -1;
   const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1) : null;
@@ -156,10 +163,10 @@ function table_(sh, kind, role) {
     if (r.join('').trim() === '') return;
     if (rules && role !== 'gm' && String(r[5]).trim().toLowerCase() === 'gm') return;
     rows.push(r);
-    if (!rules) vers.push(version_(vc ? line[vc - 1] : '', r));
+    if (!fixed) vers.push(version_(vc ? line[vc - 1] : '', r));
     if (tokens) imgs.push(tokens[n]);
   });
-  if (rules) return { d: digest_(rows), rows };
+  if (fixed) return { d: digest_(rows), rows };
   // Lore's Image column: imgs[i] is rows[i]'s picture, sent beside the rows so that rows stay
   // Kind|Name|Value|Notes for the site to edit (see imageTokens_).
   return tokens && imgs.some(Boolean) ? { d: digest_([rows, vers, imgs]), rows, vers, imgs } : { d: digest_([rows, vers]), rows, vers };
@@ -323,7 +330,7 @@ function onEdit(e) {
   if (!range || range.getColumn() > HEADER.length) return;
   const sh = range.getSheet();
   const kind = tabKind_(sh.getName());
-  if (!kind || kind === 'rules' || kind === 'map') return;
+  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map') return;
   const top = Math.max(range.getRow(), 2);
   const n = range.getLastRow() - top + 1;
   if (n < 1) return;
@@ -385,7 +392,7 @@ function patch_(role, req) {
   const sh = findSheet_(ss, req.tab);
   if (!sh) return { ok: false, code: 'missing', error: 'No tab called "' + req.tab + '".' };
   const kind = tabKind_(sh.getName());
-  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'map' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
+  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'system' || kind === 'map' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
 
   const sets = (req.set || []).map(r => ({ cells: cells_(r, 4), w: when_(r[4]) }));
   const vc = verCol_(sh);
@@ -494,7 +501,7 @@ function create_(role, req) {
     return { ok: false, code: 'name', error: 'Pick a different name: up to ' + MAX_TAB_NAME + ' characters, without [ ] * ? / \\ :' };
   }
   const kind = tabKind_(name);
-  if (!kind || kind === 'rules' || kind === 'map' || (kind === 'gm' && role !== 'gm')) {
+  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || (kind === 'gm' && role !== 'gm')) {
     return { ok: false, code: 'name', error: '"' + name + '" is a reserved name.' };
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -511,6 +518,7 @@ function create_(role, req) {
     const stamp = stamp_();
     putMarks_(sh, 2, vc, rows.map(c => mark_(stamp, c)));
   }
+  guard_(sh);
   const at = Date.now();
   const t = table_(sh, kind, role);
   return { ok: true, tab: name, kind, at, d: t.d, rows: t.rows, vers: t.vers };
@@ -624,6 +632,76 @@ function image_(role, req) {
   const bytes = blob.getBytes();
   if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'That picture is too big (over 20 MB).' };
   return { ok: true, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
+}
+
+/* ---------- checks ---------- */
+
+/*
+ * Guards against accidental edits in Google Sheets. Run it once from the Apps Script editor
+ * (pick setUpChecks in the function list, click Run), and again after adding tabs by hand; a
+ * tab the site makes gets the checks itself. Running it again changes nothing.
+ *   Rules, System and README: protected, with a warning before any edit (anyone can still edit
+ *   on purpose). Their Kind columns, and Rules' Vis, only take the values the site knows.
+ *   Character and Ship tabs: Kind suggests the site's kinds; a stat's Value must be a number,
+ *   and a track's or bond's only pip symbols. The hidden Version column warns before an edit.
+ * The script itself isn't held back by any of this.
+ */
+const RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'oddity', 'kit', 'lastwords', 'question',
+  'pmove', 'smove', 'pnote', 'renown', 'rule', 'special', 'tag', 'trouble', 'table', 'fate', 'world', 'faction'];
+const SYSTEM_KINDS = ['stat', 'track', 'section', 'choice'];
+const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin'];
+const GUARD_NOTE = 'Cybersea: ';
+
+function setUpChecks() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const done = [];
+  ss.getSheets().forEach(sh => { if (guard_(sh)) done.push(sh.getName()); });
+  return done;
+}
+
+// The checks for one tab (see setUpChecks). Returns whether it has any.
+function guard_(sh) {
+  const name = sh.getName().trim().toLowerCase();
+  const kind = tabKind_(sh.getName());
+  if (name === 'readme') { protectTab_(sh, 'how the sheet works'); return true; }
+  if (!kind) return false;
+  const rows = Math.max(sh.getMaxRows() - 1, 1);
+  const list = (values, strict, help) => SpreadsheetApp.newDataValidation().requireValueInList(values, true)
+    .setAllowInvalid(!strict).setHelpText(help).build();
+  if (kind === 'rules' || kind === 'system') {
+    protectTab_(sh, kind === 'rules' ? 'the game’s rules; the site reads them' : 'the game’s mechanics; the site reads them');
+    const head = sh.getRange(1, 1, 1, RULES_HEADER.length).getDisplayValues()[0].map(h => String(h).trim().toLowerCase());
+    const col = h => head.indexOf(h) + 1;
+    if (col('kind')) sh.getRange(2, col('kind'), rows, 1).setDataValidation(list(kind === 'rules' ? RULES_KINDS : SYSTEM_KINDS, true, 'A kind the site knows (see README).'));
+    if (kind === 'system') return true;
+    if (col('vis')) sh.getRange(2, col('vis'), rows, 1).setDataValidation(list(['crew', 'gm'], true, 'crew (or blank): everyone sees it. gm: only the GM.'));
+    return true;
+  }
+  if (kind === 'character' || kind === 'ship') {
+    sh.getRange(2, 1, rows, 1).setDataValidation(list(SHEET_KINDS, false, 'A kind the site knows (see README).'));
+    const value = SpreadsheetApp.newDataValidation()
+      .requireFormulaSatisfied('=IF($A2="stat",REGEXMATCH(TO_TEXT(C2),"^\\s*[+\\-−–]?\\d+\\s*$"),' +
+        'IF($A2="track",REGEXMATCH(TO_TEXT(C2),"^[○●✕xXoO01×*•.\\-_\\s]*$"),' +
+        'IF($A2="bond",REGEXMATCH(TO_TEXT(C2),"^[·●○oO01*•.\\-\\s]*$"),TRUE)))')
+      .setAllowInvalid(false)
+      .setHelpText('A stat is a number like +1 or -2. Tracks: ● marked, ○ open, ✕ crossed out. Bonds: ● marked, ○ used, · not marked.')
+      .build();
+    sh.getRange(2, 3, rows, 1).setDataValidation(value);
+  }
+  const vc = verColIn_(sh.getRange(1, 1, 1, sh.getMaxColumns()).getDisplayValues()[0]);
+  if (vc) protectRange_(sh.getRange(1, vc, sh.getMaxRows(), 1), 'row versions the site keeps');
+  return true;
+}
+
+function protectTab_(sh, what) {
+  if (sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).length) return;
+  sh.protect().setDescription(GUARD_NOTE + what).setWarningOnly(true);
+}
+
+function protectRange_(range, what) {
+  const note = GUARD_NOTE + what;
+  if (range.getSheet().getProtections(SpreadsheetApp.ProtectionType.RANGE).some(p => p.getDescription() === note)) return;
+  range.protect().setDescription(note).setWarningOnly(true);
 }
 
 /* selftest (GM): checks that values survive a round trip through this sheet unchanged */

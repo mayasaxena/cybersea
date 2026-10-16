@@ -34,7 +34,7 @@ HEADER = ['Kind', 'Name', 'Value', 'Notes']
 RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta']
 MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown']
 OVERRIDES = ['override_name', 'override_text', 'override_meta']
-CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,move,special,advance,log,state'
+CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,inventory,item,move,special,advance,log,state,signin'
 BOLD = Font(bold=True)
 HEAD_FILL = PatternFill('solid', fgColor='E8EEF3')
 
@@ -46,6 +46,9 @@ README = [
     '    Override name | Override text | Override meta: the game’s own wording for a row (e.g. the Cybersea theme). The site uses',
     '    them instead of the book’s and keeps the book’s under "Rapscallion original". Override meta adds to Meta; "hide" there',
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
+    '    What a row does is in its Meta: roll=, session=, gain=, spend=, action= (see SETUP.md, "The game’s mechanics").',
+    '  System: the game’s mechanics (Kind | Group | Name | Text | Meta): stat, track, section and choice rows. The site has no',
+    '    stat names or numbers of its own. Run setUpChecks in the Apps Script editor to protect Rules and System and add checks.',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
     '    (placed in the cell, or =IMAGE("https://…")).',
@@ -62,7 +65,7 @@ README = [
     'To remove a row, clear its cells rather than deleting the row: a deleted row isn’t noticed, so a page that missed it could add it back.',
     '',
     'Symbols',
-    '  Tracks (harm, luck, experience, wreck, clocks): ● marked, ○ open, ✕ crossed out. Typing x, o, 1 or 0 also works.',
+    '  Tracks and clocks: ● marked, ○ open, ✕ crossed out. Typing x, o, 1 or 0 also works.',
     '  Bonds: ● marked, ○ marked but used, · not marked.',
     '',
     'Text: a blank line starts a new paragraph; "- " starts a bullet (indent two spaces to nest);',

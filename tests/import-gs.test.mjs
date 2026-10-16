@@ -174,3 +174,13 @@ test('adds the Cybersea menu when the spreadsheet opens', () => {
   assert.deepEqual(items, [['Replace with an xlsx…', 'showReplaceDialog']]);
   assert.equal(typeof ctx[items[0][1]], 'function');
 });
+
+test('the new tabs get the checks setUpChecks makes', () => {
+  const { replace, gas } = setup();
+  replace(FRESH);
+  const sheet = n => gas.ss.getSheetByName(n);
+  for (const n of ['Rules', 'README']) assert.ok(sheet(n).getProtections('SHEET')[0]?.isWarningOnly(), n);
+  assert.equal(sheet('Nexa').getProtections('SHEET').length, 0, 'players’ tabs stay open');
+  assert.ok(sheet('Nexa').getRange('C2').getDataValidation()?.formula, 'Value checks on a character tab');
+  assert.equal(sheet('_Overrides').validations.length, 0);
+});

@@ -33,7 +33,9 @@ form.addEventListener('submit', async e => {
           ? 'It works, but an edit sent again after being offline can undo newer changes to the same rows.'
           : v < 4
             ? 'It works, but the site shows the book’s wording for every Rules row: the Override columns are ignored.'
-            : 'The Map page needs it: the Map tab’s places and pictures don’t show.';
+            : v < 5
+              ? 'The Map page needs it: the Map tab’s places and pictures don’t show.'
+              : 'Character sheets need it: the System tab (the game’s stats, tracks and actions) isn’t sent.';
       html += line(false, 'Script version', `This deployment runs an older Code.gs (version ${v}; the latest is ${API_VERSION}). ${missing} Paste the latest <code>apps-script/Code.gs</code> into the Apps Script editor and save, then <b>Deploy → Manage deployments</b>, click the pencil, set <b>Version: New version</b> and click <b>Deploy</b>. Saving alone doesn’t change what’s deployed.`);
     }
   } catch {

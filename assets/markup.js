@@ -82,49 +82,6 @@ export function plain(src) {
     .trim();
 }
 
-// Old nexa.html sections were stored as HTML; convert them for import. Browser only (DOMParser).
-export function htmlToMarkup(html) {
-  const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
-  const inl = node => [...node.childNodes].map(n => {
-    if (n.nodeType === 3) return n.textContent.replace(/\s+/g, ' ');
-    if (n.nodeType !== 1) return '';
-    const t = n.tagName.toLowerCase();
-    if (t === 'ul' || t === 'ol') return '';
-    if (t === 'br') return ' ';
-    const inner = inl(n);
-    if (t === 'b' || t === 'strong') {
-      if (n.classList.contains('t')) return `*${inner}*`;
-      if (n.classList.contains('k')) return `~${inner}~`;
-      if (n.classList.contains('s')) return inner;
-      return `**${inner}**`;
-    }
-    if (t === 'i' || t === 'em') return `^${inner}^`;
-    return inner;
-  }).join('');
-  const out = [];
-  const list = (ul, depth) => {
-    const ck = ul.classList.contains('ck');
-    for (const li of ul.children) {
-      if (li.tagName.toLowerCase() !== 'li') continue;
-      const mark = ck ? (li.classList.contains('on') ? '[x] ' : '[ ] ') : '- ';
-      out.push('  '.repeat(depth) + mark + inl(li).trim());
-      for (const sub of li.children) if (/^(ul|ol)$/i.test(sub.tagName)) list(sub, depth + 1);
-    }
-  };
-  const block = node => {
-    for (const n of node.childNodes) {
-      if (n.nodeType === 3) { if (n.textContent.trim()) { out.push(n.textContent.trim(), ''); } continue; }
-      if (n.nodeType !== 1) continue;
-      const t = n.tagName.toLowerCase();
-      if (t === 'ul' || t === 'ol') { list(n, 0); out.push(''); }
-      else if (t === 'p' || t === 'div') { const s = inl(n).trim(); if (s) out.push(s, ''); for (const sub of n.children) if (/^(ul|ol)$/i.test(sub.tagName)) { list(sub, 0); out.push(''); } }
-      else { const s = inl(n).trim(); if (s) out.push(s, ''); }
-    }
-  };
-  block(doc.body);
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 // An image a Rules row points to (img=… in its meta, or an =IMAGE() formula in its Image cell):
 // an https address. Anything else gives ''.
 export function imgSrc(u) {

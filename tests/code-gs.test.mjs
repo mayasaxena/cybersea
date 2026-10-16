@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 5 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 6 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 5 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 6 });
 });
 
 test('explains missing passphrases', () => {
@@ -576,4 +576,60 @@ test('Lore: an Image column after Notes; pictures go beside the rows, which stay
 test('Lore without an Image column sends no imgs', () => {
   const { api } = setup();
   assert.equal(crew(api, { op: 'read', tabs: ['Lore'] }).tabs.Lore.imgs, undefined);
+});
+
+test('setUpChecks guards the rules and the sheets against accidental edits, once', () => {
+  const { api, gas } = setup();
+  crew(api, { op: 'patch', tab: 'Nexa', set: [['stat', 'Blood', '+1', '']] }); // gives Nexa its Version column
+  gas.ss.insertSheet('System').getRange(1, 1, 1, 5).setValues([['Kind', 'Group', 'Name', 'Text', 'Meta']]);
+  const done = api.run('setUpChecks');
+  assert.deepEqual([...done].sort(), ['GM', 'Lore', 'Nexa', 'README', 'Rules', 'Ship', 'System'].sort());
+  const sys = gas.ss.getSheetByName('System');
+  assert.equal(sys.getProtections('SHEET').length, 1);
+  assert.deepEqual([...sys.validations.find(v => v.col === 1).rule.list], ['stat', 'track', 'section', 'choice']);
+  api.run('setUpChecks');
+  const sheet = n => gas.ss.getSheetByName(n);
+  for (const n of ['Rules', 'System', 'README']) {
+    const ps = sheet(n).getProtections('SHEET');
+    assert.equal(ps.length, 1, `${n}: protected once, however often it runs`);
+    assert.ok(ps[0].isWarningOnly(), 'a warning, so the owner can still edit on purpose');
+  }
+  assert.equal(sheet('Nexa').getProtections('SHEET').length, 0, 'players’ tabs stay open');
+  assert.equal(sheet('Nexa').getProtections('RANGE').length, 1, 'but the Version column warns');
+  const rules = sheet('Rules').validations.filter(v => v.col === 1).at(-1).rule;
+  assert.ok(rules.list.includes('move') && !rules.list.includes('track') && !rules.allowInvalid, 'Rules kinds: only ones the site knows');
+  const vis = sheet('Rules').validations.find(v => v.col === 6).rule;
+  assert.deepEqual([[...vis.list], vis.allowInvalid], [['crew', 'gm'], false]);
+  const value = sheet('Nexa').validations.find(v => v.col === 3).rule;
+  assert.equal(value.allowInvalid, false);
+  // The formula's patterns, as Sheets (RE2) would read them.
+  const res = [...value.formula.matchAll(/\$A2="(\w+)",REGEXMATCH\(TO_TEXT\(C2\),"([^"]+)"\)/g)].map(m => [m[1], new RegExp(m[2])]);
+  const ok = (kind, v) => res.find(r => r[0] === kind)[1].test(v);
+  assert.deepEqual(res.map(r => r[0]), ['stat', 'track', 'bond']);
+  for (const v of ['+2', '-1', '0', '−1', ' 3 ']) assert.ok(ok('stat', v), v);
+  for (const v of ['two', '+', '1.5']) assert.ok(!ok('stat', v), v);
+  for (const v of ['●○✕', '', 'xxo1', '● ○']) assert.ok(ok('track', v), v);
+  for (const v of ['3', 'harm', '●a']) assert.ok(!ok('track', v), v);
+  for (const v of ['●○·', 'oo*']) assert.ok(ok('bond', v), v);
+  assert.ok(!ok('bond', '✕'));
+  const kinds = sheet('Nexa').validations.find(v => v.col === 1).rule;
+  assert.equal(kinds.allowInvalid, true, 'unknown kinds are only flagged: the site leaves them alone');
+  assert.equal(sheet('_scratch').validations.length, 0);
+});
+
+test('a tab the site makes gets the checks itself', () => {
+  const { api, gas } = setup();
+  crew(api, { op: 'create', tab: 'Matt', rows: [['info', 'Name', 'Matt', '']] });
+  const sh = gas.ss.getSheetByName('Matt');
+  assert.ok(sh.validations.some(v => v.col === 3 && v.rule.formula));
+  assert.equal(sh.getProtections('RANGE').length, 1);
+});
+
+test('the System tab: everyone reads it, nobody writes or makes it through the site', () => {
+  const { api, gas } = setup();
+  gas.ss.insertSheet('System').getRange(1, 1, 2, 5).setValues([['Kind', 'Group', 'Name', 'Text', 'Meta'], ['stat', 'pirate', 'Blood', '', '']]);
+  assert.deepEqual(look(api, 'System').rows, [['stat', 'pirate', 'Blood', '', '']]);
+  assert.equal(gm(api, { op: 'patch', tab: 'System', set: [['stat', 'pirate', 'x', '']] }).code, 'forbidden');
+  gas.ss.deleteSheet(gas.ss.getSheetByName('System'));
+  assert.equal(gm(api, { op: 'create', tab: 'System' }).code, 'name');
 });

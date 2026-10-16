@@ -3,7 +3,8 @@
 // note and secret (Value = text), clock (Value = pips). Other rows are left alone.
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
-import { indexRules } from './rules.js';
+import { gameRules, TABS as RULE_TABS } from './rules.js';
+import { systemOf, characterTypes, sum, circles } from './system.js';
 import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
 import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey } from './core.js';
@@ -21,18 +22,16 @@ if (!game) {
 const client = new GameClient(game);
 pageShell(app, client, 'gm');
 const gmStore = client.tab('GM');
-const rulesStore = client.tab('Rules');
 const main = document.createElement('main');
 app.append(main);
 
 const TABS = [['crew', 'Crew'], ['npcs', 'NPCs'], ['notes', 'Notes'], ['ref', 'Reference']];
 const REF_KEYS = ['fates', 'tags', 'moves', 'playbooks', 'reference', 'world', 'other'];
-const NPC_SIZES = [['Mook', 1], ['Combatant', 2], ['Threat', 4], ['Villain', 6]];
 let tab = 'crew';
 let refTab = 'fates';
 let query = '';
 let editing = false;
-let R = indexRules(rulesStore.rows);
+let R = gameRules(client);
 
 // GM tab rows as editable entries (kinds lower-cased; unknown kinds kept as they are).
 const toEntries = rows => rows.filter(r => String(r[0]).trim() && String(r[1]).trim())
@@ -52,7 +51,10 @@ gmStore.on(e => {
   base = toRows(ne);
   if (tab === 'npcs' || tab === 'notes') render();
 });
-rulesStore.on(() => { R = indexRules(rulesStore.rows); if (tab === 'ref' || tab === 'npcs') render(); });
+for (const t of RULE_TABS) client.tab(t).on(() => { R = gameRules(client); if (tab !== 'notes') render(); });
+// NPC sizes and clocks, from the Rules tab: choice | npc | Mook | | size=1, choice | clock | Clock | | size=6.
+const npcSizes = () => R.by('choice', 'npc').map(c => [c.name, sum(c.meta.size)]);
+const harmName = () => systemOf(R, 'npc').name('harm') || systemOf(R, characterTypes(R)[0]).name('harm');
 
 const characters = () => client.list.filter(t => t.kind === 'character').map(t => t.name);
 const harmOf = name => entries.find(e => e.kind === 'track' && e.name.toLowerCase() === name.toLowerCase());
@@ -83,18 +85,18 @@ function npcHTML() {
           <input class="in st" data-f="name" data-i="${i}" value="${esc(e.name)}" aria-label="Name">
           <button class="mini del" data-act="rm" data-i="${i}" aria-label="Delete">×</button></div>
         <input class="in note" data-f="value" data-i="${i}" value="${esc(e.value)}" placeholder="Tags, comma-separated" aria-label="Tags">
-        <div class="cc-row"><span class="lbl">Harm</span><span class="pips harm">${pipsHTML(e.name, harm)}</span>
+        <div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm)}</span>
           <span class="pm"><button class="mini" data-act="harm-" data-name="${esc(e.name)}" aria-label="Less">−</button><button class="mini" data-act="harm+" data-name="${esc(e.name)}" aria-label="More">+</button></span></div>
         <textarea class="in rtext" data-f="notes" data-i="${i}" aria-label="Notes">${escTxt(e.notes)}</textarea></section>`;
     }
     return `<section class="card"><div class="shead"><h2>${escTxt(e.name)}</h2></div>
       ${e.value ? `<div class="tags">${tagChips(e.value)}</div>` : ''}
-      ${harm.length ? `<div class="cc-row"><span class="lbl">Harm</span><span class="pips harm">${pipsHTML(e.name, harm)}</span></div>` : ''}
+      ${harm.length ? `<div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm)}</span></div>` : ''}
       ${e.notes ? `<div class="rich">${md(e.notes)}</div>` : ''}</section>`;
   }).join('');
   return `<div class="mtools"><span class="grow"></span>${editToggle()}</div>
     <div class="cols">${cards || '<div class="empty">No NPCs yet.</div>'}</div>
-    <div class="prow npcadd"><span class="lbl">Add</span>${NPC_SIZES.map(([l, n]) => `<button class="pbtn" data-act="add-npc" data-harm="${n}">${l}</button>`).join('')}</div>`;
+    <div class="prow npcadd"><span class="lbl">Add</span>${(npcSizes().length ? npcSizes() : [['NPC', 0]]).map(([l, n]) => `<button class="pbtn" data-act="add-npc" data-harm="${n}">${escTxt(l)}</button>`).join('')}</div>`;
 }
 
 function notesHTML() {
@@ -176,13 +178,13 @@ main.addEventListener('click', e => {
   if (act === 'add-npc') {
     const name = unique('npc', 'New NPC');
     entries.push({ kind: 'npc', name, value: '', notes: '' });
-    setHarm(name, p => { p.push(...Array(+b.dataset.harm).fill(0)); }); // harm tally by NPC size
+    setHarm(name, p => { p.push(...Array(+b.dataset.harm).fill(0)); }); // harm tally by NPC size (choice rows)
     editing = true;
     changed(); render();
   }
   if (act === 'add-note') {
     const kind = b.dataset.kind;
-    entries.push({ kind, name: unique(kind, kind === 'clock' ? 'New clock' : kind === 'secret' ? 'New secret' : 'New note'), value: kind === 'clock' ? '○○○○○○' : '', notes: '' });
+    entries.push({ kind, name: unique(kind, kind === 'clock' ? 'New clock' : kind === 'secret' ? 'New secret' : 'New note'), value: kind === 'clock' ? circles(sum(R.by('choice', 'clock')[0]?.meta.size)) : '', notes: '' });
     changed(); render();
   }
   if (act === 'harm+' || act === 'harm-') { setHarm(b.dataset.name, p => (act === 'harm+' ? p.push(0) : p.pop())); changed(); render(); }
@@ -240,6 +242,6 @@ client.on(e => {
 render();
 client.watch('GM', 'Ship', ...characters());
 for (const n of ['Ship', ...characters()]) client.tab(n).on(() => { if (tab === 'crew') render(); });
-client.read(['Rules', ...client.watched]).catch(() => render());
+client.read([...RULE_TABS, ...client.watched]).catch(() => render());
 client.startPolling();
 

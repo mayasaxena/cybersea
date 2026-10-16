@@ -81,8 +81,6 @@ export function parseSheet(rows) {
     }
   }
   st.log.sort((a, b) => a.at - b.at);
-  // Bonds show in a 'Bonds' section card; add one if the tab has bonds but no such row yet.
-  if (st.bonds.length && !st.sections.some(s => s.title.toLowerCase() === 'bonds')) st.sections.push({ tab: 'sheet', title: 'Bonds', text: '', note: '' });
   return st;
 }
 
