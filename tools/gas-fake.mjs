@@ -48,6 +48,28 @@ function cellImage(image) {
   };
 }
 
+// A protected sheet or range. Editors are just names; the owner is "owner" and can't be removed.
+class Protection {
+  constructor(sheet, type, range) {
+    Object.assign(this, { sheet, type, range, description: '', warningOnly: false, editors: ['owner', 'me'], domainEdit: true, unprotected: [] });
+    (sheet.protections ||= []).push(this);
+  }
+  getRange() { return this.range || this.sheet.getDataRange(); }
+  getDescription() { return this.description; }
+  setDescription(d) { this.description = d; return this; }
+  isWarningOnly() { return this.warningOnly; }
+  setWarningOnly(w) { this.warningOnly = !!w; return this; }
+  getEditors() { return this.editors.slice(); }
+  removeEditors(es) { this.editors = this.editors.filter(e => e === 'owner' || !es.includes(e)); return this; }
+  canDomainEdit() { return this.domainEdit; }
+  setDomainEdit(d) { this.domainEdit = !!d; return this; }
+  getUnprotectedRanges() { return this.unprotected.slice(); }
+  setUnprotectedRanges(rs) { this.unprotected = rs.slice(); return this; }
+  remove() { this.sheet.protections = this.sheet.protections.filter(p => p !== this); }
+}
+
+const colName = c => (c > 26 ? colName(Math.floor((c - 1) / 26)) : '') + String.fromCharCode(65 + ((c - 1) % 26));
+
 class Range {
   constructor(sheet, row, col, nr, nc) {
     for (const [n, v] of [['row', row], ['column', col], ['rows', nr], ['columns', nc]]) {
@@ -91,6 +113,11 @@ class Range {
   }
   setNumberFormat(fmt) { this.cells(c => { c.fmt = fmt; }); return this; }
   setFontWeight() { return this; }
+  getA1Notation() {
+    const a = `${colName(this.col)}${this.row}`;
+    return this.nr === 1 && this.nc === 1 ? a : `${a}:${colName(this.col + this.nc - 1)}${this.row + this.nr - 1}`;
+  }
+  protect() { return new Protection(this.sheet, 'RANGE', this); }
 }
 
 class Sheet {
@@ -117,7 +144,17 @@ class Sheet {
     for (const row of this.grid) row.forEach((c, i) => { if (c.formula || c.v !== '') last = Math.max(last, i + 1); });
     return last;
   }
-  getRange(row, col, nr = 1, nc = 1) { return new Range(this, row, col, nr, nc); }
+  getRange(row, col, nr = 1, nc = 1) {
+    if (typeof row === 'string') {
+      const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(row);
+      if (!m) throw new Error(`fake: unsupported A1 notation ${row}`);
+      const num = l => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+      const [c1, r1] = [num(m[1]), Number(m[2])];
+      const [c2, r2] = m[3] ? [num(m[3]), Number(m[4])] : [c1, r1];
+      return new Range(this, r1, c1, r2 - r1 + 1, c2 - c1 + 1);
+    }
+    return new Range(this, row, col, nr, nc);
+  }
   getDataRange() { return this.getRange(1, 1, Math.max(this.getLastRow(), 1), Math.max(this.getLastColumn(), 1)); }
   insertColumnsAfter(c, n) { if (c !== this.maxCols) throw new Error('fake: only appends columns'); this.maxCols += n; return this; }
   hideColumns(c, n = 1) { for (let i = 0; i < n; i++) this.hidden.add(c + i); return this; }
@@ -125,6 +162,29 @@ class Sheet {
   insertRowAfter(r) { this.cell(r, 1); this.grid.splice(r, 0, []); this.ss.edits++; return this; }
   deleteRow(r) { if (r <= this.grid.length) this.grid.splice(r - 1, 1); this.ss.edits++; return this; }
   setFrozenRows(n) { this.frozen = n; return this; }
+  setName(n) {
+    if (this.ss.sheets.some(s => s !== this && s.name.toLowerCase() === String(n).toLowerCase())) {
+      throw new Error(`A sheet with the name "${n}" already exists. Please enter another name.`);
+    }
+    this.name = String(n);
+    return this;
+  }
+  // Like Sheets: a copy of the cells, named "Copy of …", at the end. Protections aren't copied.
+  copyTo(ss) {
+    const sh = new Sheet(ss, ss.freeName(`Copy of ${this.name}`));
+    sh.grid = this.grid.map(row => row.map(c => Object.assign(new Cell(), c)));
+    Object.assign(sh, { frozen: this.frozen, maxCols: this.maxCols, hidden: new Set(this.hidden) });
+    ss.sheets.push(sh);
+    return sh;
+  }
+  isSheetHidden() { return !!this.tabHidden; }
+  hideSheet() {
+    if (this.ss.sheets.every(s => s === this || s.tabHidden)) throw new Error("You can't hide all the sheets in a document.");
+    this.tabHidden = true;
+    return this;
+  }
+  getProtections(type) { return (this.protections || []).filter(p => p.type === type); }
+  protect() { return this.getProtections('SHEET')[0] || new Protection(this, 'SHEET'); }
 }
 
 class Spreadsheet {
@@ -140,7 +200,22 @@ class Spreadsheet {
     this.sheets.push(sh);
     return sh;
   }
-  deleteSheet(sh) { this.sheets = this.sheets.filter(s => s !== sh); }
+  deleteSheet(sh) {
+    if (this.sheets.length === 1) throw new Error("You can't remove all the sheets in a document.");
+    this.sheets = this.sheets.filter(s => s !== sh);
+  }
+  freeName(base) {
+    let n = base;
+    for (let i = 2; this.getSheetByName(n); i++) n = `${base} ${i}`;
+    return n;
+  }
+  setActiveSheet(sh) { this.active = sh; return sh; }
+  getActiveSheet() { return this.active || this.sheets[0]; }
+  moveActiveSheet(pos) {
+    const sh = this.getActiveSheet();
+    this.sheets = this.sheets.filter(s => s !== sh);
+    this.sheets.splice(pos - 1, 0, sh);
+  }
 }
 
 // Build the fake services. `tabs` is {name: [[...header], [...row], ...]} (rows as typed into the
@@ -156,6 +231,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     getProperty: k => (k in s ? s[k] : null),
     setProperty: (k, v) => { s[k] = String(v); },
     getProperties: () => ({ ...s }),
+    deleteProperty: k => { delete s[k]; },
   });
   let locked = false;
 
@@ -166,7 +242,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     setProps(p) { Object.assign(store, p); },
     clearCache() { cache.clear(); },
     services: {
-      SpreadsheetApp: { getActiveSpreadsheet: () => ss, ValueType: { IMAGE: 'IMAGE' } },
+      SpreadsheetApp: { getActiveSpreadsheet: () => ss, ValueType: { IMAGE: 'IMAGE' }, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' } },
       UrlFetchApp: {
         fetch: url => {
           const img = images.get(url);
@@ -201,6 +277,8 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
         Charset: { UTF_8: 'utf8' },
         computeDigest: (alg, str) => [...createHash(alg).update(String(str), 'utf8').digest()].map(b => (b > 127 ? b - 256 : b)),
         base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
+        base64Decode: str => [...Buffer.from(String(str), 'base64')].map(b => (b > 127 ? b - 256 : b)),
+        newBlob: (bytes, type, name) => ({ bytes, type, name, getBytes: () => bytes, getContentType: () => type, getName: () => name }),
       },
     },
   };
@@ -226,7 +304,8 @@ function clock(now) {
 }
 
 // Run apps-script/Code.gs against a fake. Returns {doGet, doPost, call(body) -> parsed JSON,
-// onEdit(e)} (onEdit as Sheets runs it after an edit by hand; a no-op for scripts without one).
+// onEdit(e), ctx} (onEdit as Sheets runs it after an edit by hand; a no-op for scripts without one;
+// ctx is the script's globals, to load the project's other files into, see loadAlso).
 // `transform` edits the source first (tests use it to stand in for an older deployment).
 export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.meta.url), transform = s => s) {
   const ctx = vm.createContext({ ...gas.services, console, Date: clock(gas.now) });
@@ -237,5 +316,14 @@ export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.
     doPostRaw: contents => parse(ctx.doPost({ postData: { contents, type: 'text/plain' } })),
     call: body => parse(ctx.doPost({ postData: { contents: JSON.stringify(body), type: 'text/plain' } })),
     onEdit: e => { if (typeof ctx.onEdit === 'function') ctx.onEdit(e); },
+    ctx,
   };
+}
+
+// Load another file of the Apps Script project (they share one global scope) into a loaded
+// script's ctx, e.g. loadAlso(api, 'Import.gs').
+export function loadAlso(api, file) {
+  const path = new URL(`../apps-script/${file}`, import.meta.url);
+  vm.runInContext(readFileSync(path, 'utf8'), api.ctx, { filename: file });
+  return api.ctx;
 }

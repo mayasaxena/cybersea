@@ -34,8 +34,11 @@ also add `CREW_KEY` with the players' passphrase.
 4. Click **Deploy**, then **Authorize access** and pick your Google account.
    - Google will warn that it "hasn't verified this app". It's your own script, so click
      **Advanced → Go to (project name)** and **Allow**.
-   - It asks for access to "the spreadsheet it's attached to", and to "connect to an external
-     service", which it uses to read the pictures in the Map tab (see [The Map tab](#the-map-tab)).
+   - It asks to see and edit your spreadsheets, to see and edit the Drive files it creates, to
+     show menus and dialogs in Sheets, and to "connect to an external service". It uses those
+     for the **Cybersea** menu's import (see [Replacing the sheet with a fresh xlsx](#replacing-the-sheet-with-a-fresh-xlsx))
+     and to read the pictures in the Map tab (see [The Map tab](#the-map-tab)). It never opens a
+     spreadsheet other than this one and the temporary copy it makes while importing.
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -140,10 +143,32 @@ template, or, without `--rules`, makes a workbook of just the theme's rows to pa
 existing game. A theme's change to a book row this workbook doesn't have (a kit's Override text, say)
 goes in an `_Overrides` tab, to copy into that row by hand.
 
+## Replacing the sheet with a fresh xlsx
+
+The spreadsheet has a **Cybersea** menu (it appears a few seconds after the sheet opens). Its
+**Replace with an xlsx…** picks an `.xlsx` file from your computer, such as a freshly built
+workbook, and replaces every tab with that file's tabs, in its order.
+
+- The spreadsheet, its script, the GM passphrase and the deployment stay as they are, so the
+  site's URL and everyone's invite links keep working.
+- Everything on the old tabs goes, including pictures placed in cells. **File → Version
+  history** brings the old tabs back if you need them.
+- The file needs a **Rules** tab; anything else is turned down without changing the sheet.
+- Hidden tabs and data validation in the file are kept, and so are protected sheets and ranges
+  when Google's xlsx conversion brings them over. Protected
+  ranges are editable only by the spreadsheet's owner, unless they're set to only warn.
+- The first time you use it, Google asks you to authorize the script.
+
+Behind the scenes it turns the file into a temporary Google Sheet in your Drive, copies its tabs
+in and deletes it.
+
 ## Updating the script later
 
-When [`apps-script/Code.gs`](apps-script/Code.gs) changes in this repository:
-1. Paste the new version over `Code.gs` in the game's Apps Script editor and save.
+When a file in [`apps-script/`](apps-script/) changes in this repository:
+1. Paste the new version over the file of the same name in the game's Apps Script editor and
+   save (**+ → Script** adds a missing `.gs` file, such as `Import.gs`). To see
+   `appsscript.json`, turn on **Project Settings → Show "appsscript.json" manifest file in
+   editor**.
 2. Open **Deploy → Manage deployments**, click the pencil, set **Version: New version**, and
    click **Deploy**.
 
@@ -153,7 +178,7 @@ everyone would need a new invite link.
 The site keeps working with an older script, without what came later; `diag.html` says when
 there's a newer one.
 
-Whoever owns the template should paste the new `Code.gs` into the template's script too, so new
+Whoever owns the template should paste the new files into the template's script too, so new
 games start with the current version.
 
 ## Handing the game to someone else (e.g. the GM)
