@@ -114,6 +114,7 @@ h2{font:700 13px/1.2 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transfo
 .additem .in{flex:1;min-width:0}
 .item .ibody{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px}
 .item .inote{flex-basis:100%;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .ibody .iname{flex:0 1 auto}
 .item.out .iname{color:var(--muted);text-decoration:line-through}
 .item.edit{display:grid;gap:4px;padding-bottom:6px}
 .item .irow{display:flex;align-items:center;gap:8px}
