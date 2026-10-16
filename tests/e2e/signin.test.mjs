@@ -40,6 +40,8 @@ test('signing in shows at once; the GM passphrase shows Checking… until the sh
   await p.waitForSelector('main [data-act="edit"]', { timeout: LATENCY / 2 });
 
   await p.click('[data-w="key"]');
+  const field = await p.$eval('form[data-keyform] input', i => [i.type, i.autocomplete, i.hasAttribute('data-1p-ignore')]);
+  assert.deepEqual(field, ['password', 'off', true], 'masked, but not offered to password managers as a login');
   await p.fill('form[data-keyform] input', KEYS.GM_KEY);
   await p.click('form[data-keyform] button');
   assert.equal(await who(p), 'Checking…');

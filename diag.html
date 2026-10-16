@@ -21,7 +21,7 @@
       <p class="note">After deploying the script (see SETUP.md), paste its web app URL and the GM passphrase. This checks that the site can reach it and that values come back unchanged.</p>
       <form id="diag" class="setup">
         <label class="field"><span class="lbl">Web app URL</span><input class="in" name="api" required placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-        <label class="field"><span class="lbl">Passphrase</span><input class="in" name="key" type="password" required autocomplete="off"></label>
+        <label class="field"><span class="lbl">Passphrase</span><input class="in" name="key" type="password" required autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></label>
         <div class="prow"><span class="grow"></span><button class="pbtn primary">Run checks</button></div>
       </form>
       <div id="out" class="diag"></div>
