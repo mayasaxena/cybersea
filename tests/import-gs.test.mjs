@@ -171,7 +171,6 @@ test('adds the Cybersea menu when the spreadsheet opens', () => {
   });
   ctx.onOpen();
   assert.equal(added, true);
-  assert.deepEqual(items, [['Replace with an xlsx…', 'showReplaceDialog'], ['Update the script', 'updateScript']]);
-  loadAlso({ ctx }, 'Update.gs');
-  for (const [, fn] of items) assert.equal(typeof ctx[fn], 'function');
+  assert.deepEqual(items, [['Replace with an xlsx…', 'showReplaceDialog']]);
+  assert.equal(typeof ctx[items[0][1]], 'function');
 });

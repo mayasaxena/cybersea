@@ -1,8 +1,6 @@
 /**
- * The spreadsheet's Cybersea menu. Update the script is in Update.gs.
- *
- * Replace with an xlsx… swaps every tab for the tabs of an .xlsx file (a fresh workbook from
- * tools/xlsx/build.py, say), picked from the computer.
+ * The spreadsheet's Cybersea menu: Replace with an xlsx… swaps every tab for the tabs of an .xlsx
+ * file (a fresh workbook from tools/xlsx/build.py, say), picked from the computer.
  *
  * The spreadsheet itself stays: its name, its script, the script's properties and the web app
  * deployment, so the site's URL and invite links keep working. Everything on the tabs is
@@ -15,8 +13,7 @@
  * editable). Anything else is left out and listed in the result.
  *
  * appsscript.json lists the scopes itself (as Code.gs's @OnlyCurrentDoc would): this spreadsheet
- * only, script.container.ui (the menu and dialog), script.external_request (Code.gs's pictures,
- * and Update.gs fetching the new files), and script.projects and script.deployments (Update.gs).
+ * only, script.container.ui (the menu and dialog) and script.external_request (Code.gs's pictures).
  */
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -26,7 +23,6 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Cybersea')
     .addItem('Replace with an xlsx…', 'showReplaceDialog')
-    .addItem('Update the script', 'updateScript')
     .addToUi();
 }
 

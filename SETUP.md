@@ -36,10 +36,7 @@ also add `CREW_KEY` with the players' passphrase.
      **Advanced → Go to (project name)** and **Allow**.
    - It asks for access to "the spreadsheet it's attached to" (only this one), to show menus
      and dialogs in it, and to "connect to an external service", which it uses to read the
-     pictures in the Map tab (see [The Map tab](#the-map-tab)) and to fetch new script files.
-     It also asks to see and update your Apps Script projects and deployments: Google can't
-     narrow that one to this script, and it's only used by the menu's
-     [Update the script](#updating-the-script-later), on this script.
+     pictures in the Map tab (see [The Map tab](#the-map-tab)).
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -166,26 +163,16 @@ The script reads the file itself, so it needs no access to anything but this spr
 
 ## Updating the script later
 
-When a file in [`apps-script/`](apps-script/) changes in this repository, choose **Cybersea →
-Update the script** in the spreadsheet. It lists the files that changed, and when you click
-**Yes** it copies them over the script's files of the same name (your own extra files stay),
-saves a new version and points the web app deployment at it. The URL stays the same.
-
-- The first time, turn on the **Apps Script API** at
-  [script.google.com/home/usersettings](https://script.google.com/home/usersettings), and add
-  `Update.gs` and the new `appsscript.json` by hand (below), since the menu isn't there yet.
-- If the new version needs new permissions, it says so: choose **Update the script** again and
-  approve them, or the site can't reach the sheet until you do.
-- Files come from `mayasaxena/cybersea@main`. A script property `SCRIPT_SOURCE` (like
-  `someone/fork@branch`) picks another repository or branch.
-
-To do it by hand:
+When a file in [`apps-script/`](apps-script/) changes in this repository:
 1. Paste the new version over the file of the same name in the game's Apps Script editor and
    save (**+ → Script** adds a missing `.gs` file, such as `Import.gs`). To see
    `appsscript.json`, turn on **Project Settings → Show "appsscript.json" manifest file in
    editor**.
 2. Open **Deploy → Manage deployments**, click the pencil, set **Version: New version**, and
    click **Deploy**.
+3. If `appsscript.json` changed, Google doesn't ask for the new permissions when you deploy, and
+   the site can't reach the sheet until you approve them: pick **onOpen** in the editor's
+   function list, click **Run** and allow it.
 
 Editing the deployment keeps the same URL. Creating a *new* deployment gives a new URL, and
 everyone would need a new invite link.
