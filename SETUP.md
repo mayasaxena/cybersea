@@ -126,7 +126,12 @@ The **Map** page, open to everyone, shows the **Map** tab. Its columns (found by
   button on each place (only the GM sees it), which writes `on` here; or type it. Every place
   starts hidden. The script never sends the crew a hidden place, its levels or its pictures.
 
-Everything else on the tab is edited in the spreadsheet. The Map tab needs script version 5.
+Everything else on the tab is edited in the spreadsheet.
+
+The **Lore** tab can have an **Image** column too, after Notes: a picture for each entry, added
+the same way. Players edit lore on the site, but pictures are added in the spreadsheet.
+
+The Map tab and pictures need script version 5.
 Deploying it asks you to authorize again, for "connect to an external service": that's how the
 script reads a picture out of its cell.
 

@@ -212,6 +212,13 @@ test("map page: from the Map tab; crew see the region's map and only the places 
   assert.ok(await until(async () => !(await p.$('.loc:has-text("Scrap Town")'))), 'the crew page drops it');
 });
 
+test('lore page: a picture placed in the Lore tab\'s Image cell shows with its entry', async () => {
+  const p = await h.page();
+  await join(p, g1, 'lore.html');
+  await p.waitForSelector('.card:has-text("Gull Harbor") img');
+  assert.ok(await until(() => p.$eval('.card:has-text("Gull Harbor") img', i => i.complete && i.naturalWidth === 32)));
+});
+
 test('map page: with no Map tab, the GM is told to add one', async () => {
   const g = await h.page();
   await join(g, g2, 'map.html', KEYS.GM_KEY);

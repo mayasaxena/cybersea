@@ -47,7 +47,8 @@ README = [
     '    them instead of the book’s and keeps the book’s under "Rapscallion original". Override meta adds to Meta; "hide" there',
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
-    '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',
+    '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
+    '    (placed in the cell, or =IMAGE("https://…")).',
     '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
     '  Map: the world (Region | Location | Level | Image | Text | GM notes | Shown). A row with no Location is a region’s map;',
     '    one with a Location and no Level is a place; one with both is a floor of that place, in order (no Level rows: one picture).',
@@ -148,7 +149,7 @@ def main():
 
     text_sheet(wb.create_sheet('Rules'), RULES_HEADER, rules_rows, [12, 16, 26, 90, 28, 6, 26, 90, 28])
     text_sheet(wb.create_sheet('GM'), HEADER, theme.get('gm', []), [10, 26, 60, 60])
-    text_sheet(wb.create_sheet('Lore'), HEADER, theme.get('lore', []), [14, 26, 70, 16])
+    text_sheet(wb.create_sheet('Lore'), HEADER + ['Image'], theme.get('lore', []), [14, 26, 70, 16, 40], free=('Image',))
     maps = wb.create_sheet('Map')
     text_sheet(maps, MAP_HEADER, theme.get('map', []), [18, 26, 12, 40, 60, 40, 8], free=('Image',))
     shown = DataValidation(type='list', formula1='"on"', allow_blank=True, showErrorMessage=True,

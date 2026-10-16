@@ -144,9 +144,12 @@ function table_(sh, kind, role) {
   const width = rules ? RULES_HEADER.length : HEADER.length;
   const vc = rules ? 0 : verColIn_(grid[0]);
   const oc = rules ? overrideCols_(grid[0]) : [];
+  const ic = kind === 'lore' ? grid[0].findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image') : -1;
+  const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1) : null;
   const rows = [];
   const vers = [];
-  grid.slice(1).forEach(line => {
+  const imgs = [];
+  grid.slice(1).forEach((line, n) => {
     const r = line.slice(0, width);
     while (r.length < width) r.push('');
     if (oc.some(c => c >= 0)) oc.forEach(c => r.push(c >= 0 && line[c] != null ? line[c] : ''));
@@ -154,8 +157,12 @@ function table_(sh, kind, role) {
     if (rules && role !== 'gm' && String(r[5]).trim().toLowerCase() === 'gm') return;
     rows.push(r);
     if (!rules) vers.push(version_(vc ? line[vc - 1] : '', r));
+    if (tokens) imgs.push(tokens[n]);
   });
-  return rules ? { d: digest_(rows), rows } : { d: digest_([rows, vers]), rows, vers };
+  if (rules) return { d: digest_(rows), rows };
+  // Lore's Image column: imgs[i] is rows[i]'s picture, sent beside the rows so that rows stay
+  // Kind|Name|Value|Notes for the site to edit (see imageTokens_).
+  return tokens && imgs.some(Boolean) ? { d: digest_([rows, vers, imgs]), rows, vers, imgs } : { d: digest_([rows, vers]), rows, vers };
 }
 
 // Where the Rules tab's override columns are (-1 for one it doesn't have).
@@ -477,7 +484,7 @@ function patch_(role, req) {
   if (buried) saveGone_(sh, gone);
   const at = Date.now();
   const t = table_(sh, kind, role);
-  return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, skipped };
+  return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, skipped };
 }
 
 /* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; a GM tab needs the GM key) */
@@ -530,19 +537,12 @@ const isOn_ = v => /^(on|yes|y|x|true|●|1)$/i.test(String(v || '').trim());
 function mapRows_(sh, role) {
   const grid = sh.getDataRange().getDisplayValues();
   const cols = mapCols_(grid[0]);
-  const ic = cols[3];
-  const n = grid.length - 1;
-  const imgs = ic >= 0 && n > 0 ? sh.getRange(2, ic + 1, n, 1) : null;
-  const vals = imgs ? imgs.getValues() : [];
-  const forms = imgs ? imgs.getFormulas() : [];
+  const tokens = cols[3] >= 0 ? imageTokens_(sh, cols[3], grid.length - 1) : null;
   const out = [];
   const shown = {};
   grid.slice(1).forEach((line, i) => {
     const cells = cols.map(c => (c >= 0 && line[c] != null ? String(line[c]) : ''));
-    if (imgs) {
-      const m = String(forms[i][0] || '').match(/^=\s*IMAGE\s*\(\s*"(https:\/\/[^"\s]+)"/i);
-      cells[3] = isCellImage_(vals[i][0]) ? 'row:' + (i + 2) : m ? m[1] : '';
-    }
+    if (tokens) cells[3] = tokens[i];
     if (!cells.join('').trim()) return;
     const loc = cells[1].trim().toLowerCase();
     cells[6] = isOn_(cells[6]) ? 'on' : '';
@@ -575,25 +575,51 @@ function show_(req) {
   return { ok: true, tab: sh.getName(), at: Date.now(), d: t.d, rows: t.rows };
 }
 
+/*
+ * What n rows (from row 2) have in an Image column (0-based col): "row:<the sheet's row>" for a
+ * picture placed in the cell (op "image" sends its bytes; its own URL is short-lived), the
+ * address of an =IMAGE("https://…") formula, or ''.
+ */
+function imageTokens_(sh, col, n) {
+  if (n < 1) return [];
+  const range = sh.getRange(2, col + 1, n, 1);
+  const vals = range.getValues();
+  const forms = range.getFormulas();
+  return vals.map((v, i) => {
+    if (isCellImage_(v[0])) return 'row:' + (i + 2);
+    const m = String(forms[i][0] || '').match(/^=\s*IMAGE\s*\(\s*"(https:\/\/[^"\s]+)"/i);
+    return m ? m[1] : '';
+  });
+}
+
 function isCellImage_(v) {
   return !!v && typeof v === 'object' && typeof v.getContentUrl === 'function';
 }
 
-/* image {row} -> {type, data (base64)}: the picture placed in that Map tab row's Image cell, if the caller can see the row */
+/* image {tab: 'Map' (the default) or 'Lore', row} -> {type, data (base64)}: the picture placed in that row's Image cell, if the caller can see the row */
 function image_(role, req) {
-  const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Map');
+  const name = String(req.tab || 'Map').trim().toLowerCase() === 'lore' ? 'Lore' : 'Map';
+  const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), name);
   const row = Number(req.row);
-  const seen = sh ? mapRows_(sh, role).find(r => r.n === row) : null;
-  if (!seen || seen.cells[3] !== 'row:' + row) return { ok: false, code: 'missing', error: 'No picture there.' };
-  const col = mapCols_(sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0])[3];
-  const v = sh.getRange(row, col + 1).getValue();
+  if (!sh || !(row >= 2 && row <= sh.getLastRow() && Math.floor(row) === row)) return { ok: false, code: 'missing', error: 'No picture there.' };
+  const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0];
+  let col;
+  if (name === 'Map') {
+    const seen = mapRows_(sh, role).find(r => r.n === row);
+    if (!seen || seen.cells[3] !== 'row:' + row) return { ok: false, code: 'missing', error: 'No picture there.' };
+    col = mapCols_(header)[3];
+  } else {
+    col = header.findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
+  }
+  const v = col >= 0 ? sh.getRange(row, col + 1).getValue() : null;
+  if (!isCellImage_(v)) return { ok: false, code: 'missing', error: 'No picture there.' };
   let res;
   try {
     res = UrlFetchApp.fetch(v.getContentUrl(), { muteHttpExceptions: true });
   } catch (err) {
-    return { ok: false, error: 'Couldn\'t read the picture in row ' + row + ' of the Map tab.' };
+    return { ok: false, error: 'Couldn\'t read the picture in row ' + row + ' of the ' + name + ' tab.' };
   }
-  if (res.getResponseCode() !== 200) return { ok: false, error: 'Couldn\'t read the picture in row ' + row + ' of the Map tab (' + res.getResponseCode() + ').' };
+  if (res.getResponseCode() !== 200) return { ok: false, error: 'Couldn\'t read the picture in row ' + row + ' of the ' + name + ' tab (' + res.getResponseCode() + ').' };
   const blob = res.getBlob();
   const bytes = blob.getBytes();
   if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'That picture is too big (over 20 MB).' };

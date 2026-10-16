@@ -102,12 +102,20 @@ export class TabStore extends Emitter {
     return i < 0 ? '' : vers[i] ?? null;
   }
 
-  // A tab from the sheet ({d, rows, vers}), read at `at` (the sheet's clock). Rows read before
+  // A row's picture from the tab's Image column (see pictures.js), or ''.
+  imageOf(kind, name) {
+    const { rows, imgs } = this.server;
+    if (!Array.isArray(imgs)) return '';
+    const i = rows.findIndex(r => rowKey(r[0], r[1]) === rowKey(kind, name));
+    return i < 0 ? '' : imgs[i] || '';
+  }
+
+  // A tab from the sheet ({d, rows, vers, imgs}), read at `at` (the sheet's clock). Rows read before
   // the copy we have (by a read that started before our last patch, say) are older, so they're
   // dropped.
   receive(t, at) {
     if (!(at && this.server.at > at)) {
-      this.server = { d: t.d, rows: t.rows, vers: t.vers, at };
+      this.server = { d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, at };
       ls.set(this.cacheKey, this.server);
     }
     this.loaded = true;

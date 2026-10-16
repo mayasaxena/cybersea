@@ -7,7 +7,8 @@
 // GM notes reach only the GM; the script leaves hidden places out of what the crew get.
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
-import { md, imgSrc } from './markup.js';
+import { md } from './markup.js';
+import { pictureHTML, showPictures } from './pictures.js';
 import { esc, escTxt, pageShell, refreshNav } from './core.js';
 
 const app = document.getElementById('app');
@@ -53,57 +54,8 @@ function world(rows) {
   return regions;
 }
 
-/* ---------- pictures ----------
- * A picture placed in a cell comes as "row:N"; the script sends its bytes (op "image").
- * Fetched once per page: the sheet's row number -> object URL.
- */
-const placed = new Map();
-const loading = new Map();
-
-function imgHTML(item, cls) {
-  const m = String(item.image || '').match(/^row:(\d+)$/);
-  if (m) {
-    const src = placed.get(+m[1]);
-    return `<span class="${cls}"><img data-row="${m[1]}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(item.name)}"></span>`;
-  }
-  const src = imgSrc(item.image);
-  return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(item.name)}" loading="lazy"></a>` : '';
-}
-
-function picture(row) {
-  if (!loading.has(row)) {
-    const why = msg => new Error(/unknown op/i.test(msg || '') ? 'Update the game’s script to show pictures from the Map tab.' : msg || 'Couldn’t load the picture.');
-    loading.set(row, client.request({ op: 'image', row }).catch(err => { throw why(err.message); }).then(r => {
-      if (!r.ok) throw why(r.error);
-      const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: r.type }));
-      placed.set(row, url);
-      return url;
-    }));
-  }
-  return loading.get(row);
-}
-
-function fillPictures() {
-  main.querySelectorAll('img[data-row]:not([src]):not([data-wait])').forEach(img => {
-    img.dataset.wait = '';
-    picture(+img.dataset.row).then(url => {
-      img.src = url;
-      const box = img.parentElement;
-      if (box?.tagName !== 'SPAN') return;
-      const a = document.createElement('a'); // opens the picture full size
-      Object.assign(a, { className: box.className, href: url, target: '_blank', rel: 'noopener' });
-      box.replaceWith(a);
-      a.append(img);
-    }, err => {
-      const note = document.createElement('span');
-      note.className = 'imgfail';
-      note.textContent = `${img.alt}: ${err.message}`;
-      img.replaceWith(note);
-    });
-  });
-}
-new MutationObserver(fillPictures).observe(main, { childList: true, subtree: true });
+const imgHTML = (item, cls) => pictureHTML('Map', item.image, item.name, cls);
+showPictures(main, client);
 
 /* ---------- the page ---------- */
 

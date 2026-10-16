@@ -133,7 +133,7 @@ export const sampleShip = [
 export function gameTabs({ withCharacter = true } = {}) {
   return {
     Rules: [RULES_HEADER, ...rules],
-    Lore: [HEADER, ['place', 'Gull Harbor', 'A rainy port.', 'Sam']],
+    Lore: [[...HEADER, 'Image'], ['place', 'Gull Harbor', 'A rainy port.', 'Sam', pic(IMAGES.level1)]],
     GM: [HEADER, ['npc', 'Captain Vex', 'jumpy, loud', 'Owes the crew money.'], ['secret', 'Twist', 'The map is fake.', '']],
     Ship: [HEADER, ...sampleShip],
     Map: [MAP_HEADER, ...mapRows()],

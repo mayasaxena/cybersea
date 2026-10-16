@@ -546,3 +546,34 @@ test('image: sends a picture placed in a Map cell, only to someone who can see i
   for (const row of [3, 5, 1, 99, 2.5, 'x']) assert.equal(gm(api, { op: 'image', row }).ok, false, `row ${row}`);
   assert.equal(api.call({ op: 'image', row: 2, key: 'wrong' }).code, 'auth');
 });
+
+test('Lore: an Image column after Notes; pictures go beside the rows, which stay Kind|Name|Value|Notes', () => {
+  const pic = { type: 'image/png', bytes: Buffer.from([1, 2, 3, 200]) };
+  const gas = createGas({
+    props: KEYS,
+    tabs: {
+      Lore: [['Kind', 'Name', 'Value', 'Notes', 'Image'],
+        ['Cybersea', 'Welcome', 'Hello.', '', { image: pic }],
+        ['Cybersea', 'Timeline', '- 2000', '', '=IMAGE("https://example.com/t.png")'],
+        ['place', 'Harbor', 'Rainy.', 'Sam', ''],
+      ],
+    },
+  });
+  const api = loadCodeGs(gas);
+  const t = crew(api, { op: 'read', tabs: ['Lore'] }).tabs.Lore;
+  assert.deepEqual(t.rows.map(r => r.length), [4, 4, 4]);
+  assert.deepEqual(t.imgs, ['row:2', 'https://example.com/t.png', '']);
+  const r = crew(api, { op: 'image', tab: 'Lore', row: 2 });
+  assert.deepEqual(Buffer.from(r.data, 'base64'), pic.bytes);
+  assert.equal(crew(api, { op: 'image', tab: 'Lore', row: 3 }).code, 'missing', 'a formula is fetched by the browser itself');
+  // A crew edit keeps the picture with its row.
+  const p = crew(api, { op: 'patch', tab: 'Lore', set: [['Cybersea', 'Welcome', 'Hello again.', '']] });
+  assert.equal(p.ok, true);
+  assert.deepEqual(p.imgs, ['row:2', 'https://example.com/t.png', '']);
+  assert.equal(crew(api, { op: 'image', tab: 'Lore', row: 2 }).ok, true);
+});
+
+test('Lore without an Image column sends no imgs', () => {
+  const { api } = setup();
+  assert.equal(crew(api, { op: 'read', tabs: ['Lore'] }).tabs.Lore.imgs, undefined);
+});
