@@ -78,14 +78,27 @@ export function indexRules(rows = []) {
 }
 
 // Which roll a move asks for: one of these stats, a plain 2d6 ("roll blank"), or 1d6.
+// "+x", "+bonds spent" and the like are 2d6 plus a number the player picks (ask). A note like
+// "take -1 per scar" is a modifier the player counts up before rolling (per); other situational
+// bonuses ("if they're right here, take +1") get a free +/- modifier (adj).
+const ASKED = [
+  [/\brolls? \+\s*bonds? spent\b/i, '+bonds spent', 'Bonds spent'],
+  [/\brolls? \+\s*max(?:imum)? bonds?\b/i, '+max bonds', 'Max bonds'],
+  [/\brolls? \+\s*(?:your )?black marks?\b/i, '+black marks', 'Black marks'],
+  [/\brolls? \+\s*x\b/i, '+X', 'X'],
+];
 export function rollFor(text, stats) {
   const t = plain(text);
-  const m = t.match(/\brolls? \+([A-Za-z]+)/);
+  const per = t.match(/([+\-\u2212]\d+)(?: forward| ongoing)? (?:for each|per|for every) ([a-z][a-z' -]*?)(?=[.,;:)\]^]|$| on | and | you )/i);
+  const extra = per ? { per: `${per[1].replace('\u2212', '-')} per ${per[2].trim()}` }
+    : /\btake [+\-\u2212]\d|\bbonus to the roll\b/i.test(t) ? { adj: 'Modifier' } : {};
+  for (const [re, label, ask] of ASKED) if (re.test(t)) return { label, mod: 0, dice: 2, ask, ...extra };
+  const m = t.match(/\brolls? \+([A-Za-z]+)/i);
   if (m) {
     const s = stats.find(x => x.k.toLowerCase() === m[1].toLowerCase());
-    return s ? { label: s.k, mod: s.v || 0, dice: 2, stat: true } : null;
+    return s ? { label: s.k, mod: s.v || 0, dice: 2, stat: true, ...extra } : null;
   }
-  if (/\broll blank\b/i.test(t)) return { label: '2d6', mod: 0, dice: 2 };
-  if (/\brolls? 1d6\b/i.test(t)) return { label: '1d6', mod: 0, dice: 1 };
+  if (/\broll blank\b/i.test(t)) return { label: '2d6', mod: 0, dice: 2, ...extra };
+  if (/\brolls? 1d6\b/i.test(t)) return { label: '1d6', mod: 0, dice: 1, ...extra };
   return null;
 }

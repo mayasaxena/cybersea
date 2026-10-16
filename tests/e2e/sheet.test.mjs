@@ -138,7 +138,43 @@ test('checklists on playbook moves save per character', async () => {
   // a roll chip shows the stat and modifier
   assert.match(await p.textContent('details[data-id="playbook:SUMMON"] .chip'), /Spitfire \+2/);
   await p.click('details[data-id="playbook:SUMMON"] .chip');
+  // the toast previews the roll; nothing is rolled until Roll is pressed
   assert.match(await p.textContent('#toast'), /SUMMON · Spitfire/);
+  assert.match(await p.textContent('#toast .roll-go'), /Roll 2d6/);
+  assert.equal(await p.$('#toast .tot'), null, 'not rolled yet');
+  assert.deepEqual(await p.$$eval('#toast .die', ds => ds.map(d => d.textContent)), ['?', '?']);
+  await p.click('#toast .roll-go');
+  await p.waitForSelector('#toast.rolling');
+  await p.waitForSelector('#toast .tot');
+  const faces = await p.$$eval('#toast .die', ds => ds.map(d => +d.textContent));
+  assert.ok(faces.every(f => f >= 1 && f <= 6));
+  assert.equal(+(await p.textContent('#toast .tot')), faces[0] + faces[1] + 2);
+  assert.equal(await p.$('#toast .roll-go'), null);
+});
+
+test('rolls that need a number: set it in the preview before rolling', async () => {
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('details[data-id="special:SCARPER"] .chip');
+  assert.match(await p.textContent('#toast .tl'), /SCARPER · \+bonds spent/);
+  await p.click('#toast .ab[data-d="1"]');
+  await p.click('#toast .ab[data-d="1"]');
+  assert.equal(await p.textContent('#toast .av'), '2');
+  assert.equal(await p.textContent('#toast .pm'), '+2');
+  await p.click('#toast .roll-go');
+  await p.waitForSelector('#toast .tot');
+  let faces = await p.$$eval('#toast .die', ds => ds.map(d => +d.textContent));
+  assert.equal(+(await p.textContent('#toast .tot')), faces[0] + faces[1] + 2);
+  assert.equal(await p.$('#toast .adj'), null);
+
+  await p.click('details[data-id="special:CHEAT DEATH"] .chip');
+  assert.match(await p.textContent('#toast .an'), /-1 per scar/);
+  await p.click('#toast .ab[data-d="1"]');
+  assert.equal(await p.textContent('#toast .pm'), '−1');
+  await p.click('#toast .roll-go');
+  await p.waitForSelector('#toast .tot');
+  faces = await p.$$eval('#toast .die', ds => ds.map(d => +d.textContent));
+  assert.equal(+(await p.textContent('#toast .tot')), faces[0] + faces[1] - 1);
 });
 
 test('two people editing different rows keep both changes, live', async () => {
@@ -250,16 +286,32 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   await p.selectOption('[data-pick="1"]', 'heal');
   await p.click('[data-run]');
 
-  await p.click('[data-kind="dt-begin"]');
+  // Begin and Leave Downtime run from their moves on the Moves tab too
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('[data-act="cat"][data-cat="downtime"]');
+  assert.ok(await p.isDisabled('details[data-id="downtime:LEAVE DOWNTIME"] .chip'), 'not in downtime yet');
+  await p.click('details[data-id="downtime:BEGIN DOWNTIME"] .chip');
   await p.check('input[name=where][value=sea]');
   await p.click('[data-run]');
+  assert.ok(await p.isDisabled('details[data-id="downtime:BEGIN DOWNTIME"] .chip'), 'already in downtime');
+  await p.click('[data-act="tab"][data-tab="sheet"]');
   await p.click('.harm .pip[data-j="2"]'); // fresh harm during downtime
+  await p.click('[data-act="tab"][data-tab="log"]');
   await p.click('[data-act="dt-moves"]');
   await p.click('details[data-id="downtime:DICE GAME"] .chip');
+  await p.click('#toast'); // closing the preview doesn't count the move
+  await p.click('[data-act="tab"][data-tab="log"]');
+  assert.match(await p.textContent('.dtbar'), /At sea 0\/1/);
+  await p.click('[data-act="dt-moves"]');
+  await p.click('details[data-id="downtime:DICE GAME"] .chip');
+  await p.click('#toast .roll-go');
+  await p.waitForSelector('#toast .tot');
   await p.click('[data-act="tab"][data-tab="log"]');
   assert.match(await p.textContent('.dtbar'), /At sea 1\/1/);
-  await p.click('[data-kind="dt-leave"]');
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('details[data-id="downtime:LEAVE DOWNTIME"] .chip');
   await p.click('[data-run]');
+  await p.click('[data-act="tab"][data-tab="log"]');
 
   const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.filter(x => x[0] === 'log').length === 4 && r; });
   const logs = rows.filter(x => x[0] === 'log').map(x => `${x[2]}: ${x[3].replace(/\n/g, ' ')}`);
@@ -286,6 +338,20 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   assert.equal(row(after, 'stat', 'Spitfire')[2], '+3');
   assert.equal(row(after, 'track', 'Experience')[2], '○○○○○○○');
   assert.equal(row(after, 'advance', 'trait')[2], '1');
+});
+
+test('moves that spend luck have a button that spends it', async () => {
+  const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
+  await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('[data-act="cat"][data-cat="basic"]');
+  assert.equal(await p.$('details[data-id="basic:POKE AROUND"] [data-act="spend-luck"]'), null, 'no luck button on a plain roll');
+  await p.click('details[data-id="basic:FLIP A COIN"] [data-act="spend-luck"]');
+  assert.match(await p.textContent('#toast'), /Spent 1 luck: FLIP A COIN \(3 left\)/);
+  assert.equal(await track(p, 'luck'), '●●●○○○○○');
+  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Luck')[2] === '●●●○○○○○' && r; });
+  assert.ok(rows, 'saved to the sheet');
 });
 
 test('importing the old one-page sheet replaces the character', async () => {
