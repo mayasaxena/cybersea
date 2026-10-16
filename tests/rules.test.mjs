@@ -53,7 +53,7 @@ test("overrides: the game's wording first, the book's kept as orig", () => {
     ['playbook', 'Brute', 'Brute', 'Big.', 'type=pirate', 'crew', 'Bruiser', '', ''],
     ['kit', 'Brute', 'Kit 1', 'Club, rope', 'traits=1,0,0', 'crew', '', 'Club, data cable', 'traits=0,1,0'],
     ['pmove', 'Brute', 'SMASH', 'roll +BLOOD', 'start', 'crew', 'CRUSH', 'roll +BLOOD hard', ''],
-    ['location', 'places', 'Gull Rock', 'Gulls.', '', 'crew', 'Packet Reef', '', 'img=assets/world/x.jpg'],
+    ['location', 'places', 'Gull Rock', 'Gulls.', '', 'crew', 'Packet Reef', '', 'img=https://example.com/x.jpg'],
     ['location', 'places', 'Old Mill', 'A mill.', '', 'crew', '', '', 'hide'],
     ['move', 'basic', 'POKE', 'roll +VINEGAR', '', 'crew'],
   ]);
@@ -74,11 +74,11 @@ test("overrides: the game's wording first, the book's kept as orig", () => {
   assert.equal(smash.text, 'roll +BLOOD hard');
 });
 
-test('images: site paths and https only', () => {
-  assert.equal(imgSrc('assets/world/vega-server.jpg'), 'assets/world/vega-server.jpg');
+test('image addresses: https only', () => {
   assert.equal(imgSrc('https://example.com/a.png'), 'https://example.com/a.png');
-  for (const bad of ['javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
+  for (const bad of ['assets/world/vega-server.jpg', 'javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
 });
+
 
 test('session end: which moves it touches, and what they mark', () => {
   assert.ok(atSessionEnd('Mark 1-luck when you *end a session* Haunted.'));

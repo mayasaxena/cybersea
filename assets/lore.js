@@ -3,6 +3,7 @@
 import { bootstrap, href } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
+import { pictureHTML, showPictures } from './pictures.js';
 import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML } from './core.js';
 
 const app = document.getElementById('app');
@@ -18,6 +19,7 @@ pageShell(app, client, 'lore');
 const store = client.tab('Lore');
 const main = document.createElement('main');
 app.append(main);
+showPictures(main, client);
 
 let entries = toEntries(store.rows);
 let base = toRows(entries);
@@ -88,7 +90,7 @@ function entryHTML(e, i) {
   if (!editing) {
     return `<section class="card"><div class="shead"><h2>${escTxt(e.name)}</h2></div>
       ${e.notes ? `<div class="note">${escTxt(e.notes)}</div>` : ''}
-      ${e.value ? `<div class="rich">${md(e.value)}</div>` : ''}</section>`;
+      ${e.value ? `<div class="rich">${md(e.value)}</div>` : ''}${pictureHTML('Lore', store.imageOf(e.kind, e.name), e.name, 'rimg')}</section>`;
   }
   return `<section class="card"><div class="shead">
       <input class="in st" data-f="name" data-i="${i}" value="${esc(e.name)}" aria-label="Title">
