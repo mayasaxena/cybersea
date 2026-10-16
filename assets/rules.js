@@ -102,3 +102,33 @@ export function rollFor(text, stats) {
   if (/\brolls? 1d6\b/i.test(t)) return { label: '1d6', mod: 0, dice: 1, ...extra };
   return null;
 }
+
+// Moves and vices that do something when a session starts or ends: "at the start of each
+// session", "when you end a session Haunted", "at session's end". A row's meta can say so
+// outright, when its wording doesn't: session=start, session=end, session=start,end, session=no.
+const SESSION_RE = {
+  // Once-per-session features come back when a session begins.
+  start: /\b(?:start|beginning|begin)s?\s+(?:of\s+)?(?:(?:a|the|each|every|this|your)\s+)?session\b|\bsession(?:[’']s)?\s+(?:start|begin)s?\b|\b(?:once|first\s+time)\b[^.]*?\b(?:per|a|each|every)\s+session\b/i,
+  end: /\b(?:end|close)s?\s+(?:of\s+)?(?:(?:a|the|each|every|this|your)\s+)?session\b|\bsession(?:[’']s)?\s+(?:end|close)s?\b/i,
+};
+export const atSessionStart = text => SESSION_RE.start.test(plain(text));
+export const atSessionEnd = text => SESSION_RE.end.test(plain(text));
+export function atSession(when, text, meta = {}) {
+  if (typeof meta.session === 'string') return meta.session.toLowerCase().split(/[,|]/).map(x => x.trim()).includes(when);
+  return SESSION_RE[when].test(plain(text));
+}
+
+// What a move marks that the sheet keeps count of: "mark 1-luck", "mark experience", or
+// luck equal to what another track has marked ({ luckFrom: 'unrest' }).
+export function gainsFrom(text) {
+  const t = plain(text);
+  const from = t.match(/\bmarks?\s+luck\s+equal\s+to\b[^.]*?\b(\w+)\s+track\b/i);
+  const n = what => {
+    const m = t.match(new RegExp(`\\b(?:mark|gain|take)s?\\s+(?:(\\d+)[-‐‑–\\s]*|an?\\s+|one\\s+)?${what}\\b(?!\\s+equal)`, 'i'));
+    return m ? +(m[1] || 1) : 0;
+  };
+  return from ? { luck: 0, xp: n('(?:experience|xp)'), luckFrom: from[1].toLowerCase() } : { luck: n('luck'), xp: n('(?:experience|xp)') };
+}
+
+// A house rule's luck floor: its meta (luckfloor=1), or "take up to 1 luck" in its text.
+export const luckFloorOf = r => parseInt(r.meta.luckfloor, 10) || parseInt((plain(r.text).match(/\btake\s+up\s+to\s+(\d+)[-\s]*luck\b/i) || [])[1], 10) || 0;

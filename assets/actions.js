@@ -1,13 +1,15 @@
-// Session Begins, Chapter's End, Begin/Leave Downtime and Level Up for a character sheet.
+// Session Begins, Session Ends, Chapter's End, Begin/Leave Downtime and Level Up for a character sheet.
 // The rule text shown in each dialog comes from the Rules tab (procedure rows); the mechanics
 // live here. ctx = {st(), rules(), changed(), render(), editing()}.
 
 import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal, toast } from './core.js';
 import { md, plain } from './markup.js';
 import { logId } from './codec.js';
+import { atSession, gainsFrom, rollFor, luckFloorOf } from './rules.js';
 
 export const ACTIONS = {
   session: 'Session Begins',
+  'session-end': 'Session Ends',
   chapter: 'Chapter’s End',
   'dt-begin': 'Begin Downtime',
   'dt-leave': 'Leave Downtime',
@@ -28,7 +30,7 @@ export function makeActions(ctx) {
   const level = () => parseInt(st().info.level, 10) || 0;
   const xpNeeded = () => level() + 6; // experience equal to the next level + 5
   const statVal = k => (st().stats.find(s => s.k.toLowerCase() === k) || { v: 0 }).v;
-  const luckFloor = () => Math.max(0, ...R().house('session').map(r => parseInt(r.meta.luckfloor, 10) || 0));
+  const luckFloor = () => Math.max(0, ...R().house('session').map(luckFloorOf));
   const luckTarget = () => Math.min(track('luck')?.pips.length || 0, Math.max(luckFloor(), statVal('spitfire')));
   const usedBonds = () => st().bonds.reduce((n, b) => n + b.pips.filter(v => v === 2).length, 0);
   const bondCount = b => b.pips.filter(v => v > 0).length;
@@ -36,6 +38,53 @@ export function makeActions(ctx) {
   const unmarkedMoves = () => (playbook()?.moves || []).filter(m => !st().moves.some(x => x.name.toUpperCase() === m.name.toUpperCase() && x.marked));
   const section = title => st().sections.find(s => s.title.toLowerCase() === title.toLowerCase());
   const moveText = name => (R().moves('downtime').find(m => m.name.toUpperCase() === name) || {}).text || '';
+  // The character's vice, oddity and marked moves that do something when a session starts or ends.
+  function sessionMoves(when) {
+    const pb = playbook();
+    const pbMoves = pb?.moves || [];
+    const mine = name => st().moves.find(x => x.name.toUpperCase() === name.toUpperCase());
+    // The one the sheet names, when the playbook offers a choice.
+    const chosen = (list, title, all) => {
+      const v = (section(title)?.text || '').toLowerCase();
+      const named = list.filter(x => v.includes(x.name.toLowerCase()));
+      return named.length || !all ? named : list;
+    };
+    const vices = chosen(pb?.vices || [], 'vice', true);
+    const oddities = chosen(pb?.oddities || [], 'oddity', false);
+    const moves = [
+      ...pbMoves.filter(m => mine(m.name)?.marked).map(m => ({ name: m.name, text: mine(m.name).text || m.text, meta: m.meta })),
+      ...st().moves.filter(m => m.marked && !pbMoves.some(x => x.name.toUpperCase() === m.name.toUpperCase())),
+    ];
+    return [...vices, ...oddities, ...moves].filter(m => atSession(when, m.text, m.meta)).map(m => ({ name: m.name, text: m.text, gains: gainsFrom(m.text) }));
+  }
+  let sessMoves = [];
+  const marks = name => (track(name)?.pips || []).filter(v => v === 1).length;
+  const sessionList = (when, none) => {
+    sessMoves = sessionMoves(when);
+    if (!sessMoves.length) return none ? `<div class="status">${none}</div>` : '';
+    const what = m => {
+      const r = rollFor(m.text, st().stats);
+      return [m.gains.luck && `+${m.gains.luck} luck`, m.gains.luckFrom && `+${marks(m.gains.luckFrom)} luck`, m.gains.xp && `+${m.gains.xp} experience`,
+        r && `roll ${r.stat ? `${r.label} ${fmt(r.mod)}` : r.label} on the Moves tab`].filter(Boolean).join(', ');
+    };
+    return '<div class="opts">' + sessMoves.map((m, k) =>
+      `<div class="opt endm"><label class="eff"><input type="checkbox" data-eff="sess:${k}">${escTxt(m.name)}` +
+      `${what(m) ? `<span class="cnt">${escTxt(what(m))}</span>` : ''}</label><div class="mbody">${md(m.text)}</div></div>`).join('') + '</div>';
+  };
+  // Tick a listed move: log it, and mark the luck or experience it says to.
+  function runSessionMoves(on, items) {
+    sessMoves.forEach((m, k) => {
+      if (!on(`sess:${k}`)) return;
+      const got = [];
+      const want = m.gains.luckFrom ? marks(m.gains.luckFrom) : m.gains.luck;
+      const luck = want && track('luck') ? markN(track('luck').pips, want) : 0;
+      if (luck) got.push(`+${luck} luck`);
+      let xp = 0;
+      while (xp < m.gains.xp && markXp(m.name)) xp++;
+      if (xp) got.push(`+${xp} experience`);
+      items.push(got.length ? `${m.name}: ${got.join(', ')}` : m.name);
+    });
+  }
 
   function markN(pipsArr, n) {
     let done = 0;
@@ -70,6 +119,8 @@ export function makeActions(ctx) {
   const select = (k, items) => `<select class="in sub" data-sub="${k}">${items.map(([v, t]) => `<option value="${esc(v)}">${escTxt(t)}</option>`).join('')}</select>`;
 
   function ruleFor(kind) {
+    // Session steps are numbered; the first is how a session begins.
+    if (kind === 'session-end') return R().by('procedure', 'session').slice(1).find(r => /\b(END|CLOS)/i.test(r.name) || atSessionEnd(r.text)) || null;
     const map = { session: 'session', chapter: 'chapter', 'dt-begin': 'downtime', advance: 'advance' };
     return map[kind] ? R().procedure(map[kind]) : null;
   }
@@ -79,8 +130,9 @@ export function makeActions(ctx) {
     if (kind === 'session') {
       const have = (track('luck')?.pips || []).filter(v => v === 1).length;
       const t = luckTarget();
-      return eff('luck', `Refresh luck up to ${t} (${have})`, have < t);
+      return eff('luck', `Refresh luck up to ${t} (${have})`, have < t) + sessionList('start', '');
     }
+    if (kind === 'session-end') return sessionList('end', 'Nothing on this sheet happens at the end of a session.');
     if (kind === 'chapter') {
       const pick = n => `<select class="in" data-pick="${n}" aria-label="Choice ${n + 1}"><option value="">—</option>` +
         CHAPTER_CHOICES.map(([k, t]) => `<option value="${k}">${t}</option>`).join('') + '</select>';
@@ -155,6 +207,9 @@ export function makeActions(ctx) {
         const n = need > 0 ? markN(l.pips, need) : 0;
         if (n) items.push(`+${n} luck`);
       }
+      runSessionMoves(on, items);
+    } else if (kind === 'session-end') {
+      runSessionMoves(on, items);
     } else if (kind === 'chapter') {
       if (on('bonds')) {
         let n = 0;
@@ -235,6 +290,7 @@ export function makeActions(ctx) {
     const btn = (kind, label, cls = '', attrs = '') => `<button class="act${cls}" data-act="run" data-kind="${kind}"${attrs}>${label}</button>`;
     let h = readOnly ? '' : '<div class="actions">' +
       btn('session', ACTIONS.session) +
+      btn('session-end', ACTIONS['session-end']) +
       btn('chapter', ACTIONS.chapter) +
       (dt ? btn('dt-leave', ACTIONS['dt-leave'], ' live') : btn('dt-begin', ACTIONS['dt-begin'])) +
       btn('advance', `${ACTIONS.advance}<span class="cnt">${xp}/${need}</span>`, '', xp < need ? ' disabled' : '') +

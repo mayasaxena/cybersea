@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMeta, indexRules, rollFor } from '../assets/rules.js';
+import { atSession, atSessionStart, luckFloorOf, parseMeta, indexRules, rollFor, atSessionEnd, gainsFrom } from '../assets/rules.js';
 import { imgSrc } from '../assets/markup.js';
 
 test('meta: pairs, flags and quoted values', () => {
@@ -78,4 +78,39 @@ test('images: site paths and https only', () => {
   assert.equal(imgSrc('assets/world/vega-server.jpg'), 'assets/world/vega-server.jpg');
   assert.equal(imgSrc('https://example.com/a.png'), 'https://example.com/a.png');
   for (const bad of ['javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
+});
+
+test('session end: which moves it touches, and what they mark', () => {
+  assert.ok(atSessionEnd('Mark 1-luck when you *end a session* Haunted.'));
+  assert.ok(atSessionEnd('At the end of each session, mark experience.'));
+  assert.ok(atSessionEnd('When the session ends, …'));
+  assert.ok(atSessionEnd('at session’s end'));
+  assert.ok(!atSessionEnd('At the start of a session, luck refills.'));
+  assert.ok(!atSessionEnd('When the chapter ends. Session over.'));
+  assert.deepEqual(gainsFrom('Mark **1-luck** when you end a session Haunted.'), { luck: 1, xp: 0 });
+  assert.deepEqual(gainsFrom('At the end of each session, mark experience.'), { luck: 0, xp: 1 });
+  assert.deepEqual(gainsFrom('mark 2-xp'), { luck: 0, xp: 2 });
+  assert.deepEqual(gainsFrom('take 1-harm, pay 1-luck'), { luck: 0, xp: 0 });
+});
+
+test('session start: which moves it touches; meta can say so outright', () => {
+  assert.ok(atSessionStart('At the start of each session, roll +SPITFIRE.'));
+  assert.ok(atSessionStart('When a session begins, …'));
+  assert.ok(atSessionStart('at the beginning of the session'));
+  assert.ok(!atSessionStart('Mark 1-luck when you end a session Haunted.'));
+  const both = 'At the start of each session, roll. Hold 1 until the end of the session.';
+  assert.ok(atSession('start', both) && atSession('end', both), 'a hold that lasts the session shows at both');
+  assert.ok(atSession('start', 'No wording about it.', { session: 'start' }));
+  assert.ok(atSession('end', 'x', { session: 'start,end' }));
+  assert.ok(!atSession('start', 'At the start of a session, …', { session: 'no' }));
+});
+
+test('session start: once-per-session features, luck from a track, a house luck floor', () => {
+  assert.ok(atSessionStart('Once per session, you can call in a favor.'));
+  assert.ok(atSessionStart('The first time you sing during a session, it is free.'));
+  assert.ok(!atSessionStart('Once you sing, everyone listens.'));
+  assert.deepEqual(gainsFrom('At the start of each session, mark luck equal to the tally on your grudge track.'), { luck: 0, xp: 0, luckFrom: 'grudge' });
+  assert.equal(luckFloorOf({ meta: { luckfloor: '2' }, text: '' }), 2);
+  assert.equal(luckFloorOf({ meta: {}, text: 'House rule: when your spitfire is low, take up to 1 luck when you sit down.' }), 1);
+  assert.equal(luckFloorOf({ meta: {}, text: 'Nothing here.' }), 0);
 });

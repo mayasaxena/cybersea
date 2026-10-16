@@ -25,6 +25,7 @@ export const rules = [
   R('move', 'downtime', 'FIX IT UP', 'When you fix something during downtime, roll +VINEGAR.'),
 
   R('procedure', 'session', 'SESSION START', 'At the start of a session, luck refills up to your SPITFIRE.'),
+  R('procedure', 'session', 'SESSION CLOSE', 'When the session closes, look over your moves for anything that happens now.'),
   R('procedure', 'chapter', 'CHAPTER CLOSE', 'When a chapter closes, refresh every bond and pick two.\n\n- One experience.\n- Two luck.\n- Two harm healed.'),
   R('procedure', 'downtime', 'DOWNTIME LIMITS', 'Two downtime moves in port, one at sea.'),
   R('procedure', 'advance', 'LEVELS', 'Fill your tally to level up, then wipe it and pick an advance.'),
@@ -37,7 +38,7 @@ export const rules = [
   R('advance', 'all', 'Gain a new oddity.', '', 'kind=oddity'),
 
   R('playbook', 'Trickster', 'Trickster', 'A sly one with a passenger in their head.', 'type=pirate harm=6 luck=8 pick=0'),
-  R('vice', 'Trickster', 'HAUNTED', 'While Haunted, you do as the passenger says. Endpoint: say no.'),
+  R('vice', 'Trickster', 'HAUNTED', 'While Haunted, you do as the passenger says. Endpoint: say no. At the end of a session, if you are still Haunted, mark experience.'),
   R('oddity', 'Trickster', 'THIRD EYE', 'You can see secrets, at a price.', 'traits=0,-1,0,+2'),
   R('oddity', 'Trickster', 'CARD SHARP', 'You never lose at cards, almost.', 'traits=-2,+1,+1,+1'),
   R('kit', 'Trickster', 'Kit 1', 'Dagger, cloak, tarot deck'),
@@ -47,6 +48,8 @@ export const rules = [
   R('pmove', 'Trickster', 'HAGGLE', 'When you haggle with your passenger, spend a bond and roll +POLISH.', 'start'),
   R('pmove', 'Trickster', 'HEX', 'Your enemy has a run of bad luck.', 'adv'),
   R('pmove', 'Trickster', 'LUCKY BREAK', 'Mark 1-luck when you end a session Haunted.', 'adv'),
+  R('pmove', 'Trickster', 'OMEN', 'At the start of each session, roll +SPITFIRE. On a hit, hold 1 until the end of the session.', 'adv'),
+  R('pmove', 'Trickster', 'BAD PENNY', 'Your passenger turns up when you least want it.', 'adv session=start'),
 
   R('playbook', 'Brute', 'Brute', 'Big and loud.', 'type=pirate harm=8 luck=5 pick=1'),
   R('vice', 'Brute', 'ANGRY', 'While Angry, you hit first. Endpoint: walk away.'),

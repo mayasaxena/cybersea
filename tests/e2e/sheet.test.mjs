@@ -354,6 +354,47 @@ test('moves that spend luck have a button that spends it', async () => {
   assert.ok(rows, 'saved to the sheet');
 });
 
+test('session ends: the vice and marked moves that end-of-session touches', async () => {
+  const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
+  await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter, ['move', 'LUCKY BREAK', '●', '']]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="log"]');
+  await p.click('[data-kind="session-end"]');
+  assert.match(await p.textContent('.panel .rule'), /When the session closes/);
+  const listed = await p.$$eval('.endm .eff', ls => ls.map(l => l.textContent));
+  assert.deepEqual(listed, ['HAUNTED+1 experience', 'LUCKY BREAK+1 luck'], 'not SUMMON or HAGGLE');
+  assert.equal(await p.$$eval('.endm input:checked', x => x.length), 0, 'nothing applied until ticked');
+  await p.check('[data-eff="sess:0"]');
+  await p.check('[data-eff="sess:1"]');
+  await p.fill('.anote', 'Still haunted.');
+  await p.click('[data-run]');
+  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log') && r; });
+  const log = rows.find(x => x[0] === 'log');
+  assert.equal(log[2], 'Session Ends');
+  assert.equal(log[3], '- HAUNTED: +1 experience\n- LUCKY BREAK: +1 luck\n\nStill haunted.');
+  assert.equal(row(rows, 'track', 'Luck')[2], '●●●●●○○○');
+  assert.equal(row(rows, 'track', 'Experience')[2], '●●●○○○');
+  assert.match(row(rows, 'sheet', 'Experience')[2], /- 1 \(HAUNTED\)$/);
+});
+
+test('session begins: marked moves that start a session, and their hold at the end', async () => {
+  const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
+  await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter, ['move', 'OMEN', '●', ''], ['move', 'BAD PENNY', '●', '']]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="log"]');
+  await p.click('[data-kind="session"]');
+  const listed = await p.$$eval('.endm .eff', ls => ls.map(l => l.textContent));
+  assert.deepEqual(listed, ['OMENroll Spitfire +2 on the Moves tab', 'BAD PENNY'], 'not LUCKY BREAK or the vice');
+  await p.check('[data-eff="sess:0"]');
+  await p.click('[data-run]');
+  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log') && r; });
+  assert.match(rows.find(x => x[0] === 'log')[3], /- OMEN$/m);
+  await p.click('[data-kind="session-end"]');
+  const atEnd = await p.$$eval('.endm .eff', ls => ls.map(l => l.textContent));
+  assert.ok(atEnd.includes('OMENroll Spitfire +2 on the Moves tab'), 'its hold ends with the session');
+  assert.ok(!atEnd.includes('BAD PENNY'));
+});
+
 test('importing the old one-page sheet replaces the character', async () => {
   const p = await openSheet();
   const old = {
