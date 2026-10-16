@@ -185,7 +185,7 @@ export function askKey(client, message = '') {
 }
 
 /* ---------- top bar ---------- */
-const PAGES = [['home', 'index.html', 'Crew'], ['ship', 'ship.html', 'Ship'], ['lore', 'lore.html', 'Lore'], ['rules', 'rules.html', 'Rules'], ['gm', 'gm.html', 'GM']];
+const PAGES = [['home', 'index.html', 'Crew'], ['ship', 'ship.html', 'Ship'], ['lore', 'lore.html', 'Lore'], ['map', 'map.html', 'Map'], ['rules', 'rules.html', 'Rules'], ['gm', 'gm.html', 'GM']];
 
 export function navHTML(client, page) {
   const g = client?.game;

@@ -1,5 +1,8 @@
 // The Rules tab: [Kind, Group, Name, Text, Meta, Vis]. Meta is "key=value" pairs or bare flags,
 // e.g. "type=pirate harm=6 luck=8", "traits=0,-1,0,+2", "start", "kind=trait max=3".
+// Rows may also carry [Override name, Override text, Override meta]: the game's own wording (a
+// theme, such as Cybersea's), used instead of the book's, which stays in place as `orig`.
+// Override meta adds to the row's meta, key by key; "hide" there drops the row.
 
 import { plain } from './markup.js';
 
@@ -13,17 +16,31 @@ export function parseMeta(s) {
   return out;
 }
 
-export function indexRules(rows = []) {
-  const recs = rows.map(([kind = '', group = '', name = '', text = '', meta = '', vis = ''], i) => ({
+// Character tabs remember their moves by name, so moves keep the book's names. (A playbook can
+// take a new one: playbook() finds it by either.)
+const KEEP_NAME = ['move', 'pmove', 'smove'];
+
+export function overridden([kind = '', group = '', name = '', text = '', meta = '', vis = '', oname = '', otext = '', ometa = ''], i = 0) {
+  const k = String(kind).trim().toLowerCase();
+  const orig = { name: String(name).trim(), text: String(text), meta: parseMeta(meta) };
+  const newName = !KEEP_NAME.includes(k) && String(oname).trim();
+  const rec = {
     i,
-    kind: String(kind).trim().toLowerCase(),
+    kind: k,
     group: String(group).trim(),
-    name: String(name).trim(),
-    text: String(text),
-    meta: parseMeta(meta),
+    name: newName || orig.name,
+    text: String(otext).trim() ? String(otext) : orig.text,
+    meta: { ...orig.meta, ...parseMeta(ometa) },
     vis: String(vis || 'crew').trim().toLowerCase(),
-    search: `${name} ${plain(text)}`.toLowerCase(),
-  })).filter(r => r.kind);
+  };
+  rec.themed = rec.name !== orig.name || rec.text !== orig.text || String(ometa).trim() !== '';
+  if (rec.themed) rec.orig = orig;
+  rec.search = `${rec.name} ${plain(rec.text)}${rec.orig ? ` ${orig.name} ${plain(orig.text)}` : ''}`.toLowerCase();
+  return rec;
+}
+
+export function indexRules(rows = []) {
+  const recs = rows.map((row, i) => overridden(row, i)).filter(r => r.kind && !r.meta.hide);
 
   const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
   const by = (kind, group) => recs.filter(r => r.kind === kind && (group == null || same(r.group, group)));
@@ -36,10 +53,12 @@ export function indexRules(rows = []) {
     empty: recs.length === 0,
     moves: cat => by('move', cat),
     playbooks: type => by('playbook').filter(p => !type || (p.meta.type || 'pirate') === type),
+    // By its group (as the book has it), its name, or the book's name if it has an override name.
     playbook(name) {
-      const of = kind => recs.filter(r => r.kind === kind && same(r.group, name || ''));
-      const p = of('playbook')[0];
+      const is = r => [r.group, r.name, r.orig?.name].some(n => n != null && same(n, name || ''));
+      const p = recs.find(r => r.kind === 'playbook' && same(r.group, name || '')) || recs.find(r => r.kind === 'playbook' && is(r));
       if (!p) return null;
+      const of = kind => recs.filter(r => r.kind === kind && same(r.group, p.group));
       return {
         ...p,
         vices: of('vice'), oddities: of('oddity'), kits: of('kit'), lastwords: of('lastwords')[0] || null,

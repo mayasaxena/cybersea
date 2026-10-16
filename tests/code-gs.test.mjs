@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 3 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 4 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 3 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 4 });
 });
 
 test('explains missing passphrases', () => {
@@ -113,6 +113,23 @@ test('crew reads everything except the GM tab and GM-only rules', () => {
   assert.equal(r.tabs.GM, undefined);
   assert.deepEqual(r.tabs.Rules.rows.map(x => x[2]), ['POKE']);
   assert.deepEqual(r.tabs.Nexa.rows[1], ['stat', 'Spitfire', '2', '']); // typed by hand into an unformatted cell
+});
+
+test('Rules rows carry the override columns, found by their headers, when the tab has them', () => {
+  const plain = setup();
+  assert.equal(crew(plain.api, { op: 'read', tabs: ['Rules'] }).tabs.Rules.rows[0].length, 6, 'no override columns: rows as before');
+  const { api } = setup({
+    tabs: {
+      Rules: [
+        ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Notes to self', 'Override text', 'Override name'],
+        ['kit', 'Brute', 'Kit 1', 'Club, rope', '', 'crew', 'ignore me', 'Club, data cable', ''],
+        ['location', 'places', 'Gull Rock', 'Gulls.', '', 'crew', '', '', 'Packet Reef'],
+      ],
+    },
+  });
+  const rows = crew(api, { op: 'read', tabs: ['Rules'] }).tabs.Rules.rows;
+  assert.deepEqual(rows[0], ['kit', 'Brute', 'Kit 1', 'Club, rope', '', 'crew', '', 'Club, data cable', '']);
+  assert.deepEqual(rows[1], ['location', 'places', 'Gull Rock', 'Gulls.', '', 'crew', 'Packet Reef', '', '']);
 });
 
 test('GM reads everything', () => {
@@ -203,6 +220,19 @@ test('permissions: crew cannot write GM or Rules; GM can write GM but not Rules'
   assert.equal(gm(api, { op: 'patch', tab: 'GM', set: [['note', 'Session 3', 'Ambush at dawn', '']] }).ok, true);
   assert.equal(crew(api, { op: 'patch', tab: 'Nobody', set: [] }).code, 'missing');
   assert.equal(crew(api, { op: 'selftest' }).code, 'forbidden');
+});
+
+test('the Map tab: everyone reads it, only the GM writes or makes it', () => {
+  const { api } = setup();
+  assert.equal(crew(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] }).code, 'name');
+  const made = gm(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] });
+  assert.equal(made.ok, true);
+  assert.equal(made.kind, 'map');
+  const r = crew(api, { op: 'read', tabs: ['Map'] });
+  assert.ok(r.list.some(t => t.name === 'Map' && t.kind === 'map'), 'not a character');
+  assert.deepEqual(r.tabs.Map.rows, [['place', 'Gull Rock', 'on', '']]);
+  assert.equal(crew(api, { op: 'patch', tab: 'Map', set: [['place', 'Gull Rock', '', '']] }).code, 'forbidden');
+  assert.equal(gm(api, { op: 'patch', tab: 'Map', set: [['place', 'Old Mill', 'on', '']] }).ok, true);
 });
 
 test('oversize cells are refused', () => {
