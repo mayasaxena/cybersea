@@ -13,7 +13,7 @@
 
 import { CONFIG } from '../config.js';
 import { ls, gkey, upsertGame } from './games.js';
-import { rowKey, applyPending, diffRows, isSigninRow, signinRow } from './codec.js';
+import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } from './codec.js';
 
 // The Code.gs version this site expects (its ping answers {v}). Older deployments still work for
 // the GM, but turn away crew without a passphrase.
@@ -76,6 +76,7 @@ export class TabStore extends Emitter {
     this.missing = false;
     this.inflight = false;
     this.failures = 0;
+    this.confirmedAt = 0; // when the sheet last confirmed a patch from here
     if (this.pending.size) this.schedule(300);
   }
 
@@ -138,6 +139,7 @@ export class TabStore extends Emitter {
     try {
       const r = await this.client.request(body);
       for (const [k, p] of sent) if (this.pending.get(k)?.seq === p.seq) this.pending.delete(k);
+      this.confirmedAt = Date.now();
       this.persist();
       this.failures = 0;
       this.receive(r.d, r.rows);
@@ -165,7 +167,8 @@ export class GameClient extends Emitter {
     this.role = game.role || null;
     this.list = ls.get(gkey(game, 'list'), []);
     this.reading = false;
-    this.locked = false; // the sheet turned our passphrase (or lack of one) away
+    this.locked = false;   // the sheet turned our passphrase (or lack of one) away
+    this.checking = false; // a new passphrase is on its way to the sheet
   }
 
   tab(name) {
@@ -204,13 +207,50 @@ export class GameClient extends Emitter {
 
   markSignedIn(name, on) {
     const s = this.tab(name);
-    s.change(s.rows.filter(isSigninRow), [signinRow(on)]);
+    if (s.change(s.rows.filter(isSigninRow), [signinRow(on)])) s.schedule(100); // let the crew see it soon
+  }
+
+  // The sheet has the last word on who's signed in: if this device's character was signed out
+  // there (from another device, or by clearing the cell), this device is signed out too. Only a
+  // read that started after our own sign-in reached the sheet can say so.
+  reconcileMe(readNames, startedAt) {
+    const as = this.game.as;
+    if (!as || this.role === 'gm' || !readNames.some(n => n.toLowerCase() === as.toLowerCase())) return;
+    const s = this.tab(as);
+    if (!s.loaded || s.missing || s.inflight || s.confirmedAt >= startedAt) return;
+    if ([...s.pending.values()].some(p => isSigninRow(p.row))) return;
+    if (!isSignedIn(s.rows)) {
+      this.game = upsertGame({ ...this.game, as: null });
+      this.emit({ me: true });
+    }
+  }
+
+  // Honor system, kept by the site rather than the sheet: the GM edits everything; crew edit once
+  // signed in as a character: that character's sheet, and the shared Ship and Lore tabs.
+  canEdit(tab) {
+    if (this.role === 'gm') return true;
+    const me = this.me;
+    if (this.role !== 'crew' || this.locked || !me) return false;
+    const t = String(tab).trim().toLowerCase();
+    return t === 'ship' || t === 'lore' || t === me.toLowerCase();
   }
 
   setKey(key) {
     this.game = upsertGame({ ...this.game, key });
     this.locked = false;
+    this.checking = !!key;
     this.emit({ key: true });
+  }
+
+  // Back to crew. Crew need no passphrase, so show that straight away; the caller's next read
+  // confirms it, or asks for a passphrase if this game set one for the crew.
+  signOutGm() {
+    this.game = upsertGame({ ...this.game, key: '', role: 'crew' });
+    this.role = 'crew';
+    this.crewKey = null;
+    this.locked = false;
+    this.checking = false;
+    this.emit({ key: true, list: true, me: true });
   }
 
   request(body) {
@@ -222,6 +262,7 @@ export class GameClient extends Emitter {
     const have = {};
     for (const n of names) { const s = this.tab(n); if (s.server.d) have[s.name] = s.server.d; }
     this.reading = true;
+    const startedAt = Date.now();
     try {
       const r = await this.request({ op: 'read', tabs: names, have });
       this.role = r.role;
@@ -236,6 +277,7 @@ export class GameClient extends Emitter {
         if (t.rows) s.receive(t.d, t.rows); else if (!s.loaded) { s.loaded = true; s.emit({ fromServer: true }); }
       }
       for (const n of names) if (!got.includes(n.toLowerCase())) this.tab(n).markMissing();
+      this.reconcileMe(names, startedAt);
       if (!this.anyPending()) this.setStatus('ok');
       this.emit({ list: true });
       return r;
@@ -246,6 +288,7 @@ export class GameClient extends Emitter {
       throw e;
     } finally {
       this.reading = false;
+      if (this.checking) { this.checking = false; this.emit({ me: true }); }
     }
   }
 

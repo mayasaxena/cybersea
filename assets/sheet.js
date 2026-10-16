@@ -5,7 +5,7 @@ import { GameClient } from './api.js';
 import { parseSheet, serializeSheet, logId } from './codec.js';
 import { md, toggleCheck, htmlToMarkup } from './markup.js';
 import { indexRules, rollFor } from './rules.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { plain } from './markup.js';
@@ -31,6 +31,8 @@ pageShell(app, client, PAGE);
 const store = client.tab(tabName);
 const rulesStore = client.tab('Rules');
 const uiKey = gkey(game, `ui:${tabName.toLowerCase()}`);
+// Only the character's signed-in player (or the GM) edits a sheet; anyone signed in edits the ship.
+const canEdit = () => client.canEdit(SHIP ? 'Ship' : tabName);
 const ui = Object.assign({ tab: 'sheet', cat: 'all', open: [] }, ls.get(uiKey, {}));
 const openSet = new Set(ui.open);
 const saveUi = () => { ui.open = [...openSet]; ls.set(uiKey, ui); };
@@ -70,7 +72,11 @@ store.on(e => {
   else if (e.fromServer) adopt();
 });
 rulesStore.on(() => { R = indexRules(rulesStore.rows); render(); });
-client.on(e => { if (e.list || e.key) refreshNav(client, PAGE); });
+let couldEdit = canEdit();
+client.on(e => {
+  if (e.list || e.key) refreshNav(client, PAGE);
+  if ((e.me || e.list || e.key || e.auth) && canEdit() !== couldEdit) { couldEdit = canEdit(); render(); }
+});
 app.addEventListener('focusout', () => setTimeout(() => { if (deferred && !busy()) adopt(); }, 0));
 new MutationObserver(() => { if (deferred && !busy()) adopt(); }).observe(document.body, { childList: true }); // a dialog closed
 
@@ -117,7 +123,7 @@ function headerHTML() {
         ${st.state.downtime ? '<button class="pill" data-act="tab" data-tab="log">Downtime</button>' : ''}
       </div>
       <div class="tools">
-        <button class="ic${E ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${E}">${ICON.pen}</button>
+        ${canEdit() ? `<button class="ic${E ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${E}">${ICON.pen}</button>` : ''}
         <button class="ic" data-act="sheet-menu" title="Sheet options" aria-label="Sheet options">${ICON.dots}</button>
       </div>
     </div>
@@ -211,6 +217,7 @@ function movesHTML() {
 const setup = { name: '', playbook: '', kit: '', oddity: '' };
 const short = (t, n = 70) => { const p = plain(t); return p.length > n ? p.slice(0, n - 1) + '…' : p; };
 function shipSetupHTML() {
+  if (!canEdit()) return `<div class="empty-page"><p>This game has no Ship tab yet.</p>${readOnlyHTML(client, 'Ship')}</div>`;
   const ships = R.playbooks('ship');
   if (!ships.length) return '<div class="empty-page"><p>This game has no Ship tab yet, and its Rules tab has no ship playbooks to start one from.</p></div>';
   if (!ships.some(p => p.name === setup.playbook)) setup.playbook = ships[0].name;
@@ -238,17 +245,21 @@ async function createShip() {
 }
 
 function render() {
+  const ro = !canEdit();
+  if (ro) editing = false;
+  const sheetShown = store.loaded && !store.missing;
   document.body.classList.toggle('editing', editing);
+  document.body.classList.toggle('readonly', ro && sheetShown);
   let main;
   if (store.missing) main = SHIP ? shipSetupHTML() : `<div class="empty-page"><p>There’s no tab called “${escTxt(tabName)}” in this game’s sheet.</p><p><a href="${esc(href('index.html', client.game))}">Back to the crew</a></p></div>`;
   else if (!store.loaded) main = '<div class="empty">Loading…</div>';
   else if (ui.tab === 'moves') main = movesHTML();
-  else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing);
+  else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing, ro);
   else main = sectionsHTML(ui.tab);
   const hdr = store.loaded && !store.missing ? headerHTML() : '';
   let body = document.getElementById('sheet');
   if (!body) { body = document.createElement('div'); body.id = 'sheet'; app.append(body); }
-  body.innerHTML = hdr + `<main>${main}</main>`;
+  body.innerHTML = hdr + `<main>${ro && sheetShown ? readOnlyHTML(client, SHIP ? 'Ship' : tabName, st.info.name || tabName) : ''}${main}</main>`;
   document.title = `${st.info.name || tabName} · ${client.game.name || 'Cybersea'}`;
   autoSize();
 }
@@ -259,6 +270,7 @@ function autoSize() {
 
 /* ---------- interactions ---------- */
 function clickPip(btn) {
+  if (!canEdit()) return;
   const path = btn.dataset.pip;
   const j = +btn.dataset.j;
   const bond = btn.hasAttribute('data-bond');
@@ -290,7 +302,7 @@ app.addEventListener('click', e => {
   const pip = e.target.closest('.pip');
   if (pip) { clickPip(pip); return; }
 
-  if (!editing) {
+  if (!editing && canEdit()) {
     const li = e.target.closest('ul.ck > li[data-ck]');
     if (li) {
       const sec = li.closest('[data-sec]');
@@ -316,7 +328,7 @@ app.addEventListener('click', e => {
   const act = b.dataset.act;
   const i = +b.dataset.i;
   switch (act) {
-    case 'edit': editing = !editing; render(); if (!editing && deferred) adopt(); break;
+    case 'edit': editing = !editing && canEdit(); render(); if (!editing && deferred) adopt(); break;
     case 'tab': ui.tab = b.dataset.tab; saveUi(); render(); break;
     case 'cat': ui.cat = b.dataset.cat; saveUi(); render(); break;
     case 'sheet-menu': sheetMenu(); break;
@@ -326,7 +338,7 @@ app.addEventListener('click', e => {
       const r = m && rollFor(m.text, st.stats);
       if (!r) break;
       const { total } = doRoll(r.stat ? `${m.name} · ${r.label}` : m.name, r.mod, r.dice);
-      if (actions.noteRoll(m, total)) changed();
+      if (canEdit() && actions.noteRoll(m, total)) changed();
       break;
     }
     case 'add-pip': setTrack(b.dataset.path, p => { if (p.length < 20) p.push(0); }); changed(); render(); break;
@@ -342,10 +354,10 @@ app.addEventListener('click', e => {
     }
     case 'add-move': st.moves.push({ name: uniqueMove('NEW MOVE'), marked: true, text: '' }); changed(); render(); break;
     case 'rm-move': if (armed(b)) { st.moves = st.moves.filter(m => m.name !== b.dataset.name); changed(); render(); } break;
-    case 'run': actions.open(b.dataset.kind); break;
+    case 'run': if (canEdit()) actions.open(b.dataset.kind); break;
     case 'rm-log': if (armed(b)) { st.log.splice(i, 1); changed(); render(); } break;
     case 'dt-moves': ui.tab = 'moves'; ui.cat = 'downtime'; saveUi(); render(); break;
-    case 'ship-create': createShip(); break;
+    case 'ship-create': if (canEdit()) createShip(); break;
   }
 });
 
@@ -417,10 +429,10 @@ function sheetMenu() {
   const o = modal(`
     <div class="prow"><h2>${escTxt(st.info.name || tabName)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
     <div class="prow"><button class="pbtn" data-s="embed">Copy Notion embed link</button></div>
-    <div class="mhd lbl">Import from the old one-page sheet</div>
+    ${canEdit() ? `<div class="mhd lbl">Import from the old one-page sheet</div>
     <div class="status">Replaces this character’s sheet with data from the old nexa.html (⋯ → Download, then paste it here).</div>
     <textarea class="in json" spellcheck="false" placeholder="Paste the downloaded JSON" aria-label="Old sheet JSON">${local ? escTxt(local) : ''}</textarea>
-    <div class="prow"><span class="grow"></span><button class="pbtn" data-s="import">Import</button></div>
+    <div class="prow"><span class="grow"></span><button class="pbtn" data-s="import">Import</button></div>` : ''}
     <div class="status" data-msg></div>`, { label: 'Sheet options' });
   const say = m => { o.querySelector('[data-msg]').textContent = m; };
   o.addEventListener('click', async e => {
@@ -430,7 +442,7 @@ function sheetMenu() {
       const link = `${url.origin}${url.pathname}sheet.html?c=${encodeURIComponent(tabName)}${url.hash}`;
       try { await navigator.clipboard.writeText(link); say('Copied. Paste it into a Notion /embed block.'); } catch { say(link); }
     }
-    if (s === 'import') {
+    if (s === 'import' && canEdit()) {
       const btn = e.target.closest('[data-s]');
       let old;
       try { old = JSON.parse(o.querySelector('textarea').value); } catch { say('That isn’t valid JSON.'); return; }

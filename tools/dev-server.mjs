@@ -11,7 +11,8 @@
 //   GAMES=2 LATENCY=300-1500 node tools/dev-server.mjs
 //   RULES_JSON=/path/rules.json node tools/dev-server.mjs   preview with real rules (local only)
 //
-// Test hooks on each API port: POST /__test/set {tab, rows} (replace a tab as if edited by hand),
+// Test hooks on each API port: POST /__test/set {tab, rows} (replace a tab as if edited by hand;
+// rows: null deletes it),
 // GET /__test/tab?name=X (dump display values), POST /__test/fail {count} (next N echoes 500).
 
 import http from 'node:http';
@@ -101,7 +102,7 @@ function apiHandler(game, latency) {
         const ss = game.gas.ss;
         const old = ss.getSheets().find(s => s.getName().toLowerCase() === tab.toLowerCase());
         if (old) ss.deleteSheet(old);
-        seedTab(ss, tab, rows, true);
+        if (rows) seedTab(ss, tab, rows, true);
         json(200, { ok: true });
       });
       return;

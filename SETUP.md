@@ -56,8 +56,12 @@ also add `CREW_KEY` with the players' passphrase.
 
 Players click their character to sign in, either on the Crew page or from the button at the top
 right (it shows **Sign in**, the character's name, or **GM**). Clicking the character again signs
-out. Everyone sees who's signed in, and it stays that way until someone signs out. It's the honor
-system: anyone can still open any sheet.
+out. Everyone sees who's signed in, and it stays that way until someone signs out.
+
+Signing in is what lets you edit: your own character's sheet, plus the shared Ship and Lore
+pages. Until then (and on other characters' sheets) pages are read-only. The GM can edit
+everything. It's the honor system: the site keeps to these rules, but the sheet itself doesn't
+check, and anyone can still read any sheet.
 
 On the sheet, signing in sets a `signin | Signed in | yes` row on the character's tab. Clearing
 that cell signs them out.

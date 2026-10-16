@@ -9,6 +9,15 @@ const { chromium } = require('playwright'); // run with NODE_PATH=$(npm root -g)
 export const invite = (api, key = '', name = 'Fixture Game') =>
   Buffer.from(JSON.stringify({ api, ...(key ? { key } : {}), name })).toString('base64url');
 
+// Sign in as a character from the top bar, as a player would (editing needs it).
+export async function signIn(p, name) {
+  await p.waitForSelector('.gnav .who:not(.who-wait)');
+  await p.click('.gnav .who');
+  await p.click(`[role="dialog"] [data-me="${name}"]`);
+  await p.waitForSelector(`[role="dialog"] [data-me="${name}"][aria-pressed="true"]`);
+  await p.keyboard.press('Escape');
+}
+
 export async function harness({ games = 1, latency, gameOptions } = {}) {
   const srv = await start({ sitePort: 0, apiPort: 0, games, latency, gameOptions });
   const browser = await chromium.launch();

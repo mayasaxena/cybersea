@@ -1,7 +1,7 @@
 // Browser tests for the crew home, ship, lore and rules pages, and for running two games.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite } from './harness.mjs';
+import { harness, invite, signIn } from './harness.mjs';
 import { KEYS, gameTabs } from '../fixtures/game.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -94,6 +94,9 @@ test('ship page: ship stats roll, ship moves only', async () => {
 test('a game without a Ship tab offers to set one up from a ship playbook', async () => {
   const p = await h.page();
   await join(p, g2, 'ship.html');
+  await p.waitForSelector('.robar');
+  assert.equal(await p.$('.setup'), null, 'setting up the ship needs a sign-in');
+  await signIn(p, 'Testa');
   await p.waitForSelector('.setup');
   await p.fill('[data-setup="name"]', 'Sea Wasp');
   await p.click('[data-act="ship-create"]');
@@ -110,6 +113,8 @@ test('lore: read, search, add, edit and delete entries', async () => {
   await join(p, g1, 'lore.html');
   await p.waitForSelector('main .card h2');
   assert.equal(await p.textContent('main .card h2'), 'Gull Harbor');
+  assert.equal(await p.$('[data-act="edit"]'), null, 'read-only until signed in');
+  await signIn(p, 'Testa');
   await p.click('[data-act="edit"]');
   await p.click('[data-act="add"]');
   const title = p.locator('input[data-f="name"]').nth(1);
@@ -157,6 +162,8 @@ test('two games stay separate, and the menu switches between them', async () => 
   // change Testa in game 2 only
   await p.goto(p.url().replace('index.html', '').replace(/\/(\?|$)/, '/sheet.html$1') + '&c=Testa');
   await p.waitForSelector('h1.name');
+  await signIn(p, 'Testa');
+  await p.waitForSelector('[data-act="edit"]');
   await p.click('.luck .pip[data-j="7"]');
   await until(async () => row(await h.tab(g2, 'Testa'), 'track', 'Luck')[2].endsWith('●'));
   assert.ok(!row(await h.tab(g1, 'Testa'), 'track', 'Luck')[2].endsWith('●'), 'game 1 untouched');

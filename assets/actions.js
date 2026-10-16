@@ -225,13 +225,13 @@ export function makeActions(ctx) {
     ctx.render();
   }
 
-  function logHTML(editing) {
+  function logHTML(editing, readOnly = false) {
     const s = st();
     const dt = s.state.downtime;
     const xp = xpCount();
     const need = xpNeeded();
     const btn = (kind, label, cls = '', attrs = '') => `<button class="act${cls}" data-act="run" data-kind="${kind}"${attrs}>${label}</button>`;
-    let h = '<div class="actions">' +
+    let h = readOnly ? '' : '<div class="actions">' +
       btn('session', ACTIONS.session) +
       btn('chapter', ACTIONS.chapter) +
       (dt ? btn('dt-leave', ACTIONS['dt-leave'], ' live') : btn('dt-begin', ACTIONS['dt-begin'])) +

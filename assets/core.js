@@ -153,7 +153,8 @@ const characterNames = client => client.list.filter(t => t.kind === 'character')
 function whoChip(client) {
   if (!client) return '';
   const me = client.me;
-  const [cls, text, title] = client.locked ? ['off', 'Sign in', 'Enter the passphrase']
+  const [cls, text, title] = client.checking ? ['anyone', 'Checking…', 'Checking the passphrase']
+    : client.locked ? ['off', 'Sign in', 'Enter the passphrase']
     : client.role === 'gm' ? ['gm', 'GM', 'Signed in as the GM']
     : me ? ['me', me, `Signed in as ${me}`]
     : client.role === 'crew' ? ['anyone', 'Sign in', 'Sign in as your character']
@@ -173,6 +174,14 @@ export function pickerHTML(client, { looking = false } = {}) {
 export function pick(client, el) {
   const n = el.dataset.me;
   client.setMe(n && n === client.me ? '' : n);
+}
+
+// Shown instead of edit controls when this device can't edit a tab.
+export function readOnlyHTML(client, tab, label = tab) {
+  if (!client.role || client.locked) return '';
+  const me = client.me;
+  const msg = !me ? 'Read-only until you sign in as your character.' : `Read-only: only ${label}’s player (or the GM) edits this.`;
+  return `<div class="robar"><span>${escTxt(msg)}</span>${me ? '' : '<button class="pbtn" data-nav="who">Sign in</button>'}</div>`;
 }
 
 export function openWho(client, { fresh = false } = {}) {
@@ -199,7 +208,11 @@ export function openWho(client, { fresh = false } = {}) {
     const p = e.target.closest('[data-me]');
     if (p) { pick(client, p); openWho(client, { fresh: true }); }
     if (e.target.closest('[data-w="key"]')) askKey(client, client.role === 'crew' ? 'Enter the GM passphrase.' : '');
-    if (e.target.closest('[data-w="gm-out"]')) { closeModal(); client.setKey(''); client.read().catch(() => {}); }
+    if (e.target.closest('[data-w="gm-out"]')) {
+      client.signOutGm();
+      if (/gm\.html$/.test(location.pathname)) location.href = href('index.html', g); // that page reads
+      else openWho(client); // reads, which confirms the sign-out and fills in the characters
+    }
   });
   // Who's signed in lives on each character's tab: fetch them all (unchanged ones cost little).
   if (!fresh && client.role === 'crew') {
@@ -215,7 +228,7 @@ export function wireNav(root, client) {
     if (e.target.closest('[data-nav="who"]')) openWho(client);
   });
   client?.on(e => {
-    if (e.me || e.list || e.key || e.auth) {
+    if (e.me || e.list || e.key || e.auth || e.status) {
       const w = document.querySelector('.gnav .who');
       if (w) w.outerHTML = whoChip(client);
     }

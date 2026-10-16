@@ -2,7 +2,7 @@
 // Run: NODE_PATH=$(npm root -g) node --test tests/e2e/
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite } from './harness.mjs';
+import { harness, invite, signIn } from './harness.mjs';
 import { KEYS } from '../fixtures/game.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -24,12 +24,57 @@ let api;
 test.before(async () => { h = await harness(); api = h.srv.apis[0]; });
 test.after(async () => { await h.close(); });
 
-async function openSheet(opts) {
+// Opens Testa's sheet signed in as Testa (pass as: null to stay signed out).
+async function openSheet(opts, { c = 'Testa', as = 'Testa' } = {}) {
   const p = await h.page(opts);
-  await p.goto(`${h.srv.site}/sheet.html?c=Testa#join=${invite(api.url)}`);
+  await p.goto(`${h.srv.site}/sheet.html?c=${encodeURIComponent(c)}#join=${invite(api.url)}`);
   await p.waitForSelector('h1.name');
+  if (as) {
+    await signIn(p, as);
+    if (as === c) await p.waitForSelector('[data-act="edit"]');
+  }
   return p;
 }
+const who = p => p.$eval('.gnav .who', b => b.textContent.trim());
+const withRow = (rows, r) => rows.map(x => x.slice(0, 4)).filter(x => !(x[0] === r[0] && x[1] === r[1])).concat([r]);
+
+test('editing needs you signed in as that character', async () => {
+  const before = row(await h.tab(api, 'Testa'), 'track', 'Harm')[2];
+  const p = await openSheet(undefined, { as: null });
+  await p.waitForSelector('.robar');
+  assert.equal(await p.$('[data-act="edit"]'), null, 'no edit button');
+  await p.click('.harm .pip[data-j="1"]');
+  await sleep(1500);
+  assert.equal(row(await h.tab(api, 'Testa'), 'track', 'Harm')[2], before, 'pips do nothing');
+  await p.click('[data-act="tab"][data-tab="log"]');
+  assert.equal(await p.$('.actions'), null, 'no chapter/downtime/level-up buttons');
+  await p.click('[data-act="tab"][data-tab="sheet"]');
+
+  // signing in as Testa from the bar's button makes it editable
+  await p.click('.robar [data-nav="who"]');
+  await p.click('[role="dialog"] [data-me="Testa"]');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('[data-act="edit"]');
+  assert.equal(await p.$('.robar'), null);
+
+  // someone else's sheet stays read-only
+  await h.setTab(api, 'Rook', withRow((await h.tab(api, 'Testa')).filter(r => r[0] !== 'signin'), ['info', 'Name', 'Rook', '']));
+  await p.goto(p.url().replace('c=Testa', 'c=Rook'));
+  await p.waitForSelector('.robar');
+  assert.match(await p.textContent('.robar'), /only Rook’s player/);
+  assert.equal(await p.$('[data-act="edit"]'), null);
+  assert.equal(await who(p), 'Testa');
+  await h.setTab(api, 'Rook', null);
+});
+
+test('the sheet has the last word: signed out there, signed out here', async () => {
+  const p = await openSheet();
+  assert.ok(await until(async () => row(await h.tab(api, 'Testa'), 'signin', 'Signed in')?.[2] === 'yes'));
+  await h.setTab(api, 'Testa', withRow(await h.tab(api, 'Testa'), ['signin', 'Signed in', '', '']));
+  await p.waitForSelector('.robar');
+  assert.equal(await p.$('[data-act="edit"]'), null);
+  assert.equal(await who(p), 'Sign in');
+});
 
 test('an invite opens the sheet and the passphrase leaves the URL', async () => {
   const p = await openSheet();
@@ -122,6 +167,9 @@ test('edits made while the sheet is unreachable survive a reload', async () => {
   assert.equal(await p.$eval('.harm .pip[data-j="0"]', el => (el.classList.contains('on') ? '●' : '○')), want, 'shown from the saved pending edit');
   await fetch(`${api.base}/__test/fail`, { method: 'POST', body: JSON.stringify({ count: 0 }) });
   assert.ok(await until(async () => row(await h.tab(api, 'Testa'), 'track', 'Harm')[2][0] === want, 20000));
+  // The beacon sent while reloading may have saved it already; wait until the page itself has
+  // nothing queued, or its retry could land in a later test.
+  assert.ok(await until(() => p.evaluate(() => Object.keys(localStorage).filter(k => k.includes(':pending:')).every(k => localStorage.getItem(k) === '{}')), 30000));
 });
 
 test('actions: session, chapter’s end, downtime with a rolled move, level up', async () => {
@@ -215,7 +263,7 @@ test('a wrong passphrase asks for the right one, or you can carry on as crew', a
   await p.fill('form[data-keyform] input', KEYS.GM_KEY);
   await p.click('form[data-keyform] button');
   await p.waitForSelector('h1.name');
-  assert.equal(await p.textContent('h1.name'), 'Nexa');
+  assert.equal(await p.textContent('h1.name'), row(await h.tab(api, 'Testa'), 'info', 'Name')[2]);
 
   const q = await h.page();
   await q.goto(`${h.srv.site}/sheet.html?c=Testa#join=${invite(api.url, 'nope')}`);
@@ -223,6 +271,8 @@ test('a wrong passphrase asks for the right one, or you can carry on as crew', a
   await q.keyboard.press('Escape');
   await q.click('.gnav .who');
   await q.click('[data-w="gm-out"]');
+  await q.waitForSelector('[role="dialog"] [data-me]'); // then it asks who you are
+  await q.keyboard.press('Escape');
   await q.waitForSelector('h1.name');
   assert.equal(await q.textContent('.gnav .who'), 'Sign in');
 });

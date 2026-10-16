@@ -3,7 +3,7 @@
 import { bootstrap, href } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
-import { esc, escTxt, ICON, armed, pageShell, refreshNav } from './core.js';
+import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -48,7 +48,13 @@ store.on(e => {
   base = toRows(ne);
   render();
 });
-client.on(e => { if (e.list) refreshNav(client, 'lore'); });
+// Anyone signed in as a character (or the GM) edits lore.
+const canEdit = () => client.canEdit('Lore');
+let couldEdit = canEdit();
+client.on(e => {
+  if (e.list) refreshNav(client, 'lore');
+  if ((e.me || e.list || e.key || e.auth) && canEdit() !== couldEdit) { couldEdit = canEdit(); if (!couldEdit) editing = false; render(); }
+});
 
 const categories = () => [...new Set(entries.map(e => e.kind))];
 const unique = (kind, name) => { let n = name, k = 2; while (entries.some(e => e.kind.toLowerCase() === kind.toLowerCase() && e.name.toLowerCase() === n.toLowerCase())) n = `${name} ${k++}`; return n; };
@@ -65,8 +71,9 @@ function render() {
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search lore" value="${esc(query)}" aria-label="Search lore" autocomplete="off">
       <div class="cats">${[['all', 'All'], ...cats.map(c => [c, c])].map(([k, l]) => `<button data-act="cat" data-cat="${esc(k)}" class="${cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
-      <button class="ic${editing ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${editing}">${ICON.pen}</button>
+      ${canEdit() ? `<button class="ic${editing ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${editing}">${ICON.pen}</button>` : ''}
     </div>
+    ${canEdit() ? '' : readOnlyHTML(client, 'Lore')}
     <datalist id="lore-cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
     ${groups.map(c => {
       const items = shown.filter(x => x.e.kind === c);
@@ -95,15 +102,15 @@ main.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const act = b.dataset.act;
-  if (act === 'edit') { editing = !editing; render(); }
+  if (act === 'edit') { editing = !editing && canEdit(); render(); }
   if (act === 'cat') { cat = b.dataset.cat; render(); }
-  if (act === 'add') {
+  if (act === 'add' && canEdit()) {
     const kind = cat !== 'all' ? cat : categories()[0] || 'Notes';
     entries.push({ kind, name: unique(kind, 'New entry'), value: '', notes: '' });
     changed();
     render();
   }
-  if (act === 'rm' && armed(b)) { entries.splice(+b.dataset.i, 1); changed(); render(); }
+  if (act === 'rm' && canEdit() && armed(b)) { entries.splice(+b.dataset.i, 1); changed(); render(); }
 });
 
 main.addEventListener('input', e => {

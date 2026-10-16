@@ -257,6 +257,9 @@ select.in{padding:5px 6px}
 .whoami .note{margin:0}
 .pill.me{border-color:var(--cyan);color:var(--cyan);cursor:inherit}
 .pill.in{border-color:var(--muted);color:var(--muted);cursor:inherit}
+.robar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0;padding:6px 10px;border:1px dashed var(--line);border-radius:4px;font-size:13px;color:var(--muted)}
+.robar .pbtn{margin-left:auto}
+.readonly .pip,.readonly ul.ck>li{cursor:default}
 .pbtn.pick{text-align:center}
 .pbtn .sub{display:block;margin-top:4px;font:500 11px/1.2 "IBM Plex Sans",sans-serif;letter-spacing:0;text-transform:none;opacity:.85}
 .top{margin-top:0}
