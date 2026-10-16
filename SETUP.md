@@ -38,7 +38,9 @@ also add `CREW_KEY` with the players' passphrase.
      show menus and dialogs in Sheets, and to "connect to an external service". It uses those
      for the **Cybersea** menu's import (see [Replacing the sheet with a fresh xlsx](#replacing-the-sheet-with-a-fresh-xlsx))
      and to read the pictures in the Map tab (see [The Map tab](#the-map-tab)). It never opens a
-     spreadsheet other than this one and the temporary copy it makes while importing.
+     spreadsheet other than this one and the temporary copy it makes while importing. It also
+     asks to manage its own Apps Script project and deployments, for the menu's
+     [Update the script](#updating-the-script-later).
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -164,7 +166,20 @@ in and deletes it.
 
 ## Updating the script later
 
-When a file in [`apps-script/`](apps-script/) changes in this repository:
+When a file in [`apps-script/`](apps-script/) changes in this repository, choose **Cybersea →
+Update the script** in the spreadsheet. It lists the files that changed, and when you click
+**Yes** it copies them over the script's files of the same name (your own extra files stay),
+saves a new version and points the web app deployment at it. The URL stays the same.
+
+- The first time, turn on the **Apps Script API** at
+  [script.google.com/home/usersettings](https://script.google.com/home/usersettings), and add
+  `Update.gs` and the new `appsscript.json` by hand (below), since the menu isn't there yet.
+- If the new version needs new permissions, it says so: choose **Update the script** again and
+  approve them, or the site can't reach the sheet until you do.
+- Files come from `mayasaxena/cybersea@main`. A script property `SCRIPT_SOURCE` (like
+  `someone/fork@branch`) picks another repository or branch.
+
+To do it by hand:
 1. Paste the new version over the file of the same name in the game's Apps Script editor and
    save (**+ → Script** adds a missing `.gs` file, such as `Import.gs`). To see
    `appsscript.json`, turn on **Project Settings → Show "appsscript.json" manifest file in
