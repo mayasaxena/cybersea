@@ -15,6 +15,10 @@ import { CONFIG } from '../config.js';
 import { ls, gkey, upsertGame } from './games.js';
 import { rowKey, applyPending, diffRows, isSigninRow, signinRow } from './codec.js';
 
+// The Code.gs version this site expects (its ping answers {v}). Older deployments still work for
+// the GM, but turn away crew without a passphrase.
+export const API_VERSION = 2;
+
 export class ApiError extends Error {
   constructor(message, code) { super(message); this.code = code; }
 }
@@ -40,6 +44,16 @@ export async function call(api, body, { timeout = 20000 } = {}) {
 export async function ping(api) {
   const res = await fetch(`${api}${api.includes('?') ? '&' : '?'}op=ping`, { redirect: 'follow' });
   return JSON.parse(await res.text());
+}
+
+// An old script answers "wrong passphrase" when none was sent, which is baffling; say what's wrong.
+async function outdatedScript(api) {
+  try {
+    if (((await ping(api)).v || 0) < API_VERSION) {
+      return 'This game’s script is out of date, so it still wants a passphrase from everyone. The GM needs to paste the latest Code.gs into it and deploy a new version (SETUP.md, “Updating the script”). The GM passphrase still works.';
+    }
+  } catch { /* unreachable: keep the original message */ }
+  return '';
 }
 
 class Emitter {
@@ -226,6 +240,7 @@ export class GameClient extends Emitter {
       this.emit({ list: true });
       return r;
     } catch (e) {
+      if (e.code === 'auth' && !this.game.key) e.message = (await outdatedScript(this.game.api)) || e.message;
       this.setStatus('err', e.message);
       if (e.code === 'auth') { this.locked = true; this.emit({ auth: true }); }
       throw e;

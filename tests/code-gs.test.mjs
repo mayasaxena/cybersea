@@ -42,9 +42,9 @@ const gm = (api, body) => api.call({ key: 'gm-pass', ...body });
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 1 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 2 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 1 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 2 });
 });
 
 test('explains missing passphrases', () => {

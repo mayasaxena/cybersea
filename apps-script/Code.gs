@@ -16,7 +16,7 @@
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 1;
+const API_VERSION = 2; // 2: crew need no passphrase unless CREW_KEY is set
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 const MAX_CELL = 50000;

@@ -33,13 +33,13 @@ function parseLatency(spec) {
   return () => a + Math.random() * (b - a);
 }
 
-export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson } = {}) {
+export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codeTransform } = {}) {
   if (rulesJson) {
     const recs = JSON.parse(readFileSync(rulesJson, 'utf8'));
     tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew'])] };
   }
   const gas = createGas({ name, tabs, props: keys, asText: true });
-  return { gas, api: loadCodeGs(gas) };
+  return { gas, api: loadCodeGs(gas, undefined, codeTransform) };
 }
 
 function siteHandler(req, res) {

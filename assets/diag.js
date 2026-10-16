@@ -1,5 +1,5 @@
 // diag.html: check a deployed game script before using it. Works from file:// too.
-import { call, ping } from './api.js';
+import { call, ping, API_VERSION } from './api.js';
 import { upsertGame, href } from './games.js';
 import { esc, escTxt, applyTheme } from './core.js';
 
@@ -25,6 +25,9 @@ form.addEventListener('submit', async e => {
   try {
     const r = await ping(api);
     html += line(r.ok, 'Reaching the script', `Answered in ${ms(t0)} (API version ${escTxt(r.v)}).`);
+    if ((r.v || 0) < API_VERSION) {
+      html += line(false, 'Script version', `This deployment runs an older Code.gs (version ${escTxt(r.v || 0)}; the site needs ${API_VERSION}). Paste the latest <code>apps-script/Code.gs</code> into the Apps Script editor and save, then <b>Deploy → Manage deployments</b>, click the pencil, set <b>Version: New version</b> and click <b>Deploy</b>. Saving alone doesn’t change what’s deployed.`);
+    }
   } catch {
     html += line(false, 'Reaching the script', 'No answer. Check the URL, and that the deployment’s “Who has access” is “Anyone”. If you just deployed, wait a minute and try again.');
     show();

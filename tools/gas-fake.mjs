@@ -167,9 +167,10 @@ export function seedTab(ss, tab, rows, asText = false) {
 }
 
 // Run apps-script/Code.gs against a fake. Returns {doGet, doPost, call(body) -> parsed JSON}.
-export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.meta.url)) {
+// `transform` edits the source first (tests use it to stand in for an older deployment).
+export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.meta.url), transform = s => s) {
   const ctx = vm.createContext({ ...gas.services, console });
-  vm.runInContext(readFileSync(path, 'utf8'), ctx, { filename: 'Code.gs' });
+  vm.runInContext(transform(readFileSync(path, 'utf8')), ctx, { filename: 'Code.gs' });
   const parse = out => JSON.parse(out.getContent());
   return {
     doGet: e => parse(ctx.doGet(e)),
