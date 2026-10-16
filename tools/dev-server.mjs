@@ -131,7 +131,7 @@ function apiHandler(game, latency) {
     if (url.pathname === '/__test/tab') {
       const sh = game.gas.ss.getSheets().find(s => s.getName() === url.searchParams.get('name'));
       const last = sh ? sh.getLastRow() : 0;
-      json(200, { rows: last ? sh.getRange(1, 1, last, 6).getDisplayValues() : [] });
+      json(200, { rows: last ? sh.getRange(1, 1, last, Math.max(sh.getLastColumn(), 6)).getDisplayValues() : [] });
       return;
     }
     if (url.pathname === '/__test/fail' && req.method === 'POST') {

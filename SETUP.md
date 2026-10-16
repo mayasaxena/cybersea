@@ -35,7 +35,7 @@ also add `CREW_KEY` with the players' passphrase.
    - Google will warn that it "hasn't verified this app". It's your own script, so click
      **Advanced → Go to (project name)** and **Allow**.
    - It asks for access to "the spreadsheet it's attached to", and to "connect to an external
-     service", which it uses to read the pictures in the Rules tab (see [Images](#images)).
+     service", which it uses to read the pictures in the Map tab (see [The Map tab](#the-map-tab)).
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -93,45 +93,42 @@ game's own wording, and the site uses them first:
 
 - **Override name**: a new name. Moves keep the book's name, because character sheets remember
   moves by it; give a move new text instead.
-- **Override text**: new text (a kit's items, a location's description, …).
-- **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere;
-  `img=https://…` shows an image with it; an Image cell (see [Images](#images) below) wins over it.
+- **Override text**: new text (a kit's items, …).
+- **Override meta**: added to **Meta**, key by key. `hide` hides the row everywhere.
 
 The Rules page shows the book's wording under each overridden row, as "Rapscallion original".
 The columns are found by their headers, so add the three headers to an existing game's Rules tab
 and update the script (below). A script older than version 4 ignores them.
 
-The **Map** page, open to everyone, shows Rules rows of these kinds:
+## The Map tab
 
-- `map`: a world map. Its picture goes in the row's Image cell.
-- `location`: a place, listed under its Group. The book's locations show here too; theme them
-  with the Override columns. A new location is a new `location` row.
-- `level`: a floor or level of a place: Group is the location's name, then one row per level in
-  order, each with its picture.
+The **Map** page, open to everyone, shows the **Map** tab. Its columns (found by their headers):
 
-The GM chooses which places the crew see. On the Map page, each place has an **On the map** /
-**Hidden** button (only the GM sees it), and every place starts hidden, the book's and new ones
-alike. The choices are kept in a **Map** tab (`place | the location's book name | on`), which the
-site makes the first time the GM turns a place on. Everyone can read it, but only the GM can
-change it. A themed place stays on the map under its new name. Maps always show, and levels
-show with their place.
+| Region | Location | Level | Image | Text | GM notes | Shown |
+|---|---|---|---|---|---|---|
+| Vega Server | | | *(picture)* | The server's sea. | | |
+| Vega Server | Hacker's Haven | | | A city of scrap. | Who really runs it. | on |
+| | Hacker's Haven | Level 1 | *(picture)* | The docks. | | |
+| | Hacker's Haven | Level 2 | *(picture)* | The market. | | |
+| Vega Server | DeepPort | | *(picture)* | A pool of links. | | |
 
-## Images
+- A row with a **Region** and no **Location** is that region's own map. It always shows.
+- A row with a **Location** and no **Level** is a place, listed under its region.
+- A row with a **Location** and a **Level** is a floor or level of that place, in order. The page
+  shows a tab for each level. A place with no level rows is a single picture (DeepPort above).
+- **Image**: click the cell and use **Insert → Image → Insert image in cell**, or type
+  `=IMAGE("https://…")` for a picture that's already online. To change a picture, replace the
+  one in the cell. Pictures floating over the grid (**Insert image over cells**) belong to no
+  row and aren't read.
+  Keep this column's format **Automatic**, not plain text, or Sheets shows a formula as typed.
+- **GM notes** are only sent to the GM.
+- **Shown**: the GM chooses which places the crew see, with the **On the map** / **Hidden**
+  button on each place (only the GM sees it), which writes `on` here; or type it. Every place
+  starts hidden. The script never sends the crew a hidden place, its levels or its pictures.
 
-Maps and other pictures live in the spreadsheet, not on this site. Give the Rules tab an
-**Image** column (after the other columns; it's found by its header), then, in the row a
-picture belongs to:
-
-- click its Image cell and use **Insert → Image → Insert image in cell**, or
-- type `=IMAGE("https://…")` there, for a picture that's already online.
-
-To change a picture, replace the one in the cell. The script sends a placed picture only to
-people who can see its row, so a `gm` row's picture goes only to the GM. An Image cell wins
-over an `img=` in Meta. Pictures floating over the grid (**Insert image over cells**) aren't
-read: they belong to no row.
-
-The Image column needs script version 5. Deploying it asks you to authorize again, for
-"connect to an external service": that's how the script reads a picture out of its cell.
+Everything else on the tab is edited in the spreadsheet. The Map tab needs script version 5.
+Deploying it asks you to authorize again, for "connect to an external service": that's how the
+script reads a picture out of its cell.
 
 `tools/xlsx/build.py --theme theme.json` lays a theme's rows over the book when building the
 template, or, without `--rules`, makes a workbook of just the theme's rows to paste into an

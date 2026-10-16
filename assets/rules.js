@@ -20,7 +20,7 @@ export function parseMeta(s) {
 // take a new one: playbook() finds it by either.)
 const KEEP_NAME = ['move', 'pmove', 'smove'];
 
-export function overridden([kind = '', group = '', name = '', text = '', meta = '', vis = '', oname = '', otext = '', ometa = '', image = ''], i = 0) {
+export function overridden([kind = '', group = '', name = '', text = '', meta = '', vis = '', oname = '', otext = '', ometa = ''], i = 0) {
   const k = String(kind).trim().toLowerCase();
   const orig = { name: String(name).trim(), text: String(text), meta: parseMeta(meta) };
   const newName = !KEEP_NAME.includes(k) && String(oname).trim();
@@ -33,12 +33,6 @@ export function overridden([kind = '', group = '', name = '', text = '', meta = 
     meta: { ...orig.meta, ...parseMeta(ometa) },
     vis: String(vis || 'crew').trim().toLowerCase(),
   };
-  // The Image column: a picture placed in the cell ("row:N", which the script sends) or an
-  // =IMAGE() formula's address. Either wins over img= in Meta.
-  const im = String(image).trim();
-  const placed = im.match(/^row:(\d+)$/);
-  if (placed) rec.imageRow = +placed[1];
-  else if (im) rec.meta.img = im;
   rec.themed = rec.name !== orig.name || rec.text !== orig.text || String(ometa).trim() !== '';
   if (rec.themed) rec.orig = orig;
   rec.search = `${rec.name} ${plain(rec.text)}${rec.orig ? ` ${orig.name} ${plain(orig.text)}` : ''}`.toLowerCase();

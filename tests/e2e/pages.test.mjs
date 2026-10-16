@@ -166,27 +166,31 @@ test("rules page: a row's override first, with the book's under it", async () =>
   assert.match(await p.textContent('#ref details.orig'), /Club, sack, rope/);
 });
 
-test("map page: crew see the maps and only the places the GM has put on the map, with their levels", async () => {
+const place = (rows, name) => (rows || []).find(r => r[1] === name && !r[2]);
+
+test("map page: from the Map tab; crew see the region's map and only the places the GM has shown, with their levels", async () => {
   const p = await h.page();
   await join(p, g1, 'map.html');
   await p.waitForSelector('.worldmap img');
   assert.equal(await p.textContent('.worldmap h2'), 'The Test Server');
-  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'the map image loads from its Image cell, through the script');
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'the picture placed in the cell loads, through the script');
   await p.waitForSelector('.loc h2');
-  assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Packet Reef'], 'on the map, under its themed name; GM-only rows never reach the crew');
+  assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Packet Reef'], 'hidden places never reach the crew');
   assert.equal(await p.$('[data-place]'), null, 'crew can\'t change what\'s on the map');
+  assert.doesNotMatch(await p.textContent('main'), /Sharks below|upside down/, 'GM notes stay with the GM');
 
   const g = await h.page();
   await join(g, g1, 'map.html', KEYS.GM_KEY);
   await g.waitForSelector('[data-place]');
   const names = await g.$$eval('.loc h2', hs => hs.map(x => x.textContent));
-  assert.deepEqual(names.sort(), ['Hidden Dock', 'Packet Reef', 'Scrap Town'], 'the GM sees every place; hidden rows stay hidden');
+  assert.deepEqual(names.sort(), ['Hidden Dock', 'Packet Reef', 'Scrap Town'], 'the GM sees every place');
+  assert.match(await g.textContent('main'), /Sharks below/);
   const town = g.locator('.loc', { hasText: 'Scrap Town' });
   assert.equal(await town.locator('[data-place]').getAttribute('aria-pressed'), 'false');
   await town.locator('[data-place]').click();
-  assert.ok(await until(async () => { const r = row(await h.tab(g1, 'Map'), 'place', 'Scrap Town'); return r && r[2] === 'on'; }), 'the GM\'s choice is saved');
+  assert.ok(await until(async () => place(await h.tab(g1, 'Map'), 'Scrap Town')?.[6] === 'on'), 'the GM\'s choice is saved in the Shown column');
   await g.click('[data-show="on"]');
-  assert.deepEqual((await g.$$eval('.loc h2', hs => hs.map(x => x.textContent))).sort(), ['Hidden Dock', 'Packet Reef', 'Scrap Town']);
+  assert.deepEqual((await g.$$eval('.loc h2', hs => hs.map(x => x.textContent))).sort(), ['Packet Reef', 'Scrap Town']);
 
   // The crew page picks it up, levels and all.
   await p.waitForSelector('.loc:has-text("Scrap Town")', { timeout: 8000 });
@@ -196,22 +200,22 @@ test("map page: crew see the maps and only the places the GM has put on the map,
   await p.waitForSelector('.loc [data-lv="1"][aria-selected="true"]');
   assert.match(await p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels .rich').textContent(), /The market/);
   const lv2 = p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels img');
-  assert.ok(await until(() => lv2.evaluate(i => i.complete && i.naturalWidth === 32)), 'the level\'s image loads');
+  assert.ok(await until(() => lv2.evaluate(i => i.complete && i.naturalWidth === 32)), 'the level\'s picture loads');
+  assert.equal(await p.locator('.loc', { hasText: 'Packet Reef' }).locator('.levels').count(), 0, 'a place with no levels is one picture');
   await p.fill('#q', 'market');
   assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Scrap Town'], 'a level\'s text finds its place');
 
   // Off again: gone for the crew.
   await g.locator('.loc', { hasText: 'Scrap Town' }).locator('[data-place]').click();
-  assert.ok(await until(async () => row(await h.tab(g1, 'Map'), 'place', 'Scrap Town')[2] === ''));
+  assert.ok(await until(async () => place(await h.tab(g1, 'Map'), 'Scrap Town')?.[6] === ''));
+  await p.fill('#q', '');
+  assert.ok(await until(async () => !(await p.$('.loc:has-text("Scrap Town")'))), 'the crew page drops it');
 });
 
-test('map page: with no Map tab, the GM\'s first choice makes it', async () => {
+test('map page: with no Map tab, the GM is told to add one', async () => {
   const g = await h.page();
   await join(g, g2, 'map.html', KEYS.GM_KEY);
-  await g.waitForSelector('[data-place]');
-  await g.locator('.loc', { hasText: 'Scrap Town' }).locator('[data-place]').click();
-  assert.ok(await until(async () => { const r = row((await h.tab(g2, 'Map')) || [], 'place', 'Scrap Town'); return r && r[2] === 'on'; }, 8000));
-  await g.waitForSelector('.loc:has-text("Scrap Town") [data-place][aria-pressed="true"]');
+  await g.waitForSelector('main .empty:has-text("Add a Map tab")');
 });
 
 test('two games stay separate, and the menu switches between them', async () => {

@@ -222,19 +222,6 @@ test('permissions: crew cannot write GM or Rules; GM can write GM but not Rules'
   assert.equal(crew(api, { op: 'selftest' }).code, 'forbidden');
 });
 
-test('the Map tab: everyone reads it, only the GM writes or makes it', () => {
-  const { api } = setup();
-  assert.equal(crew(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] }).code, 'name');
-  const made = gm(api, { op: 'create', tab: 'Map', rows: [['place', 'Gull Rock', 'on', '']] });
-  assert.equal(made.ok, true);
-  assert.equal(made.kind, 'map');
-  const r = crew(api, { op: 'read', tabs: ['Map'] });
-  assert.ok(r.list.some(t => t.name === 'Map' && t.kind === 'map'), 'not a character');
-  assert.deepEqual(r.tabs.Map.rows, [['place', 'Gull Rock', 'on', '']]);
-  assert.equal(crew(api, { op: 'patch', tab: 'Map', set: [['place', 'Gull Rock', '', '']] }).code, 'forbidden');
-  assert.equal(gm(api, { op: 'patch', tab: 'Map', set: [['place', 'Old Mill', 'on', '']] }).ok, true);
-});
-
 test('oversize cells are refused', () => {
   const { api } = setup();
   const r = crew(api, { op: 'patch', tab: 'Lore', set: [['note', 'big', 'x'.repeat(50001), '']] });
@@ -496,40 +483,66 @@ test('removed rows are remembered within a property’s size', () => {
   assert.ok(gone.length < 9000, `${gone.length} characters`); // Apps Script allows 9 kB per property
 });
 
-test("image: the Rules tab's Image column, placed pictures and =IMAGE() formulas", () => {
+const MAP_H = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
+function mapGame() {
   const b = n => Buffer.from(Array.from({ length: n }, (_, i) => (i * 37) & 255));
-  const pic = { type: 'image/png', bytes: b(300) };
+  const pics = { region: { type: 'image/png', bytes: b(300) }, hidden: { type: 'image/jpeg', bytes: b(10) }, level: { type: 'image/png', bytes: b(20) } };
   const gas = createGas({
     props: KEYS,
     tabs: {
-      Rules: [
-        ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta', 'Image'],
-        ['map', 'World', 'Map', 'The world.', '', 'crew', '', '', '', { image: pic }],
-        ['location', 'places', 'Lair', 'Secret.', '', 'gm', '', '', '', { image: { type: 'image/jpeg', bytes: b(10) } }],
-        ['location', 'places', 'Reef', 'A reef.', '', 'crew', '', '', '', '=IMAGE("https://example.com/reef.png")'],
-        ['location', 'places', 'Rock', 'A rock.', '', 'crew'],
+      Rules: [['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis']],
+      Map: [MAP_H,
+        ['Vega', '', '', { image: pics.region }, 'The server.', 'Upside down.', ''],
+        ['Vega', 'Haven', '', '', 'A port.', 'Secret door.', 'on'],
+        ['', 'Haven', 'Level 1', { image: pics.level }, 'Docks.', '', ''],
+        ['', 'Haven', 'Level 2', '=IMAGE("https://example.com/l2.png")', 'Market.', '', ''],
+        ['Vega', 'Lair', '', { image: pics.hidden }, 'Hidden.', '', ''],
+        ['', 'Lair', 'Basement', '', 'Deeper.', '', ''],
       ],
     },
   });
-  const api = loadCodeGs(gas);
-  const rows = api.call({ op: 'read', tabs: ['Rules'] }).tabs.Rules.rows;
-  assert.deepEqual(rows.map(r => r[9]), ['row:2', 'https://example.com/reef.png', undefined], 'crew never see the GM row; a row with no image has no 10th cell');
-  const again = api.call({ op: 'read', tabs: ['Rules'], have: { Rules: api.call({ op: 'read', tabs: ['Rules'] }).tabs.Rules.d } });
-  assert.equal(again.tabs.Rules.rows, undefined, 'the digest holds still: a placed picture is sent as its row, not its short-lived URL');
+  return { gas, api: loadCodeGs(gas), pics };
+}
 
-  const r = api.call({ op: 'image', row: 2 });
-  assert.equal(r.ok, true);
-  assert.equal(r.type, 'image/png');
-  assert.deepEqual(Buffer.from(r.data, 'base64'), pic.bytes, 'the bytes come through unchanged');
-  assert.equal(api.call({ op: 'image', row: 3 }).code, 'forbidden', 'a GM-only row\'s picture isn\'t sent to crew');
-  assert.equal(api.call({ op: 'image', row: 3, key: KEYS.GM_KEY }).type, 'image/jpeg', 'but is to the GM');
-  for (const row of [4, 5, 1, 99, 2.5, 'x']) assert.equal(api.call({ op: 'image', row }).ok, false, `row ${row}`);
-  assert.equal(api.call({ op: 'image', row: 2, key: 'wrong' }).code, 'auth');
+test('the Map tab: places, levels and pictures; crew get only what the GM has shown, without GM notes', () => {
+  const { api } = mapGame();
+  const crewRows = crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows;
+  assert.deepEqual(crewRows, [
+    ['Vega', '', '', 'row:2', 'The server.', '', ''],
+    ['Vega', 'Haven', '', '', 'A port.', '', 'on'],
+    ['', 'Haven', 'Level 1', 'row:4', 'Docks.', '', ''],
+    ['', 'Haven', 'Level 2', 'https://example.com/l2.png', 'Market.', '', ''],
+  ], 'a placed picture goes as its row; a hidden place and its levels stay out');
+  const gmRows = gm(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows;
+  assert.equal(gmRows.length, 6);
+  assert.equal(gmRows[1][5], 'Secret door.');
+  const d = crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.d;
+  assert.equal(crew(api, { op: 'read', tabs: ['Map'], have: { Map: d } }).tabs.Map.rows, undefined, 'the digest holds still between reads');
+  assert.equal(gm(api, { op: 'patch', tab: 'Map', set: [['x', 'y', 'z', '']] }).code, 'forbidden', 'edited in the sheet, not by patch');
+  assert.equal(gm(api, { op: 'create', tab: 'Map', rows: [] }).code, 'name');
 });
 
-test('image: a Rules tab without an Image column sends rows as before', () => {
-  const gas = createGas({ props: KEYS, tabs: { Rules: [['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'], ['map', 'World', 'Map', 'The world.', '', 'crew']] } });
-  const api = loadCodeGs(gas);
-  assert.deepEqual(api.call({ op: 'read', tabs: ['Rules'] }).tabs.Rules.rows, [['map', 'World', 'Map', 'The world.', '', 'crew']]);
-  assert.equal(api.call({ op: 'image', row: 2 }).code, 'missing');
+test('show: the GM puts a place on the crew\'s map, or takes it off', () => {
+  const { api, gas } = mapGame();
+  assert.equal(crew(api, { op: 'show', location: 'Lair', on: true }).code, 'forbidden');
+  const r = gm(api, { op: 'show', location: 'lair', on: true });
+  assert.equal(r.ok, true);
+  assert.equal(gas.ss.getSheetByName('Map').getRange(6, 7).getDisplayValues()[0][0], 'on');
+  assert.deepEqual(crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows.map(x => x[2] || x[1]), ['', 'Haven', 'Level 1', 'Level 2', 'Lair', 'Basement'], 'Lair and its level now reach the crew');
+  gm(api, { op: 'show', location: 'Haven', on: false });
+  assert.equal(gas.ss.getSheetByName('Map').getRange(3, 7).getDisplayValues()[0][0], '');
+  assert.equal(gm(api, { op: 'show', location: 'Nowhere', on: true }).code, 'missing');
+});
+
+test('image: sends a picture placed in a Map cell, only to someone who can see its row', () => {
+  const { api, pics } = mapGame();
+  const r = crew(api, { op: 'image', row: 2 });
+  assert.equal(r.ok, true);
+  assert.equal(r.type, 'image/png');
+  assert.deepEqual(Buffer.from(r.data, 'base64'), pics.region.bytes, 'the bytes come through unchanged');
+  assert.equal(crew(api, { op: 'image', row: 4 }).ok, true, 'a level of a shown place');
+  assert.equal(crew(api, { op: 'image', row: 6 }).code, 'missing', 'a hidden place\'s picture isn\'t sent to crew');
+  assert.equal(gm(api, { op: 'image', row: 6 }).type, 'image/jpeg', 'but is to the GM');
+  for (const row of [3, 5, 1, 99, 2.5, 'x']) assert.equal(gm(api, { op: 'image', row }).ok, false, `row ${row}`);
+  assert.equal(api.call({ op: 'image', row: 2, key: 'wrong' }).code, 'auth');
 });

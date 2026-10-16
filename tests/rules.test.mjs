@@ -74,23 +74,11 @@ test("overrides: the game's wording first, the book's kept as orig", () => {
   assert.equal(smash.text, 'roll +BLOOD hard');
 });
 
-test('images: https only; the site holds no art of its own', () => {
+test('image addresses: https only', () => {
   assert.equal(imgSrc('https://example.com/a.png'), 'https://example.com/a.png');
   for (const bad of ['assets/world/vega-server.jpg', 'javascript:alert(1)', 'http://example.com/a.png', '../secret.jpg', '//evil.com/a.jpg', 'data:image/png;base64,xx', '"onerror=x']) assert.equal(imgSrc(bad), '', bad);
 });
 
-test("images: the Image cell (a placed picture, or an =IMAGE() address) wins over Meta's img=", () => {
-  const R = indexRules([
-    ['map', 'World', 'Placed', '', 'img=https://example.com/old.png', 'crew', '', '', '', 'row:7'],
-    ['map', 'World', 'Formula', '', '', 'crew', '', '', '', 'https://example.com/f.png'],
-    ['map', 'World', 'Meta only', '', 'img=https://example.com/m.png', 'crew'],
-  ]);
-  const [placed, formula, meta] = R.by('map');
-  assert.equal(placed.imageRow, 7);
-  assert.equal(formula.meta.img, 'https://example.com/f.png');
-  assert.equal(formula.imageRow, undefined);
-  assert.equal(meta.meta.img, 'https://example.com/m.png');
-});
 
 test('session end: which moves it touches, and what they mark', () => {
   assert.ok(atSessionEnd('Mark 1-luck when you *end a session* Haunted.'));
