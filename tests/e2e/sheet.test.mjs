@@ -297,6 +297,20 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   assert.equal(row(after, 'advance', 'trait')[2], '1');
 });
 
+test('moves that spend luck have a button that spends it', async () => {
+  const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
+  await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('[data-act="cat"][data-cat="basic"]');
+  assert.equal(await p.$('details[data-id="basic:POKE AROUND"] [data-act="spend-luck"]'), null, 'no luck button on a plain roll');
+  await p.click('details[data-id="basic:FLIP A COIN"] [data-act="spend-luck"]');
+  assert.match(await p.textContent('#toast'), /Spent 1 luck: FLIP A COIN \(3 left\)/);
+  assert.equal(await track(p, 'luck'), '●●●○○○○○');
+  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Luck')[2] === '●●●○○○○○' && r; });
+  assert.ok(rows, 'saved to the sheet');
+});
+
 test('importing the old one-page sheet replaces the character', async () => {
   const p = await openSheet();
   const old = {

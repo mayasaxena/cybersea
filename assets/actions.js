@@ -2,8 +2,8 @@
 // The rule text shown in each dialog comes from the Rules tab (procedure rows); the mechanics
 // live here. ctx = {st(), rules(), changed(), render(), editing()}.
 
-import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal } from './core.js';
-import { md } from './markup.js';
+import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal, toast } from './core.js';
+import { md, plain } from './markup.js';
 import { logId } from './codec.js';
 
 export const ACTIONS = {
@@ -265,6 +265,40 @@ export function makeActions(ctx) {
       why: kind === 'dt-begin' ? 'Already in downtime' : 'Not in downtime' };
   }
 
+  // Luck a move spends outright: "spend 1-luck", "pay 3-luck", "spend x-luck" (x asks how much).
+  // Not "you don't have to spend 1-luck".
+  function luckCost(move) {
+    const m = plain(move.text).match(/(?<!have to )\b(?:spend|pay) (\d+|x)-luck\b/i);
+    if (!m || !track('luck')) return null;
+    const n = m[1].toLowerCase() === 'x' ? null : +m[1];
+    const have = track('luck').pips.filter(v => v === 1).length;
+    return { n, have, ok: have >= (n || 1) };
+  }
+
+  function spendLuck(move) {
+    const c = luckCost(move);
+    if (!c?.ok) return;
+    const spend = n => {
+      const l = track('luck').pips;
+      let done = 0;
+      for (let j = l.length - 1; j >= 0 && done < n; j--) if (l[j] === 1) { l[j] = 0; done++; }
+      ctx.changed();
+      ctx.render();
+      toast(`Spent ${done} luck: ${move.name} (${c.have - done} left)`);
+    };
+    if (c.n) { spend(c.n); return; }
+    const o = modal(`<div class="prow"><h2>${escTxt(move.name)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
+      <label class="field"><span class="lbl">Luck to spend (${c.have})</span><input class="in" type="number" data-luck min="1" max="${c.have}" value="1"></label>
+      <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-spend>Spend luck</button></div>`, { label: move.name });
+    o.querySelector('[data-luck]').focus();
+    o.addEventListener('click', e => {
+      if (!e.target.closest('[data-spend]')) return;
+      const n = Math.min(c.have, Math.max(1, parseInt(o.querySelector('[data-luck]').value, 10) || 1));
+      closeModal();
+      spend(n);
+    });
+  }
+
   // Count downtime moves rolled during downtime.
   function noteRoll(move, total) {
     const dt = st().state.downtime;
@@ -273,5 +307,5 @@ export function makeActions(ctx) {
     return true;
   }
 
-  return { open, logHTML, noteRoll, forMove, armed, xpCount, xpNeeded };
+  return { open, logHTML, noteRoll, forMove, luckCost, spendLuck, armed, xpCount, xpNeeded };
 }
