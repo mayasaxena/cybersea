@@ -152,6 +152,31 @@ test('checklists on playbook moves save per character', async () => {
   assert.equal(await p.$('#toast .roll-go'), null);
 });
 
+test('rolls that need a number: set it in the preview before rolling', async () => {
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('details[data-id="special:SCARPER"] .chip');
+  assert.match(await p.textContent('#toast .tl'), /SCARPER · \+bonds spent/);
+  await p.click('#toast .ab[data-d="1"]');
+  await p.click('#toast .ab[data-d="1"]');
+  assert.equal(await p.textContent('#toast .av'), '2');
+  assert.equal(await p.textContent('#toast .pm'), '+2');
+  await p.click('#toast .roll-go');
+  await p.waitForSelector('#toast .tot');
+  let faces = await p.$$eval('#toast .die', ds => ds.map(d => +d.textContent));
+  assert.equal(+(await p.textContent('#toast .tot')), faces[0] + faces[1] + 2);
+  assert.equal(await p.$('#toast .adj'), null);
+
+  await p.click('details[data-id="special:CHEAT DEATH"] .chip');
+  assert.match(await p.textContent('#toast .an'), /-1 per scar/);
+  await p.click('#toast .ab[data-d="1"]');
+  assert.equal(await p.textContent('#toast .pm'), '−1');
+  await p.click('#toast .roll-go');
+  await p.waitForSelector('#toast .tot');
+  faces = await p.$$eval('#toast .die', ds => ds.map(d => +d.textContent));
+  assert.equal(+(await p.textContent('#toast .tot')), faces[0] + faces[1] - 1);
+});
+
 test('two people editing different rows keep both changes, live', async () => {
   const a = await openSheet();
   const b = await openSheet();

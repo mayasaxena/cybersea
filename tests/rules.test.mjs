@@ -32,3 +32,17 @@ test('rolls: a stat on this sheet, roll blank, 1d6', () => {
   assert.deepEqual(rollFor('**roll blank**', stats), { label: '2d6', mod: 0, dice: 2 });
   assert.deepEqual(rollFor('one of the crew rolls **1d6**', stats), { label: '1d6', mod: 0, dice: 1 });
 });
+
+test('rolls: +x and +bonds spent ask for a number; "-1 per ..." becomes a counter', () => {
+  const stats = [{ k: 'Vinegar', v: -1 }];
+  assert.deepEqual(rollFor('Spend any number of bonds and roll +X.', stats), { label: '+X', mod: 0, dice: 2, ask: 'X' });
+  assert.deepEqual(rollFor('When you *scarper*, roll **+bonds spent**.', stats), { label: '+bonds spent', mod: 0, dice: 2, ask: 'Bonds spent' });
+  assert.equal(rollFor('spend a bond and roll +bond spent', stats).ask, 'Bonds spent');
+  assert.equal(rollFor('roll +max bonds', stats).ask, 'Max bonds');
+  assert.equal(rollFor('roll +your black marks', stats).ask, 'Black marks');
+  assert.equal(rollFor('**roll blank**. If they are right here, take +1.', stats).adj, 'Modifier');
+  assert.equal(rollFor('spend x-luck and roll x dice', stats), null);
+  assert.deepEqual(rollFor('When you *cheat death*, **roll blank**. ^Take -1 per scar.^', stats), { label: '2d6', mod: 0, dice: 2, per: '-1 per scar' });
+  assert.deepEqual(rollFor('Roll +VINEGAR, taking −1 for each black mark on your sheet.', stats),
+    { label: 'Vinegar', mod: -1, dice: 2, stat: true, per: '-1 per black mark' });
+});

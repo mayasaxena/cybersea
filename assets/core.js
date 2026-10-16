@@ -64,14 +64,31 @@ function toastEl() {
 
 // Show what a roll will be (label, dice, modifier) with a Roll button; nothing is rolled until it's pressed.
 // Then the dice tumble briefly, settle, and onRolled gets { dice, total }.
+// ask ("Bonds spent"), per ("-1 per scar") and adj (a free +/-) add counters the player sets before rolling.
 let rollSeq = 0;
-export function doRoll(label, mod = 0, dice = 2, onRolled) {
+export function doRoll(label, mod = 0, dice = 2, onRolled, { ask, per, adj } = {}) {
   const seq = ++rollSeq;
   const el = toastEl();
   const faces = ds => ds.map(d => `<span class="die">${d}</span>`).join('');
+  const counters = [];
+  if (ask) counters.push({ name: ask, step: 1, n: 0, min: 0 });
+  if (per) counters.push({ name: per, step: parseInt(per, 10) || -1, n: 0, min: 0 });
+  if (adj) counters.push({ name: adj, step: 1, n: 0, min: -10, signed: true });
+  const base = mod;
+  const modNow = () => base + counters.reduce((a, c) => a + c.step * c.n, 0);
   el.innerHTML = `<span class="tl">${escTxt(label)}</span><span class="dice">${faces(Array(dice).fill('?'))}</span>` +
-    (mod ? `<span class="mod">${fmt(mod)}</span>` : '') +
-    `<button type="button" class="roll-go">${ICON.die}<span>Roll ${dice}d6</span></button>`;
+    (mod || counters.length ? `<span class="mod pm">${fmt(mod)}</span>` : '') +
+    `<button type="button" class="roll-go">${ICON.die}<span>Roll ${dice}d6</span></button>` +
+    counters.map((c, k) => `<span class="adj"><span class="an">${escTxt(c.name)}</span>` +
+      `<button type="button" class="ab" data-k="${k}" data-d="-1" aria-label="Fewer">−</button><span class="av">${c.signed ? fmt(0) : 0}</span>` +
+      `<button type="button" class="ab" data-k="${k}" data-d="1" aria-label="More">+</button></span>`).join('');
+  el.querySelectorAll('.ab').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const c = counters[+b.dataset.k];
+    c.n = Math.max(c.min, Math.min(20, c.n + +b.dataset.d));
+    b.parentElement.querySelector('.av').textContent = c.signed ? fmt(c.n) : c.n;
+    el.querySelector('.pm').textContent = fmt(modNow());
+  }));
   el.className = 'toast';
   void el.offsetWidth;
   el.className = 'toast show preview';
@@ -81,6 +98,10 @@ export function doRoll(label, mod = 0, dice = 2, onRolled) {
   go.addEventListener('click', e => {
     e.stopPropagation();
     if (seq !== rollSeq) return;
+    mod = modNow();
+    el.querySelectorAll('.adj').forEach(a => a.remove());
+    const pm = el.querySelector('.pm');
+    if (pm && !mod) pm.remove(); else if (pm) pm.textContent = fmt(mod);
     const ds = Array.from({ length: dice }, d6);
     const total = ds.reduce((a, b) => a + b, 0) + mod;
     const band = dice === 2 ? (total >= 10 ? ['hi', '10+'] : total >= 7 ? ['mid', '7-9'] : ['lo', '6-']) : ['', ''];

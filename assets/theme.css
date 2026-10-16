@@ -181,6 +181,12 @@ input.name{width:11ch;padding:2px 8px}
   font:700 12px/1 "Chakra Petch",sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
 .roll-go:hover,.roll-go:focus-visible{background:var(--c);color:var(--panel)}
 .roll-go svg{width:14px;height:14px}
+.toast.preview{flex-wrap:wrap}
+.toast .adj{flex-basis:100%;display:flex;align-items:center;gap:8px;font:600 12px/1 "Chakra Petch",sans-serif;color:var(--muted)}
+.toast .adj .an{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
+.toast .ab{width:26px;height:26px;border:1px solid var(--line);border-radius:4px;background:none;color:var(--text);font:700 14px/1 "Chakra Petch",sans-serif;cursor:pointer}
+.toast .ab:hover,.toast .ab:focus-visible{border-color:var(--c);color:var(--c)}
+.toast .av{min-width:1.5em;text-align:center;font-weight:700;color:var(--text)}
 @media (prefers-reduced-motion: reduce){.toast.rolling .die{animation:none}}
 
 /* data panel */
