@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
+import { inflateRawSync } from 'node:zlib';
 
 const MAX_ROWS = 1000;
 const MAX_COLUMNS = 26; // a new sheet's size; insertColumnsAfter adds more
@@ -113,6 +114,13 @@ class Range {
   }
   setNumberFormat(fmt) { this.cells(c => { c.fmt = fmt; }); return this; }
   setFontWeight() { return this; }
+  setNumberFormats(fmts) { this.cells((c, r, col) => { c.fmt = fmts[r][col] === '@' ? '@' : null; }); return this; }
+  setFontWeights(w) { this.cells((c, r, col) => { c.bold = w[r][col] === 'bold'; }); return this; }
+  setBackgrounds(b) { this.cells((c, r, col) => { c.bg = b[r][col] || null; }); return this; }
+  setWraps(w) { this.cells((c, r, col) => { c.wrap = !!w[r][col]; }); return this; }
+  setDataValidation(rule) { this.cells(c => { c.rule = rule; }); return this; }
+  getDataValidation() { return this.sheet.cell(this.row, this.col).rule || null; }
+  getNumberFormat() { return this.sheet.cell(this.row, this.col).fmt || 'General'; }
   getA1Notation() {
     const a = `${colName(this.col)}${this.row}`;
     return this.nr === 1 && this.nc === 1 ? a : `${a}:${colName(this.col + this.nc - 1)}${this.row + this.nr - 1}`;
@@ -162,20 +170,18 @@ class Sheet {
   insertRowAfter(r) { this.cell(r, 1); this.grid.splice(r, 0, []); this.ss.edits++; return this; }
   deleteRow(r) { if (r <= this.grid.length) this.grid.splice(r - 1, 1); this.ss.edits++; return this; }
   setFrozenRows(n) { this.frozen = n; return this; }
+  getFrozenRows() { return this.frozen; }
+  setFrozenColumns(n) { this.frozenCols = n; return this; }
+  getFrozenColumns() { return this.frozenCols || 0; }
+  setColumnWidth(c, px) { (this.widths ||= {})[c] = px; return this; }
+  getColumnWidth(c) { return (this.widths || {})[c] || 100; }
+  insertRowsAfter(r, n) { if (r !== MAX_ROWS) throw new Error('fake: only appends rows'); throw new Error(`fake: sheets are ${MAX_ROWS} rows (asked for ${MAX_ROWS + n})`); }
   setName(n) {
     if (this.ss.sheets.some(s => s !== this && s.name.toLowerCase() === String(n).toLowerCase())) {
       throw new Error(`A sheet with the name "${n}" already exists. Please enter another name.`);
     }
     this.name = String(n);
     return this;
-  }
-  // Like Sheets: a copy of the cells, named "Copy of …", at the end. Protections aren't copied.
-  copyTo(ss) {
-    const sh = new Sheet(ss, ss.freeName(`Copy of ${this.name}`));
-    sh.grid = this.grid.map(row => row.map(c => Object.assign(new Cell(), c)));
-    Object.assign(sh, { frozen: this.frozen, maxCols: this.maxCols, hidden: new Set(this.hidden) });
-    ss.sheets.push(sh);
-    return sh;
   }
   isSheetHidden() { return !!this.tabHidden; }
   hideSheet() {
@@ -203,11 +209,6 @@ class Spreadsheet {
   deleteSheet(sh) {
     if (this.sheets.length === 1) throw new Error("You can't remove all the sheets in a document.");
     this.sheets = this.sheets.filter(s => s !== sh);
-  }
-  freeName(base) {
-    let n = base;
-    for (let i = 2; this.getSheetByName(n); i++) n = `${base} ${i}`;
-    return n;
   }
   setActiveSheet(sh) { this.active = sh; return sh; }
   getActiveSheet() { return this.active || this.sheets[0]; }
@@ -242,7 +243,20 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     setProps(p) { Object.assign(store, p); },
     clearCache() { cache.clear(); },
     services: {
-      SpreadsheetApp: { getActiveSpreadsheet: () => ss, ValueType: { IMAGE: 'IMAGE' }, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' } },
+      SpreadsheetApp: {
+        getActiveSpreadsheet: () => ss,
+        ValueType: { IMAGE: 'IMAGE' },
+        ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' },
+        newDataValidation: () => {
+          const rule = { allowInvalid: true };
+          const b = {
+            requireValueInList: (list, dropdown = true) => { Object.assign(rule, { list: [...list], dropdown }); return b; },
+            setAllowInvalid: a => { rule.allowInvalid = !!a; return b; },
+            build: () => rule,
+          };
+          return b;
+        },
+      },
       UrlFetchApp: {
         fetch: url => {
           const img = images.get(url);
@@ -278,10 +292,38 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
         computeDigest: (alg, str) => [...createHash(alg).update(String(str), 'utf8').digest()].map(b => (b > 127 ? b - 256 : b)),
         base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
         base64Decode: str => [...Buffer.from(String(str), 'base64')].map(b => (b > 127 ? b - 256 : b)),
-        newBlob: (bytes, type, name) => ({ bytes, type, name, getBytes: () => bytes, getContentType: () => type, getName: () => name }),
+        newBlob: (bytes, type, name) => blob(bytes, type, name),
+        unzip: b => unzip(Buffer.from(b.getBytes().map(x => x & 255))).map(([name, data]) => blob([...data].map(x => (x > 127 ? x - 256 : x)), null, name)),
       },
     },
   };
+}
+
+function blob(bytes, type, name) {
+  return {
+    getBytes: () => bytes, getContentType: () => type, getName: () => name,
+    getDataAsString: () => Buffer.from(bytes.map(b => b & 255)).toString('utf8'),
+  };
+}
+
+// [[name, Buffer]] for each file in a zip (stored or deflated), read from its central directory.
+function unzip(buf) {
+  let end = buf.length - 22;
+  while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('Could not unzip the blob because it is not a valid zip file.');
+  const out = [];
+  let p = buf.readUInt32LE(end + 16);
+  for (let i = 0, n = buf.readUInt16LE(end + 10); i < n; i++) {
+    const method = buf.readUInt16LE(p + 10), size = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28), extra = buf.readUInt16LE(p + 30), comment = buf.readUInt16LE(p + 32);
+    const local = buf.readUInt32LE(p + 42);
+    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const raw = buf.subarray(start, start + size);
+    if (!name.endsWith('/')) out.push([name, method === 8 ? inflateRawSync(raw) : Buffer.from(raw)]);
+    p += 46 + nameLen + extra + comment;
+  }
+  return out;
 }
 
 // asText mirrors the template, whose columns are formatted as plain text.

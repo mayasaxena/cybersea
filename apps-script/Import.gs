@@ -1,24 +1,25 @@
 /**
  * The spreadsheet's Cybersea menu. Update the script is in Update.gs.
  *
- * Replace with an xlsx… swaps every tab for the tabs of an .xlsx
- * file (a fresh workbook from tools/xlsx/build.py, say), picked from the computer.
+ * Replace with an xlsx… swaps every tab for the tabs of an .xlsx file (a fresh workbook from
+ * tools/xlsx/build.py, say), picked from the computer.
  *
  * The spreadsheet itself stays: its name, its script, the script's properties and the web app
  * deployment, so the site's URL and invite links keep working. Everything on the tabs is
  * replaced, including pictures placed in cells (File > Version history can bring them back).
  *
- * Sheets can't read an .xlsx directly, so the file is turned into a temporary Google Sheet in
- * Drive (the Drive advanced service, enabled in appsscript.json), its tabs are copied in, and the
- * temporary sheet is deleted. That needs more than the attached spreadsheet, so appsscript.json
- * lists the scopes itself (which overrides Code.gs's @OnlyCurrentDoc): spreadsheets (to open the
- * temporary sheet), drive.file (only files this script creates), script.container.ui (the menu
- * and dialog), script.external_request (Code.gs's pictures, and Update.gs fetching the new
- * files), and script.projects and script.deployments (Update.gs).
+ * The script reads the .xlsx itself (it's a zip of XML files), so it needs no access beyond this
+ * spreadsheet. It carries over what the game's workbooks use: values and formulas, plain-text,
+ * bold, fill and wrap formatting, column widths, hidden columns and tabs, frozen rows and
+ * columns, list data validation, and sheet protection (Excel's "allow edit" ranges stay
+ * editable). Anything else is left out and listed in the result.
+ *
+ * appsscript.json lists the scopes itself (as Code.gs's @OnlyCurrentDoc would): this spreadsheet
+ * only, script.container.ui (the menu and dialog), script.external_request (Code.gs's pictures,
+ * and Update.gs fetching the new files), and script.projects and script.deployments (Update.gs).
  */
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const GSHEET_MIME = 'application/vnd.google-apps.spreadsheet';
 const MAX_XLSX_BYTES = 20 * 1024 * 1024;
 
 function onOpen() {
@@ -41,69 +42,253 @@ function replaceWithXlsx(name, data) {
   const bytes = Utilities.base64Decode(String(data || ''));
   if (!bytes.length) return { ok: false, error: 'That file is empty.' };
   if (bytes.length > MAX_XLSX_BYTES) return { ok: false, error: 'That file is too big.' };
-
-  const temp = Drive.Files.create(
-    { name: 'Cybersea import (temporary): ' + name, mimeType: GSHEET_MIME },
-    Utilities.newBlob(bytes, XLSX_MIME, name));
+  let book;
   try {
-    const src = SpreadsheetApp.openById(temp.id);
-    return withLock_(() => replaceTabs_(SpreadsheetApp.getActiveSpreadsheet(), src));
-  } finally {
-    try { Drive.Files.remove(temp.id); } catch (err) { console.warn('Could not delete the temporary sheet ' + temp.id + ': ' + err); }
+    book = readXlsx_(Utilities.unzip(Utilities.newBlob(bytes, XLSX_MIME, name)));
+  } catch (err) {
+    return { ok: false, error: 'That doesn’t look like an .xlsx file (' + (err.message || err) + '). Nothing was changed.' };
   }
+  return withLock_(() => replaceTabs_(SpreadsheetApp.getActiveSpreadsheet(), book));
 }
 
-// Replaces ss's tabs with copies of src's, in src's order, keeping src's names, hidden tabs and
-// protections. Copies are made first, so a failure leaves the old tabs as they were.
-function replaceTabs_(ss, src) {
-  const from = src.getSheets();
-  if (!from.some(sh => tabKind_(sh.getName()) === 'rules')) {
+// Replaces ss's tabs with the workbook's, in its order. The new tabs are made first, so a failure
+// leaves the old tabs as they were.
+function replaceTabs_(ss, book) {
+  if (!book.tabs.some(t => tabKind_(t.name) === 'rules')) {
     return { ok: false, error: 'That file has no Rules tab, so it doesn’t look like a game. Nothing was changed.' };
   }
   const old = ss.getSheets();
-  const copies = [];
+  const made = [];
   try {
-    from.forEach(sh => copies.push(sh.copyTo(ss)));
+    book.tabs.forEach((t, i) => {
+      const sh = ss.insertSheet('Importing ' + (i + 1) + ' ' + Date.now());
+      made.push(sh);
+      fillSheet_(sh, t, book.skipped);
+    });
   } catch (err) {
-    copies.forEach(c => ss.deleteSheet(c));
+    made.forEach(sh => ss.deleteSheet(sh));
     throw err;
   }
   old.forEach(sh => ss.deleteSheet(sh));
-  copies.forEach((copy, i) => {
-    copy.setName(from[i].getName());
-    ss.setActiveSheet(copy);
+  made.forEach((sh, i) => {
+    sh.setName(book.tabs[i].name);
+    ss.setActiveSheet(sh);
     ss.moveActiveSheet(i + 1);
-    copyProtections_(from[i], copy);
   });
-  copies.forEach((copy, i) => { if (from[i].isSheetHidden()) copy.hideSheet(); });
-  ss.setActiveSheet(copies.find(c => !c.isSheetHidden()) || copies[0]);
+  made.forEach((sh, i) => { if (book.tabs[i].hidden) sh.hideSheet(); });
+  ss.setActiveSheet(made.find(sh => !sh.isSheetHidden()) || made[0]);
 
   // Rows remembered as removed (see gone_) were the old tabs' rows.
   const props = PropertiesService.getDocumentProperties();
   Object.keys(props.getProperties()).filter(k => k.indexOf('gone:') === 0).forEach(k => props.deleteProperty(k));
-  return { ok: true, tabs: copies.map(c => c.getName()) };
+  const skipped = Object.keys(book.skipped);
+  return { ok: true, tabs: made.map(sh => sh.getName()), skipped };
 }
 
-function copyProtections_(from, to) {
-  const P = SpreadsheetApp.ProtectionType;
-  to.getProtections(P.SHEET).concat(to.getProtections(P.RANGE)).forEach(p => p.remove());
-  from.getProtections(P.SHEET).forEach(p => {
-    const q = to.protect();
-    q.setUnprotectedRanges(p.getUnprotectedRanges().map(r => to.getRange(r.getA1Notation())));
-    protectLike_(p, q);
+function fillSheet_(sh, t, skipped) {
+  const nr = Math.max(t.values.length, 1);
+  const nc = Math.max(t.width, 1);
+  if (sh.getMaxRows() < nr) sh.insertRowsAfter(sh.getMaxRows(), nr - sh.getMaxRows());
+  if (sh.getMaxColumns() < nc) sh.insertColumnsAfter(sh.getMaxColumns(), nc - sh.getMaxColumns());
+  const grid = f => t.values.length ? t.cells.map(line => line.map(f)) : [[f({})]];
+  const range = sh.getRange(1, 1, nr, nc);
+  range.setNumberFormats(grid(c => (c.text ? '@' : 'General')));
+  range.setValues(t.values.length ? t.values : [['']]);
+  range.setFontWeights(grid(c => (c.bold ? 'bold' : 'normal')));
+  range.setBackgrounds(grid(c => c.fill || null));
+  range.setWraps(grid(c => !!c.wrap));
+  t.cols.forEach(c => {
+    for (let i = c.min; i <= Math.min(c.max, nc); i++) {
+      if (c.width) sh.setColumnWidth(i, Math.round(c.width * 7 + 5));
+      if (c.hidden) sh.hideColumns(i);
+    }
   });
-  from.getProtections(P.RANGE).forEach(p => protectLike_(p, to.getRange(p.getRange().getA1Notation()).protect()));
+  if (t.frozenRows) sh.setFrozenRows(t.frozenRows);
+  if (t.frozenCols) sh.setFrozenColumns(t.frozenCols);
+  t.validations.forEach(v => {
+    const list = listOf_(v.formula);
+    if (v.type !== 'list' || !list) {
+      skipped['data validation that isn’t a list of choices (' + t.name + ' ' + v.sqref + ')'] = 1;
+      return;
+    }
+    const rule = SpreadsheetApp.newDataValidation().requireValueInList(list, v.dropdown).setAllowInvalid(!v.strict).build();
+    v.sqref.split(/\s+/).filter(Boolean).forEach(a1 => sh.getRange(a1).setDataValidation(rule));
+  });
+  if (t.protect) {
+    const p = sh.protect();
+    p.setUnprotectedRanges(t.protect.open.map(a1 => sh.getRange(a1)));
+    p.removeEditors(p.getEditors());
+    if (p.canDomainEdit()) p.setDomainEdit(false);
+  }
 }
 
-// Only the spreadsheet's owner can edit a protected range, unless it only warns.
-function protectLike_(p, q) {
-  q.setDescription(p.getDescription());
-  if (p.isWarningOnly()) {
-    q.setWarningOnly(true);
-    return;
+// "on,off" in quotes -> ['on', 'off']; anything else (a range, a formula) -> null.
+function listOf_(formula) {
+  const m = /^"(.*)"$/.exec(String(formula || '').trim());
+  return m ? m[1].split(',').map(s => s.trim()) : null;
+}
+
+/* ---------- reading an .xlsx ---------- */
+
+// blobs: the unzipped parts. Returns {tabs: [{name, hidden, values, cells, width, cols,
+// frozenRows, frozenCols, validations, protect}], skipped: {what: 1}}.
+function readXlsx_(blobs) {
+  const parts = {};
+  blobs.forEach(b => { parts[b.getName().replace(/^\/+/, '')] = b; });
+  const text = path => (parts[path] ? parts[path].getDataAsString('UTF-8') : '');
+  if (!parts['xl/workbook.xml']) throw new Error('no xl/workbook.xml');
+  const rels = {};
+  all_(xml_(text('xl/_rels/workbook.xml.rels')), 'Relationship').forEach(r => { rels[r.a.Id] = r.a.Target; });
+  const shared = all_(xml_(text('xl/sharedStrings.xml')), 'si').map(textOf_);
+  const styles = readStyles_(xml_(text('xl/styles.xml')));
+  const skipped = {};
+  const tabs = all_(xml_(text('xl/workbook.xml')), 'sheet').map(s => {
+    const target = String(rels[s.a['r:id']] || '');
+    const path = target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+    if (!parts[path]) throw new Error('no ' + path + ' for tab ' + s.a.name);
+    const tab = readSheet_(xml_(text(path)), shared, styles, skipped, s.a.name);
+    tab.name = s.a.name;
+    tab.hidden = !!s.a.state && s.a.state !== 'visible';
+    return tab;
+  });
+  if (blobs.some(b => /^xl\/(media|drawings|richData)\//.test(b.getName()))) skipped['pictures'] = 1;
+  return { tabs, skipped };
+}
+
+function readStyles_(doc) {
+  const fmts = {};
+  all_(doc, 'numFmt').forEach(f => { fmts[f.a.numFmtId] = f.a.formatCode; });
+  const fonts = kids_(first_(doc, 'fonts'), 'font').map(f => {
+    const b = first_(f, 'b');
+    return !!b && b.a.val !== '0' && b.a.val !== 'false';
+  });
+  const fills = kids_(first_(doc, 'fills'), 'fill').map(f => {
+    const p = first_(f, 'patternFill');
+    const fg = p && p.a.patternType === 'solid' && first_(p, 'fgColor');
+    return fg && /^[0-9a-f]{8}$/i.test(fg.a.rgb || '') ? '#' + fg.a.rgb.slice(2) : null;
+  });
+  return kids_(first_(doc, 'cellXfs'), 'xf').map(x => {
+    const al = first_(x, 'alignment');
+    return {
+      text: x.a.numFmtId === '49' || fmts[x.a.numFmtId] === '@',
+      bold: !!fonts[Number(x.a.fontId) || 0],
+      fill: fills[Number(x.a.fillId) || 0] || null,
+      wrap: !!al && (al.a.wrapText === '1' || al.a.wrapText === 'true'),
+    };
+  });
+}
+
+function readSheet_(doc, shared, styles, skipped, name) {
+  const values = [];
+  const cells = [];
+  let width = 0;
+  let r = 0;
+  all_(doc, 'row').forEach(row => {
+    r = Number(row.a.r) || r + 1;
+    let c = 0;
+    kids_(row, 'c').forEach(cell => {
+      const ref = /^([A-Z]+)(\d+)$/.exec(cell.a.r || '');
+      c = ref ? colNum_(ref[1]) : c + 1;
+      const style = styles[Number(cell.a.s) || 0] || {};
+      const f = first_(cell, 'f');
+      const v = first_(cell, 'v');
+      let value;
+      if (f && f.t) value = '=' + f.t;
+      else if (cell.a.t === 's') value = shared[Number(v && v.t)] || '';
+      else if (cell.a.t === 'inlineStr') value = textOf_(first_(cell, 'is') || { c: [] });
+      else if (cell.a.t === 'b') value = !!v && v.t === '1';
+      else if (cell.a.t === 'str' || cell.a.t === 'e') value = v ? v.t : '';
+      else value = v && v.t !== '' ? Number(v.t) : '';
+      // Sheets would take "=…" as a formula and drop a leading ' (and, outside plain text, take
+      // "+2" or "TRUE" as a number or a boolean); a leading ' keeps it as the text it was.
+      if (typeof value === 'string' && !(f && f.t) && (/^[=']/.test(value) ||
+          (!style.text && /^\s*([+-]?[\d.]|true\s*$|false\s*$)/i.test(value)))) value = "'" + value;
+      while (values.length < r) { values.push([]); cells.push([]); }
+      values[r - 1][c - 1] = value;
+      cells[r - 1][c - 1] = style;
+      width = Math.max(width, c);
+    });
+  });
+  values.forEach((line, i) => {
+    for (let j = 0; j < width; j++) {
+      if (line[j] === undefined) line[j] = '';
+      if (!cells[i][j]) cells[i][j] = styles[0] || {};
+    }
+  });
+  const cols = all_(doc, 'col').map(c => ({
+    min: Number(c.a.min), max: Number(c.a.max), width: c.a.customWidth === '1' || c.a.customWidth === 'true' ? Number(c.a.width) : 0,
+    hidden: c.a.hidden === '1' || c.a.hidden === 'true',
+  }));
+  const pane = all_(doc, 'pane').find(p => p.a.state === 'frozen' || p.a.state === 'frozenSplit');
+  const validations = all_(doc, 'dataValidation').map(v => ({
+    type: v.a.type || 'any', sqref: v.a.sqref || '', formula: (first_(v, 'formula1') || {}).t,
+    strict: v.a.showErrorMessage === '1' || v.a.showErrorMessage === 'true',
+    dropdown: v.a.showDropDown !== '1' && v.a.showDropDown !== 'true', // Excel's flag means "hide it"
+  }));
+  if (all_(doc, 'mergeCell').length) skipped['merged cells (' + name + ')'] = 1;
+  if (all_(doc, 'conditionalFormatting').length) skipped['conditional formatting (' + name + ')'] = 1;
+  const prot = first_(doc, 'sheetProtection');
+  const protect = prot && prot.a.sheet !== '0' && prot.a.sheet !== 'false' && Object.keys(prot.a).length
+    ? { open: all_(doc, 'protectedRange').map(p => p.a.sqref).join(' ').split(/\s+/).filter(Boolean) }
+    : null;
+  return {
+    values, cells, width, cols, validations, protect,
+    frozenRows: pane ? Number(pane.a.ySplit) || 0 : 0,
+    frozenCols: pane ? Number(pane.a.xSplit) || 0 : 0,
+  };
+}
+
+function colNum_(letters) {
+  let n = 0;
+  for (let i = 0; i < letters.length; i++) n = n * 26 + letters.charCodeAt(i) - 64;
+  return n;
+}
+
+/* ---------- a small XML reader, enough for the parts of an .xlsx ----------
+ * xml_(text) -> the document as {n: local name, a: {attribute: value}, c: [children], t: text}.
+ */
+function xml_(s) {
+  const root = { n: '', a: {}, c: [], t: '' };
+  const stack = [root];
+  const re = /<!\[CDATA\[([\s\S]*?)\]\]>|<!--[\s\S]*?-->|<[?!][\s\S]*?>|<(\/?)([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)/g;
+  let m;
+  while ((m = re.exec(String(s || '')))) {
+    const top = stack[stack.length - 1];
+    if (m[1] !== undefined) { top.t += m[1]; continue; }
+    if (m[6] !== undefined) { top.t += unescapeXml_(m[6]); continue; }
+    if (!m[3]) continue; // a comment, declaration or processing instruction
+    if (m[2]) { if (stack.length > 1) stack.pop(); continue; }
+    const el = { n: m[3].replace(/^[\w.-]+:/, ''), a: {}, c: [], t: '' };
+    const attr = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+    let a;
+    while ((a = attr.exec(m[4]))) el.a[a[1]] = unescapeXml_(a[2] !== undefined ? a[2] : a[3]);
+    top.c.push(el);
+    if (!m[5]) stack.push(el);
   }
-  q.removeEditors(q.getEditors());
-  if (q.canDomainEdit()) q.setDomainEdit(false);
+  return root;
+}
+
+function unescapeXml_(s) {
+  return s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-f]+);/gi, (all, e) => {
+    const k = e.toLowerCase();
+    if (k.charAt(0) === '#') return String.fromCodePoint(k.charAt(1) === 'x' ? parseInt(k.slice(2), 16) : Number(k.slice(1)));
+    return { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" }[k];
+  });
+}
+
+function kids_(el, n) { return el ? el.c.filter(x => x.n === n) : []; }
+function first_(el, n) { return el ? all_(el, n)[0] || null : null; }
+function all_(el, n, out) {
+  out = out || [];
+  (el ? el.c : []).forEach(x => { if (x.n === n) out.push(x); all_(x, n, out); });
+  return out;
+}
+
+// A shared or inline string: its <t> runs, without phonetic hints, and _xHHHH_ escapes undone.
+function textOf_(el) {
+  let s = '';
+  (function walk(x) { x.c.forEach(k => { if (k.n === 't') s += k.t; else if (k.n !== 'rPh') walk(k); }); })(el);
+  return s.replace(/_x([0-9a-f]{4})_/gi, (all, h) => String.fromCharCode(parseInt(h, 16)));
 }
 
 const REPLACE_DIALOG_HTML = `<!doctype html>
@@ -148,8 +333,8 @@ cells. The spreadsheet, its script and the site's link stay the same.
       google.script.run
         .withSuccessHandler(res => {
           if (!res || !res.ok) return fail((res && res.error) || 'Something went wrong.');
-          msg.textContent = 'Done: ' + res.tabs.join(', ') + '.';
-          setTimeout(() => google.script.host.close(), 1500);
+          msg.textContent = 'Done: ' + res.tabs.join(', ') + '.' + (res.skipped && res.skipped.length ? ' Left out: ' + res.skipped.join('; ') + '.' : '');
+          if (!(res.skipped && res.skipped.length)) setTimeout(() => google.script.host.close(), 1500);
         })
         .withFailureHandler(err => fail(String(err && err.message || err)))
         .replaceWithXlsx(f.name, String(reader.result).split(',')[1] || '');

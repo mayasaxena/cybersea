@@ -34,13 +34,12 @@ also add `CREW_KEY` with the players' passphrase.
 4. Click **Deploy**, then **Authorize access** and pick your Google account.
    - Google will warn that it "hasn't verified this app". It's your own script, so click
      **Advanced → Go to (project name)** and **Allow**.
-   - It asks to see and edit your spreadsheets, to see and edit the Drive files it creates, to
-     show menus and dialogs in Sheets, and to "connect to an external service". It uses those
-     for the **Cybersea** menu's import (see [Replacing the sheet with a fresh xlsx](#replacing-the-sheet-with-a-fresh-xlsx))
-     and to read the pictures in the Map tab (see [The Map tab](#the-map-tab)). It never opens a
-     spreadsheet other than this one and the temporary copy it makes while importing. It also
-     asks to manage its own Apps Script project and deployments, for the menu's
-     [Update the script](#updating-the-script-later).
+   - It asks for access to "the spreadsheet it's attached to" (only this one), to show menus
+     and dialogs in it, and to "connect to an external service", which it uses to read the
+     pictures in the Map tab (see [The Map tab](#the-map-tab)) and to fetch new script files.
+     It also asks to see and update your Apps Script projects and deployments: Google can't
+     narrow that one to this script, and it's only used by the menu's
+     [Update the script](#updating-the-script-later), on this script.
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -156,13 +155,14 @@ workbook, and replaces every tab with that file's tabs, in its order.
 - Everything on the old tabs goes, including pictures placed in cells. **File → Version
   history** brings the old tabs back if you need them.
 - The file needs a **Rules** tab; anything else is turned down without changing the sheet.
-- Hidden tabs and data validation in the file are kept, and so are protected sheets and ranges
-  when Google's xlsx conversion brings them over. Protected
-  ranges are editable only by the spreadsheet's owner, unless they're set to only warn.
+- It keeps the file's values and formulas, plain-text, bold, fill and wrap formatting, column
+  widths, hidden tabs and columns, frozen rows and columns, and drop-down (list) data
+  validation. A protected sheet is protected for everyone but the spreadsheet's owner, except
+  Excel's "allow edit" ranges. Anything else (merged cells, other kinds of validation) is left
+  out, and the dialog lists it.
 - The first time you use it, Google asks you to authorize the script.
 
-Behind the scenes it turns the file into a temporary Google Sheet in your Drive, copies its tabs
-in and deletes it.
+The script reads the file itself, so it needs no access to anything but this spreadsheet.
 
 ## Updating the script later
 
