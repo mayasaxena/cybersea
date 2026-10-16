@@ -7,13 +7,19 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
+import { inflateRawSync } from 'node:zlib';
 
 const MAX_ROWS = 1000;
 const MAX_COLUMNS = 26; // a new sheet's size; insertColumnsAfter adds more
 
+// A picture placed in a cell (Insert > Image > Insert image in cell): {type, bytes (a Buffer)}.
+// Seed one by giving a cell {image: {type, bytes}}.
+const images = new Map(); // fake content URL -> image
 class Cell {
-  constructor() { this.v = ''; this.formula = null; this.fmt = null; }
+  constructor() { this.v = ''; this.formula = null; this.fmt = null; this.image = null; }
   display() {
+    if (this.image) return '';
+    if (this.formula && /^=\s*IMAGE\s*\(/i.test(this.formula)) return ''; // Sheets shows the picture, not text
     if (this.formula) return '#FORMULA ' + this.formula; // Code.gs must never create formulas
     if (typeof this.v === 'boolean') return this.v ? 'TRUE' : 'FALSE';
     return String(this.v);
@@ -21,6 +27,8 @@ class Cell {
 }
 
 function coerce(cell, value) {
+  cell.image = value && typeof value === 'object' && value.image ? value.image : null;
+  if (cell.image) { cell.v = ''; cell.formula = null; return; }
   const s = value == null ? '' : String(value);
   cell.formula = null;
   if (s.startsWith("'")) { cell.v = s.slice(1); return; }          // quote prefix: stored as text, hidden
@@ -30,6 +38,38 @@ function coerce(cell, value) {
   if (/^(true|false)$/i.test(s.trim())) { cell.v = /^true$/i.test(s.trim()); return; }
   cell.v = s;
 }
+
+// Like Apps Script's CellImage: its content URL is new each time, as Google's are short-lived.
+let urls = 0;
+function cellImage(image) {
+  return {
+    valueType: 'IMAGE',
+    getContentUrl: () => { const u = `https://lh7-rt.googleusercontent.com/fake/${++urls}`; images.set(u, image); return u; },
+    getAltTextTitle: () => '',
+  };
+}
+
+// A protected sheet or range. Editors are just names; the owner is "owner" and can't be removed.
+class Protection {
+  constructor(sheet, type, range) {
+    Object.assign(this, { sheet, type, range, description: '', warningOnly: false, editors: ['owner', 'me'], domainEdit: true, unprotected: [] });
+    (sheet.protections ||= []).push(this);
+  }
+  getRange() { return this.range || this.sheet.getDataRange(); }
+  getDescription() { return this.description; }
+  setDescription(d) { this.description = d; return this; }
+  isWarningOnly() { return this.warningOnly; }
+  setWarningOnly(w) { this.warningOnly = !!w; return this; }
+  getEditors() { return this.editors.slice(); }
+  removeEditors(es) { this.editors = this.editors.filter(e => e === 'owner' || !es.includes(e)); return this; }
+  canDomainEdit() { return this.domainEdit; }
+  setDomainEdit(d) { this.domainEdit = !!d; return this; }
+  getUnprotectedRanges() { return this.unprotected.slice(); }
+  setUnprotectedRanges(rs) { this.unprotected = rs.slice(); return this; }
+  remove() { this.sheet.protections = this.sheet.protections.filter(p => p !== this); }
+}
+
+const colName = c => (c > 26 ? colName(Math.floor((c - 1) / 26)) : '') + String.fromCharCode(65 + ((c - 1) % 26));
 
 class Range {
   constructor(sheet, row, col, nr, nc) {
@@ -55,7 +95,10 @@ class Range {
   getLastRow() { return this.row + this.nr - 1; }
   getLastColumn() { return this.col + this.nc - 1; }
   getDisplayValues() { return this.cells(c => c.display()); }
-  getValues() { return this.cells(c => (c.formula ? '' : c.v)); }
+  getValues() { return this.cells(c => (c.image ? cellImage(c.image) : c.formula ? '' : c.v)); }
+  getValue() { return this.getValues()[0][0]; }
+  getDisplayValue() { return this.getDisplayValues()[0][0]; }
+  getFormulas() { return this.cells(c => c.formula || ''); }
   setValues(values) {
     if (!Array.isArray(values) || values.length !== this.nr) {
       throw new Error(`The number of rows in the data does not match the number of rows in the range. The data has ${values?.length} but the range has ${this.nr}.`);
@@ -71,6 +114,18 @@ class Range {
   }
   setNumberFormat(fmt) { this.cells(c => { c.fmt = fmt; }); return this; }
   setFontWeight() { return this; }
+  setNumberFormats(fmts) { this.cells((c, r, col) => { c.fmt = fmts[r][col] === '@' ? '@' : null; }); return this; }
+  setFontWeights(w) { this.cells((c, r, col) => { c.bold = w[r][col] === 'bold'; }); return this; }
+  setBackgrounds(b) { this.cells((c, r, col) => { c.bg = b[r][col] || null; }); return this; }
+  setWraps(w) { this.cells((c, r, col) => { c.wrap = !!w[r][col]; }); return this; }
+  setDataValidation(rule) { this.cells(c => { c.rule = rule; }); return this; }
+  getDataValidation() { return this.sheet.cell(this.row, this.col).rule || null; }
+  getNumberFormat() { return this.sheet.cell(this.row, this.col).fmt || 'General'; }
+  getA1Notation() {
+    const a = `${colName(this.col)}${this.row}`;
+    return this.nr === 1 && this.nc === 1 ? a : `${a}:${colName(this.col + this.nc - 1)}${this.row + this.nr - 1}`;
+  }
+  protect() { return new Protection(this.sheet, 'RANGE', this); }
 }
 
 class Sheet {
@@ -97,7 +152,17 @@ class Sheet {
     for (const row of this.grid) row.forEach((c, i) => { if (c.formula || c.v !== '') last = Math.max(last, i + 1); });
     return last;
   }
-  getRange(row, col, nr = 1, nc = 1) { return new Range(this, row, col, nr, nc); }
+  getRange(row, col, nr = 1, nc = 1) {
+    if (typeof row === 'string') {
+      const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(row);
+      if (!m) throw new Error(`fake: unsupported A1 notation ${row}`);
+      const num = l => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+      const [c1, r1] = [num(m[1]), Number(m[2])];
+      const [c2, r2] = m[3] ? [num(m[3]), Number(m[4])] : [c1, r1];
+      return new Range(this, r1, c1, r2 - r1 + 1, c2 - c1 + 1);
+    }
+    return new Range(this, row, col, nr, nc);
+  }
   getDataRange() { return this.getRange(1, 1, Math.max(this.getLastRow(), 1), Math.max(this.getLastColumn(), 1)); }
   insertColumnsAfter(c, n) { if (c !== this.maxCols) throw new Error('fake: only appends columns'); this.maxCols += n; return this; }
   hideColumns(c, n = 1) { for (let i = 0; i < n; i++) this.hidden.add(c + i); return this; }
@@ -105,6 +170,27 @@ class Sheet {
   insertRowAfter(r) { this.cell(r, 1); this.grid.splice(r, 0, []); this.ss.edits++; return this; }
   deleteRow(r) { if (r <= this.grid.length) this.grid.splice(r - 1, 1); this.ss.edits++; return this; }
   setFrozenRows(n) { this.frozen = n; return this; }
+  getFrozenRows() { return this.frozen; }
+  setFrozenColumns(n) { this.frozenCols = n; return this; }
+  getFrozenColumns() { return this.frozenCols || 0; }
+  setColumnWidth(c, px) { (this.widths ||= {})[c] = px; return this; }
+  getColumnWidth(c) { return (this.widths || {})[c] || 100; }
+  insertRowsAfter(r, n) { if (r !== MAX_ROWS) throw new Error('fake: only appends rows'); throw new Error(`fake: sheets are ${MAX_ROWS} rows (asked for ${MAX_ROWS + n})`); }
+  setName(n) {
+    if (this.ss.sheets.some(s => s !== this && s.name.toLowerCase() === String(n).toLowerCase())) {
+      throw new Error(`A sheet with the name "${n}" already exists. Please enter another name.`);
+    }
+    this.name = String(n);
+    return this;
+  }
+  isSheetHidden() { return !!this.tabHidden; }
+  hideSheet() {
+    if (this.ss.sheets.every(s => s === this || s.tabHidden)) throw new Error("You can't hide all the sheets in a document.");
+    this.tabHidden = true;
+    return this;
+  }
+  getProtections(type) { return (this.protections || []).filter(p => p.type === type); }
+  protect() { return this.getProtections('SHEET')[0] || new Protection(this, 'SHEET'); }
 }
 
 class Spreadsheet {
@@ -120,7 +206,17 @@ class Spreadsheet {
     this.sheets.push(sh);
     return sh;
   }
-  deleteSheet(sh) { this.sheets = this.sheets.filter(s => s !== sh); }
+  deleteSheet(sh) {
+    if (this.sheets.length === 1) throw new Error("You can't remove all the sheets in a document.");
+    this.sheets = this.sheets.filter(s => s !== sh);
+  }
+  setActiveSheet(sh) { this.active = sh; return sh; }
+  getActiveSheet() { return this.active || this.sheets[0]; }
+  moveActiveSheet(pos) {
+    const sh = this.getActiveSheet();
+    this.sheets = this.sheets.filter(s => s !== sh);
+    this.sheets.splice(pos - 1, 0, sh);
+  }
 }
 
 // Build the fake services. `tabs` is {name: [[...header], [...row], ...]} (rows as typed into the
@@ -136,6 +232,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     getProperty: k => (k in s ? s[k] : null),
     setProperty: (k, v) => { s[k] = String(v); },
     getProperties: () => ({ ...s }),
+    deleteProperty: k => { delete s[k]; },
   });
   let locked = false;
 
@@ -146,7 +243,27 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     setProps(p) { Object.assign(store, p); },
     clearCache() { cache.clear(); },
     services: {
-      SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+      SpreadsheetApp: {
+        getActiveSpreadsheet: () => ss,
+        ValueType: { IMAGE: 'IMAGE' },
+        ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' },
+        newDataValidation: () => {
+          const rule = { allowInvalid: true };
+          const b = {
+            requireValueInList: (list, dropdown = true) => { Object.assign(rule, { list: [...list], dropdown }); return b; },
+            setAllowInvalid: a => { rule.allowInvalid = !!a; return b; },
+            build: () => rule,
+          };
+          return b;
+        },
+      },
+      UrlFetchApp: {
+        fetch: url => {
+          const img = images.get(url);
+          if (!img) return { getResponseCode: () => 404, getBlob: () => null };
+          return { getResponseCode: () => 200, getBlob: () => ({ getContentType: () => img.type, getBytes: () => [...img.bytes].map(b => (b > 127 ? b - 256 : b)) }) };
+        },
+      },
       PropertiesService: {
         getScriptProperties: () => propsOf(store),
         getDocumentProperties: () => propsOf(docStore),
@@ -174,9 +291,42 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
         Charset: { UTF_8: 'utf8' },
         computeDigest: (alg, str) => [...createHash(alg).update(String(str), 'utf8').digest()].map(b => (b > 127 ? b - 256 : b)),
         base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
+        base64Decode: str => [...Buffer.from(String(str), 'base64')].map(b => (b > 127 ? b - 256 : b)),
+        newBlob: (bytes, type, name) => blob(bytes, type, name),
+        unzip: b => {
+          if (b.getContentType() !== 'application/zip') throw new Error(`Invalid argument: ContentType. Should be of type: application/zip`);
+          return unzip(Buffer.from(b.getBytes().map(x => x & 255))).map(([name, data]) => blob([...data].map(x => (x > 127 ? x - 256 : x)), null, name));
+        },
       },
     },
   };
+}
+
+function blob(bytes, type, name) {
+  return {
+    getBytes: () => bytes, getContentType: () => type, getName: () => name,
+    getDataAsString: () => Buffer.from(bytes.map(b => b & 255)).toString('utf8'),
+  };
+}
+
+// [[name, Buffer]] for each file in a zip (stored or deflated), read from its central directory.
+function unzip(buf) {
+  let end = buf.length - 22;
+  while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('Could not unzip the blob because it is not a valid zip file.');
+  const out = [];
+  let p = buf.readUInt32LE(end + 16);
+  for (let i = 0, n = buf.readUInt16LE(end + 10); i < n; i++) {
+    const method = buf.readUInt16LE(p + 10), size = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28), extra = buf.readUInt16LE(p + 30), comment = buf.readUInt16LE(p + 32);
+    const local = buf.readUInt32LE(p + 42);
+    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const raw = buf.subarray(start, start + size);
+    if (!name.endsWith('/')) out.push([name, method === 8 ? inflateRawSync(raw) : Buffer.from(raw)]);
+    p += 46 + nameLen + extra + comment;
+  }
+  return out;
 }
 
 // asText mirrors the template, whose columns are formatted as plain text.
@@ -199,7 +349,8 @@ function clock(now) {
 }
 
 // Run apps-script/Code.gs against a fake. Returns {doGet, doPost, call(body) -> parsed JSON,
-// onEdit(e)} (onEdit as Sheets runs it after an edit by hand; a no-op for scripts without one).
+// onEdit(e), ctx} (onEdit as Sheets runs it after an edit by hand; a no-op for scripts without one;
+// ctx is the script's globals, to load the project's other files into, see loadAlso).
 // `transform` edits the source first (tests use it to stand in for an older deployment).
 export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.meta.url), transform = s => s) {
   const ctx = vm.createContext({ ...gas.services, console, Date: clock(gas.now) });
@@ -210,5 +361,14 @@ export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.
     doPostRaw: contents => parse(ctx.doPost({ postData: { contents, type: 'text/plain' } })),
     call: body => parse(ctx.doPost({ postData: { contents: JSON.stringify(body), type: 'text/plain' } })),
     onEdit: e => { if (typeof ctx.onEdit === 'function') ctx.onEdit(e); },
+    ctx,
   };
+}
+
+// Load another file of the Apps Script project (they share one global scope) into a loaded
+// script's ctx, e.g. loadAlso(api, 'Import.gs').
+export function loadAlso(api, file) {
+  const path = new URL(`../apps-script/${file}`, import.meta.url);
+  vm.runInContext(readFileSync(path, 'utf8'), api.ctx, { filename: file });
+  return api.ctx;
 }

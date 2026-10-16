@@ -1,12 +1,32 @@
 // A made-up game for tests and the dev server. All "rules" text here is invented
 // placeholder prose; the real rulebook text only ever lives in the spreadsheet.
+import { png } from './png.mjs';
 
 const R = (kind, group, name, text, meta = '', vis = 'crew') => [kind, group, name, text, meta, vis];
 
 // A game's own wording for a book row: [...row, Override name, Override text, Override meta].
 const O = (row, oname = '', otext = '', ometa = '') => [...row, oname, otext, ometa];
 
+// Pictures placed in the Map tab's Image cells (Insert > Image > Insert image in cell).
+const pic = image => ({ image });
+export const IMAGES = {
+  map: { type: 'image/png', bytes: png(64, 40, [20, 60, 120]) },
+  level1: { type: 'image/png', bytes: png(32, 32, [120, 40, 20]) },
+  level2: { type: 'image/png', bytes: png(32, 32, [20, 120, 40]) },
+};
+
 export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'];
+export const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
+
+// The world: a region's map, places (one hidden, one with levels) and the GM's notes.
+export const mapRows = () => [
+  ['The Test Server', '', '', pic(IMAGES.map), 'Everything, all at once.', 'The map is upside down.', ''],
+  ['The Test Server', 'Packet Reef', '', pic(IMAGES.map), 'A reef of lost packets.', 'Sharks below.', 'on'],
+  ['The Test Server', 'Scrap Town', '', '', 'A town of scrap.', '', ''],
+  ['', 'Scrap Town', 'Level 1', pic(IMAGES.level1), 'The docks.', '', ''],
+  ['', 'Scrap Town', 'Level 2', pic(IMAGES.level2), 'The market.', '', ''],
+  ['Far Away', 'Hidden Dock', '', '', 'Only the GM knows.', '', ''],
+];
 export const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 
 export const rules = [
@@ -72,13 +92,6 @@ export const rules = [
   R('table', 'Gear', 'Rope', 'A coil of rope.', 'cost=1'),
 
   O(R('kit', 'Brute', 'Kit 1', 'Club, sack, rope'), '', 'Club, sack, data cable'),
-  O(R('location', 'locations', 'Gull Rock', 'A rock full of gulls.'), 'Packet Reef', 'A reef of lost packets.', 'img=assets/world/vega-server.jpg'),
-  O(R('location', 'locations', 'Old Mill', 'A mill nobody uses.'), '', '', 'hide'),
-  R('location', 'Vega Server', 'Scrap Town', 'A town of scrap.'),
-  R('location', 'Vega Server', 'Hidden Dock', 'Only the GM knows.', '', 'gm'),
-  R('level', 'Scrap Town', 'Level 1', 'The docks.', 'img=assets/world/hackers-haven-level-1.jpg'),
-  R('level', 'Scrap Town', 'Level 2', 'The market.', 'img=assets/world/hackers-haven-level-2.jpg'),
-  R('map', 'Vega Server', 'The Test Server', 'Everything, all at once.', 'img=assets/world/vega-server.jpg'),
 ];
 
 export const sampleCharacter = [
@@ -120,10 +133,10 @@ export const sampleShip = [
 export function gameTabs({ withCharacter = true } = {}) {
   return {
     Rules: [RULES_HEADER, ...rules],
-    Lore: [HEADER, ['place', 'Gull Harbor', 'A rainy port.', 'Sam']],
+    Lore: [[...HEADER, 'Image'], ['place', 'Gull Harbor', 'A rainy port.', 'Sam', pic(IMAGES.level1)]],
     GM: [HEADER, ['npc', 'Captain Vex', 'jumpy, loud', 'Owes the crew money.'], ['secret', 'Twist', 'The map is fake.', '']],
     Ship: [HEADER, ...sampleShip],
-    Map: [HEADER, ['place', 'Gull Rock', 'on', 'Packet Reef'], ['place', 'Hidden Dock', 'on', '']],
+    Map: [MAP_HEADER, ...mapRows()],
     ...(withCharacter ? { Testa: [HEADER, ...sampleCharacter] } : {}),
   };
 }
