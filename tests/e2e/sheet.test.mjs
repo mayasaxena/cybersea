@@ -458,18 +458,79 @@ test('inventory: fill from the Kit card, add and remove items, treasure carries 
   assert.equal(row(rows, 'track', 'Treasure')[2], '●○○○○', '6-treasure is 1-hoard and 1-treasure');
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
 
+  assert.equal(await p.$('#newitem'), null, 'adding items needs edit mode');
+  assert.equal(await p.$('[data-act="rm-item"]'), null, 'so does removing them');
+  await p.click('[data-act="edit"]');
   await p.fill('#newitem', 'Rope');
   await p.press('#newitem', 'Enter');
   await p.fill('#newitem', 'Rope');
   await p.click('[data-act="add-item"]');
   await p.click('[data-act="rm-item"][data-j="0"]');
   await p.click('[data-act="rm-item"][data-j="0"]');
+  await p.click('[data-act="edit"]');
   await p.click('.wealth [data-pip="t:Treasure"][data-j="4"]'); // fill treasure: it rolls over into hoard
   await p.click('[data-act="treasure"][data-n="-1"]'); // spending with no loose treasure breaks a hoard
   rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Treasure')?.[2] === '●●●●○' && r; });
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['A lantern (cracked, still works)', 'Rope', 'Rope (2)']);
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
   assert.match(row(rows, 'inventory', 'Treasure')[2], /6-treasure/);
+});
+
+test('items have counts and notes; using one, or changing the sheet outside edit mode, can go in the log', async () => {
+  const base = (await h.tab(api, 'Testa')).map(r => r.slice(0, 4)).filter(r => r[0] !== 'item' && r[0] !== 'log');
+  await h.setTab(api, 'Testa', [...base, ['item', 'Medkit', '2', 'From the clinic.'], ['item', 'Rope', '', '']]);
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.waitForSelector('[data-act="use-item"]');
+  assert.match(await p.textContent('.items'), /×2/);
+
+  // edit mode sets counts and notes
+  await p.click('[data-act="edit"]');
+  await p.fill('[data-bind="item:1:count"]', '5');
+  await p.fill('[data-bind="item:1:note"]', 'Fifty feet.');
+  await p.click('[data-act="edit"]');
+  let rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'item', 'Rope')?.[2] === '5' && r; });
+  assert.deepEqual(row(rows, 'item', 'Rope').slice(2, 4), ['5', 'Fifty feet.']);
+
+  // notes show on the Notes tab under the item's name
+  await p.click('[data-act="tab"][data-tab="notes"]');
+  assert.match(await p.textContent('.kept'), /Medkit\s*From the clinic\.\s*Rope\s*Fifty feet\./);
+
+  // using an item takes from its count and logs, with a note
+  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="use-item"][data-j="0"]');
+  await p.fill('[role="dialog"] [data-n]', '2');
+  await p.fill('[role="dialog"] textarea', 'Patched up');
+  await p.click('[role="dialog"] [data-use]');
+  await p.waitForSelector('[data-act="use-item"][data-j="0"][disabled]');
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log' && x[2] === 'Medkit') && r; });
+  assert.equal(row(rows, 'item', 'Medkit')[2], '0');
+  assert.equal(rows.find(x => x[0] === 'log' && x[2] === 'Medkit')[3], '- Used 2, 0 left\n\nPatched up');
+
+  // pips changed outside edit mode gather in one panel; clicks that cancel out drop off
+  await p.click('[data-act="tab"][data-tab="sheet"]');
+  await p.click('.harm .pip[data-j="1"]');
+  await p.click('.harm .pip[data-j="2"]');
+  await p.click('.luck .pip[data-j="0"]');
+  await p.click('.luck .pip[data-j="0"]');
+  assert.deepEqual(await p.$$eval('.usage li', ls => ls.map(l => l.textContent)), ['Harm +2']);
+  await p.fill('.usage input', 'Dock fight');
+  await p.click('.usage [data-log]');
+  assert.equal(await p.$('.usage'), null);
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log' && x[2] === 'Harm +2') && r; });
+  assert.equal(rows.find(x => x[0] === 'log' && x[2] === 'Harm +2')[3], 'Dock fight');
+
+  // closing the panel keeps the change but leaves it out of the log
+  await p.click('.harm .pip[data-j="2"]');
+  await p.click('.usage [data-skip]');
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Harm')[2].startsWith('●●○') && r; });
+  assert.equal(rows.filter(x => x[0] === 'log').length, 2);
+
+  // edit mode changes don't offer to log
+  await p.click('[data-act="edit"]');
+  await p.click('.luck .pip[data-j="0"]');
+  assert.equal(await p.$('.usage'), null);
+  await p.click('[data-act="edit"]');
 });
 
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {

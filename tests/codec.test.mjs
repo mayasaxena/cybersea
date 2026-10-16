@@ -68,3 +68,9 @@ test('pending changes apply on top of server rows in order', () => {
   ]);
   assert.deepEqual(out, [['info', 'Name', 'Nexa', ''], ['sheet', 'Problems', 'a2', ''], ['sheet', 'Story', 'c', ''], ['track', 'Harm', '○', '']]);
 });
+
+test('items keep a count (blank when not counted) and notes', () => {
+  const st = parseSheet([['item', 'Medkit', '3', 'From the clinic.'], ['item', 'Rope', '', ''], ['item', 'Flare', 'lots', '']]);
+  assert.deepEqual(st.items, [{ name: 'Medkit', count: 3, note: 'From the clinic.' }, { name: 'Rope', count: null, note: '' }, { name: 'Flare', count: null, note: '' }]);
+  assert.deepEqual(serializeSheet(st).filter(r => r[0] === 'item'), [['item', 'Medkit', '3', 'From the clinic.'], ['item', 'Rope', '', ''], ['item', 'Flare', '', '']]);
+});

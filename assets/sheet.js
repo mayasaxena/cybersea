@@ -2,7 +2,7 @@
 // (<body data-tab="Ship">): Wreck and Renown instead of Harm and Luck, ship moves, no actions.
 import { bootstrap, href, ls, gkey, inviteUrl } from './games.js';
 import { GameClient } from './api.js';
-import { parseSheet, serializeSheet, logId } from './codec.js';
+import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck, htmlToMarkup } from './markup.js';
 import { indexRules, rollFor } from './rules.js';
 import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
@@ -10,6 +10,7 @@ import { makeActions, ACTIONS } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, setWealth, addTreasure, inventoryRows, uniqueName, TREASURE_PER_HOARD } from './inventory.js';
 import { plain } from './markup.js';
+import { makeUsage, useItem, signed } from './usage.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
 const CATS = SHIP ? ['playbook', 'ship'] : ['playbook', 'basic', 'special', 'ship', 'downtime'];
@@ -81,7 +82,10 @@ client.on(e => {
 app.addEventListener('focusout', () => setTimeout(() => { if (deferred && !busy()) adopt(); }, 0));
 new MutationObserver(() => { if (deferred && !busy()) adopt(); }).observe(document.body, { childList: true }); // a dialog closed
 
-const actions = makeActions({ st: () => st, rules: () => R, changed, render: () => render(), editing: () => editing });
+// Changes made outside edit mode offer to go in the log (usage.js).
+const usage = makeUsage({ log: e => { const at = Date.now(); st.log.push({ id: logId(at), at, ...e }); changed(); render(); } });
+const used = (key, n, line) => { if (!editing && n) usage.add(key, n, line); };
+const actions = makeActions({ st: () => st, rules: () => R, changed, render: () => render(), editing: () => editing, used });
 
 /* ---------- helpers ---------- */
 const track = name => st.tracks[name.toLowerCase()];
@@ -163,7 +167,7 @@ function sectionHTML(s, i) {
 }
 
 function sectionsHTML(tab) {
-  const cards = st.sections.map((s, i) => (s.tab === tab ? sectionHTML(s, i) : '')).join('');
+  const cards = st.sections.map((s, i) => (s.tab === tab ? sectionHTML(s, i) : '')).join('') + (tab === 'notes' && !SHIP ? keptNotesHTML() : '');
   return `<div class="cols">${cards}</div>` + (editing ? `<button class="add" data-act="add-section" data-tab="${tab}">+</button>` : '');
 }
 
@@ -240,12 +244,70 @@ function inventoryHTML() {
   else if (ts?.text) h += `<div class="rich" data-sec="${ti}">${md(ts.text)}</div>`;
   else if (!ts && E) h += '<button class="add sm" data-act="add-tnotes">+ Notes</button>';
   h += '</section><section class="card"><div class="shead"><h2>Items</h2><span class="cnt">' + st.items.length + '</span></div><ul class="items">' +
-    st.items.map((it, j) => '<li class="item">' +
-      (E ? `<input class="in" data-bind="item:${j}" value="${esc(it.name)}" aria-label="Item">` : `<span class="iname">${escTxt(it.name)}</span>`) +
-      (can ? `<button class="mini del" data-act="rm-item" data-j="${j}" title="Remove" aria-label="Remove ${esc(it.name)}">×</button>` : '') + '</li>').join('') +
-    '</ul>' + (can ? '<div class="additem"><input class="in" id="newitem" placeholder="Add an item" aria-label="New item" autocomplete="off"><button class="pbtn" data-act="add-item">Add</button></div>' : '') +
+    st.items.map((it, j) => (E ? itemEditHTML(it, j) : itemHTML(it, j, can))).join('') +
+    '</ul>' + (E ? '<div class="additem"><input class="in" id="newitem" placeholder="Add an item" aria-label="New item" autocomplete="off"><button class="pbtn" data-act="add-item">Add</button></div>' : '') +
     '</section></div>';
   return h + more;
+}
+
+// Outside edit mode an item can only be used: its count goes down and the use is logged.
+function itemHTML(it, j, can) {
+  const out = it.count === 0;
+  return `<li class="item${out ? ' out' : ''}"><div class="ibody"><span class="iname">${escTxt(it.name)}</span>` +
+    (it.count != null ? `<span class="cnt">×${it.count}</span>` : '') +
+    (it.note ? `<div class="inote">${escTxt(plain(it.note))}</div>` : '') + '</div>' +
+    (can ? `<button class="chip" data-act="use-item" data-j="${j}"${out ? ' disabled title="None left"' : ` title="Use ${esc(it.name)}"`}>Use</button>` : '') + '</li>';
+}
+
+// In edit mode: name, count (blank for items that aren't counted), notes, and removing it.
+function itemEditHTML(it, j) {
+  return `<li class="item edit"><div class="irow"><input class="in" data-bind="item:${j}:name" value="${esc(it.name)}" aria-label="Item">` +
+    `<input class="in icount" type="number" min="0" step="1" data-bind="item:${j}:count" value="${it.count ?? ''}" placeholder="—" aria-label="How many ${esc(it.name)}" title="How many (blank if not counted)">` +
+    `<button class="mini del" data-act="rm-item" data-j="${j}" title="Remove" aria-label="Remove ${esc(it.name)}">×</button></div>` +
+    `<textarea class="in rtext inote" data-bind="item:${j}:note" aria-label="Notes on ${esc(it.name)}" placeholder="Notes">${escTxt(it.note || '')}</textarea></li>`;
+}
+
+// The Notes tab gathers notes kept elsewhere, each under what it's a note for.
+function keptNotesHTML() {
+  const noted = st.items.map((it, j) => [it, j]).filter(([it]) => editing || it.note);
+  if (!noted.length) return '';
+  return '<section class="card kept"><div class="shead"><h2>Items</h2></div>' + noted.map(([it, j]) => `<div class="kn"><h3>${escTxt(it.name)}</h3>` +
+    (editing ? `<textarea class="in rtext inote" data-bind="item:${j}:note" aria-label="Notes on ${esc(it.name)}" placeholder="Notes">${escTxt(it.note || '')}</textarea>` : `<div class="rich">${md(it.note)}</div>`) +
+    '</div>').join('') + '</section>';
+}
+
+// The Use dialog for an item: how many (for counted items) and a note. onUse(n, note).
+function openUseItem(item, onUse) {
+  const counted = item.count != null;
+  const o = modal(`<div class="prow"><h2>${escTxt(item.name)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
+    ${item.note ? `<div class="mbody rule">${md(item.note)}</div>` : ''}
+    ${counted ? `<label class="field"><span class="lbl">How many (${item.count} left)</span><input class="in" type="number" data-n min="1" max="${esc(item.count)}" value="1"></label>` : ''}
+    <textarea class="in anote" placeholder="Note (optional)" aria-label="Note"></textarea>
+    <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-use>Use</button></div>`, { label: `Use ${item.name}` });
+  (o.querySelector('[data-n]') || o.querySelector('textarea')).focus();
+  o.addEventListener('click', e => {
+    if (!e.target.closest('[data-use]')) return;
+    const n = counted ? parseInt(o.querySelector('[data-n]').value, 10) || 1 : 0;
+    const text = o.querySelector('textarea').value.trim();
+    closeModal();
+    onUse(n, text);
+  });
+}
+
+function useItemAt(j) {
+  const it = st.items[j];
+  if (!it || !canEdit() || editing || it.count === 0) return;
+  openUseItem(it, (n, note) => {
+    const cur = st.items.find(x => x.name === it.name);
+    if (!cur) return;
+    const { used: k, left } = useItem(cur, n);
+    if (left != null) cur.count = left;
+    const at = Date.now();
+    st.log.push({ id: logId(at), at, title: cur.name, items: [left != null ? `Used ${k}, ${left} left` : 'Used'], note });
+    changed();
+    render();
+    toast(left != null ? `Used ${k} ${cur.name} (${left} left)` : `Used ${cur.name}`);
+  });
 }
 
 // A sheet made before the Inventory tab still has its kit as one card: offer to split it into items.
@@ -275,8 +337,8 @@ function fillInventory(src) {
 function addItem() {
   const el = document.getElementById('newitem');
   const v = el?.value.trim();
-  if (!v || !canEdit()) return;
-  st.items.push({ name: uniqueName(v, st.items.map(i => i.name)), note: '' });
+  if (!v || !canEdit() || !editing) return;
+  st.items.push({ name: uniqueName(v, st.items.map(i => i.name)), count: null, note: '' });
   changed();
   render();
   document.getElementById('newitem')?.focus();
@@ -353,6 +415,8 @@ function clickPip(btn) {
     const n = cur === j + 1 ? j : j + 1;
     const r = isT ? setWealth(st, n, w.hoard) : setWealth(st, w.treasure, n);
     if (r.hoard > w.hoard && isT) toast(`${TREASURE_PER_HOARD}-treasure became 1-hoard.`);
+    const name = track(path.slice(2)).name;
+    used(`t:${name.toLowerCase()}`, n - cur, k => `${name} ${signed(k)}`);
     changed();
     render();
     return;
@@ -365,10 +429,19 @@ function clickPip(btn) {
   } else if (editing && path.toLowerCase() === 't:harm') v = (v + 1) % 3;
   else if (v === 2) return;
   else v = v ? 0 : 1;
+  const was = arr[j] || 0;
   arr[j] = v;
   btn.className = 'pip' + pipClass(v, bond);
   btn.setAttribute('aria-pressed', v === 1);
   changed();
+  if (bond) {
+    const b = st.bonds[+path.slice(2)];
+    const title = st.sections.find(s => s.title.toLowerCase() === 'bonds')?.title || '';
+    used(`b:${b.name.toLowerCase()}`, v === 2 ? 1 : -1, k => `${title ? `${title}: ` : ''}${b.name} ${k > 0 ? 'used' : 'restored'}${Math.abs(k) > 1 ? ` ×${Math.abs(k)}` : ''}`);
+  } else if (was !== v) {
+    const t = st.tracks[path.slice(2).toLowerCase()];
+    used(`t:${t.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${t.name} ${signed(k)}`);
+  }
 }
 
 function setTrack(path, fn) {
@@ -388,7 +461,9 @@ app.addEventListener('click', e => {
     if (li) {
       const sec = li.closest('[data-sec]');
       const mv = li.closest('[data-move]');
-      if (sec) { const s = st.sections[+sec.dataset.sec]; s.text = toggleCheck(s.text, +li.dataset.ck); changed(); render(); return; }
+      const ticked = (where, k) => used(`ck:${where}:${li.dataset.ck}`, k, n => `${n > 0 ? 'Checked' : 'Unchecked'}: ${li.textContent.trim()} (${where})`);
+      const on = li.classList.contains('on') ? -1 : 1;
+      if (sec) { const s = st.sections[+sec.dataset.sec]; s.text = toggleCheck(s.text, +li.dataset.ck); changed(); ticked(s.title, on); render(); return; }
       if (mv) {
         const m = moveList().find(x => x.own && x.name === mv.dataset.move);
         if (m) {
@@ -397,6 +472,7 @@ app.addEventListener('click', e => {
           if (mine) mine.text = text; else st.moves.push({ name: m.name, marked: m.marked, text });
           changed();
           li.classList.toggle('on');
+          ticked(m.name, on);
         }
         return;
       }
@@ -446,12 +522,14 @@ app.addEventListener('click', e => {
       const before = wealth(st);
       const r = addTreasure(st, +b.dataset.n);
       if (!r) { toast('No treasure left to spend.'); break; }
+      { const name = track('treasure').name; used(`t:${name.toLowerCase()}`, +b.dataset.n, k => `${name} ${signed(k)}`); }
       if (r.hoard > before.hoard) toast(`${TREASURE_PER_HOARD}-treasure became 1-hoard.`);
       else if (r.hoard < before.hoard) toast(`Broke 1-hoard into ${TREASURE_PER_HOARD}-treasure.`);
       changed(); render(); break;
     }
     case 'add-item': addItem(); break;
-    case 'rm-item': if (canEdit() && armed(b)) { st.items.splice(+b.dataset.j, 1); changed(); render(); } break;
+    case 'use-item': useItemAt(+b.dataset.j); break;
+    case 'rm-item': if (canEdit() && editing && armed(b)) { st.items.splice(+b.dataset.j, 1); changed(); render(); } break;
     case 'add-tnotes': st.sections.push({ tab: 'inventory', title: 'Treasure', text: '', note: `(${TREASURE_PER_HOARD}-treasure = 1-hoard)` }); changed(); render(); break;
     case 'fill-inv': {
       if (!canEdit()) break;
@@ -486,17 +564,21 @@ function bind(el, final) {
     } else s[b] = v;
   } else if (what === 'bond') { if (!final || !v.trim()) return; st.bonds[+a].name = v.trim(); }
   else if (what === 'item') {
-    if (!final || !v.trim()) return;
     const it = st.items[+a];
-    if (!it || v.trim() === it.name) return;
-    it.name = uniqueName(v.trim(), st.items.filter(x => x !== it).map(x => x.name));
+    if (!it) return;
+    if (b === 'note') it.note = v;
+    else if (b === 'count') it.count = parseCount(v);
+    else {
+      if (!final || !v.trim() || v.trim() === it.name) return;
+      it.name = uniqueName(v.trim(), st.items.filter(x => x !== it).map(x => x.name));
+    }
   } else if (what === 'move') {
     const m = charMove(a) || (() => { const lm = moveList().find(x => x.name === a); const n = { name: a, marked: !!lm?.marked, text: lm?.text || '' }; st.moves.push(n); return n; })();
     if (b === 'name') { if (!final || !v.trim()) return; m.name = v.trim(); }
     else m.text = v;
   }
   changed();
-  if (final && (/title|name/.test(b || '') || what === 'item')) render();
+  if (final && /title|name/.test(b || '')) render();
 }
 
 app.addEventListener('input', e => {
@@ -506,7 +588,7 @@ app.addEventListener('input', e => {
   if (t.dataset.log != null) { st.log[+t.dataset.log].note = t.value; changed(); return; }
   if (t.matches('textarea')) { t.style.height = 'auto'; t.style.height = Math.max(60, t.scrollHeight + 4) + 'px'; }
   const spec = t.dataset.bind || '';
-  if (/:(title|name|k)$/.test(spec) || spec.startsWith('bond:') || spec.startsWith('item:')) return; // applied on change
+  if (/:(title|name|k)$/.test(spec) || spec.startsWith('bond:')) return; // applied on change
   bind(t, false);
 });
 app.addEventListener('change', e => {

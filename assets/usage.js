@@ -1,0 +1,82 @@
+// Changes made outside edit mode (a pip marked, a bond used, treasure spent, a box ticked) gather
+// in a small panel at the bottom of the page. Log writes them to the log as one entry, with an
+// optional note; closing the panel leaves them out of the log. The changes are saved either way.
+// Using an inventory item always logs, from its own dialog (sheet.js).
+
+import { escTxt } from './markup.js';
+
+// A signed count for a line, e.g. "Harm +2" or "Treasure −1".
+export const signed = n => (n > 0 ? `+${n}` : `−${Math.abs(n)}`);
+
+// What a use takes from an item with a count: how many (at least 1, at most what's left) and what's left.
+export function useItem(item, n) {
+  if (item.count == null) return { used: 0, left: null };
+  const used = Math.min(item.count, Math.max(1, n | 0));
+  return { used, left: item.count - used };
+}
+
+// One log entry for the gathered lines: a single line is the title, several go under "Changes".
+export function usageEntry(lines, note = '') {
+  return lines.length === 1 ? { title: lines[0], items: [], note } : { title: 'Changes', items: lines, note };
+}
+
+// log(entry) adds { title, items, note } to the log and saves.
+export function makeUsage({ log }) {
+  const pending = new Map(); // key -> { n, line(n) }
+  let el = null;
+  let note = '';
+
+  const lines = () => [...pending.values()].map(p => p.line(p.n)).filter(Boolean);
+
+  function draw() {
+    const ls = lines();
+    if (!ls.length) { hide(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'usage';
+      el.setAttribute('role', 'region');
+      el.setAttribute('aria-label', 'Log this change');
+      el.innerHTML = `<ul class="ulines"></ul><div class="urow"><input class="in" placeholder="Note (optional)" aria-label="Note" autocomplete="off">` +
+        '<button class="pbtn primary" data-log>Log</button><button class="mini" data-skip title="Don’t log" aria-label="Don’t log">×</button></div>';
+      el.querySelector('input').addEventListener('input', e => { note = e.target.value; });
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); commit(); } });
+      el.addEventListener('click', e => {
+        if (e.target.closest('[data-log]')) commit();
+        else if (e.target.closest('[data-skip]')) clear();
+      });
+      document.body.append(el);
+      document.body.classList.add('has-usage');
+    }
+    el.querySelector('.ulines').innerHTML = ls.map(l => `<li>${escTxt(l)}</li>`).join('');
+    document.body.style.setProperty('--usage-h', `${el.offsetHeight + 8}px`);
+  }
+
+  function hide() {
+    el?.remove();
+    el = null;
+    document.body.classList.remove('has-usage');
+  }
+
+  function clear() {
+    pending.clear();
+    note = '';
+    hide();
+  }
+
+  function commit() {
+    const ls = lines();
+    if (ls.length) log(usageEntry(ls, note.trim()));
+    clear();
+  }
+
+  // Add n to the change under key; line(total) words it, or returns '' when it nets out to nothing.
+  function add(key, n, line) {
+    const p = pending.get(key) || { n: 0, line };
+    p.n += n;
+    p.line = line;
+    if (p.n) pending.set(key, p); else pending.delete(key);
+    draw();
+  }
+
+  return { add, clear, pending: lines };
+}
