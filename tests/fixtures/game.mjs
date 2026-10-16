@@ -3,7 +3,10 @@
 
 const R = (kind, group, name, text, meta = '', vis = 'crew') => [kind, group, name, text, meta, vis];
 
-export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
+// A game's own wording for a book row: [...row, Override name, Override text, Override meta].
+const O = (row, oname = '', otext = '', ometa = '') => [...row, oname, otext, ometa];
+
+export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'];
 export const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 
 export const rules = [
@@ -62,6 +65,15 @@ export const rules = [
   R('fate', 'move', 'SPRING A TRAP', 'Something closes in.\n\n- The floor gives way.', '', 'gm'),
   R('fate', 'compass', 'BE CURIOUS', 'Ask questions.', '', 'gm'),
   R('table', 'Gear', 'Rope', 'A coil of rope.', 'cost=1'),
+
+  O(R('kit', 'Brute', 'Kit 1', 'Club, sack, rope'), '', 'Club, sack, data cable'),
+  O(R('location', 'locations', 'Gull Rock', 'A rock full of gulls.'), 'Packet Reef', 'A reef of lost packets.', 'img=assets/world/vega-server.jpg'),
+  O(R('location', 'locations', 'Old Mill', 'A mill nobody uses.'), '', '', 'hide'),
+  R('location', 'Vega Server', 'Scrap Town', 'A town of scrap.'),
+  R('location', 'Vega Server', 'Hidden Dock', 'Only the GM knows.', '', 'gm'),
+  R('level', 'Scrap Town', 'Level 1', 'The docks.', 'img=assets/world/hackers-haven-level-1.jpg'),
+  R('level', 'Scrap Town', 'Level 2', 'The market.', 'img=assets/world/hackers-haven-level-2.jpg'),
+  R('map', 'Vega Server', 'The Test Server', 'Everything, all at once.', 'img=assets/world/vega-server.jpg'),
 ];
 
 export const sampleCharacter = [

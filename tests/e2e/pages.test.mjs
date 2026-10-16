@@ -152,6 +152,39 @@ test('rules page: sections, search, and no GM-only rules for the crew', async ()
   assert.deepEqual(await p.$$eval('#ref .move.pb .mn', ms => ms.map(m => m.textContent)), ['Trickster', 'Brute', 'Skiff']);
 });
 
+test("rules page: a row's override first, with the book's under it", async () => {
+  const p = await h.page();
+  await join(p, g1, 'rules.html');
+  await p.waitForSelector('#ref .mgroup');
+  await p.fill('#q', 'data cable');
+  await p.waitForSelector('#ref details.orig');
+  assert.match(await p.textContent('#ref .mbody'), /Club, sack, data cable/);
+  assert.match(await p.textContent('#ref details.orig'), /Club, sack, rope/);
+});
+
+test("map page: everyone sees maps, themed and new locations, and a location's levels", async () => {
+  const p = await h.page();
+  await join(p, g1, 'map.html');
+  await p.waitForSelector('.worldmap img');
+  assert.equal(await p.textContent('.worldmap h2'), 'The Test Server');
+  assert.ok(await p.$eval('.worldmap img', i => i.complete && i.naturalWidth > 0), 'the map image loads');
+  const names = await p.$$eval('.loc h2', hs => hs.map(x => x.textContent));
+  assert.deepEqual(names.sort(), ['Packet Reef', 'Scrap Town'], 'renamed, hidden and GM-only rows as they should be');
+  const town = p.locator('.loc', { hasText: 'Scrap Town' });
+  assert.match(await town.locator('.levels .rich').textContent(), /The docks/);
+  await town.locator('[data-lv="1"]').click();
+  await p.waitForSelector('.loc [data-lv="1"][aria-selected="true"]');
+  assert.match(await p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels .rich').textContent(), /The market/);
+  assert.match(await p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels img').getAttribute('src'), /level-2/);
+  await p.fill('#q', 'market');
+  assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Scrap Town'], 'a level\'s text finds its place');
+
+  const g = await h.page();
+  await join(g, g1, 'map.html', KEYS.GM_KEY);
+  await g.waitForSelector('.loc h2');
+  assert.ok((await g.$$eval('.loc h2', hs => hs.map(x => x.textContent))).includes('Hidden Dock'), 'the GM sees GM-only places');
+});
+
 test('two games stay separate, and the menu switches between them', async () => {
   const p = await h.page();
   await join(p, g1);

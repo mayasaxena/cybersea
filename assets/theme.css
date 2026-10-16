@@ -326,3 +326,14 @@ span.pip.x::before,span.pip.x::after{width:8px}
 .dline.bad{border-left-color:var(--red)}
 .dline div{margin-top:4px;font-size:13px;color:var(--muted)}
 a.pbtn{display:inline-block;text-decoration:none}
+
+/* map page and Rules images: maps, locations, levels, and the book's original under an override */
+.worldmap{margin:0 0 16px}
+.worldmap h2{margin:0 0 8px}
+.mapimg,.rimg{display:block;margin-top:8px;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#000}
+.mapimg img,.rimg img{display:block;width:100%;height:auto}
+.mapimg img{max-height:85vh;object-fit:contain}
+.levels{margin-top:10px}
+.levels .cats{margin:0}
+details.orig{margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);color:var(--muted);font-size:.92em}
+details.orig summary{cursor:pointer;font:600 11px/1.4 "Chakra Petch",sans-serif;letter-spacing:.12em;text-transform:uppercase}
