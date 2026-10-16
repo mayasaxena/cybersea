@@ -70,3 +70,18 @@ export function rollFor(text, stats) {
   if (/\brolls? 1d6\b/i.test(t)) return { label: '1d6', mod: 0, dice: 1 };
   return null;
 }
+
+// Moves and vices that do something when a session ends: "at the end of each session",
+// "when you end a session Haunted", "at session's end".
+export const atSessionEnd = text =>
+  /\b(?:end|close)s?\s+(?:of\s+)?(?:(?:a|the|each|every|this|your)\s+)?session\b|\bsession(?:[’']s)?\s+(?:end|close)s?\b/i.test(plain(text));
+
+// What a move marks that the sheet keeps count of: "mark 1-luck", "mark experience".
+export function gainsFrom(text) {
+  const t = plain(text);
+  const n = what => {
+    const m = t.match(new RegExp(`\\b(?:mark|gain|take)s?\\s+(?:(\\d+)[-‐‑–\\s]*|an?\\s+|one\\s+)?${what}\\b`, 'i'));
+    return m ? +(m[1] || 1) : 0;
+  };
+  return { luck: n('luck'), xp: n('(?:experience|xp)') };
+}
