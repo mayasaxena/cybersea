@@ -1,20 +1,20 @@
 // Character sheet: sheet.html?g=<game>&c=<tab name>. ship.html uses the same page in ship mode
-// (<body data-tab="Ship">): Wreck and Renown instead of Harm and Luck, ship moves, no actions.
+// (<body data-tab="Ship">): the ship's stats and tracks, ship moves, no actions. Which stats,
+// tracks and cards a sheet has, and what they're called, come from the Rules tab (system.js).
 import { bootstrap, href, ls, gkey, inviteUrl } from './games.js';
 import { GameClient } from './api.js';
 import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
-import { md, toggleCheck, htmlToMarkup } from './markup.js';
-import { indexRules, rollFor } from './rules.js';
+import { md, toggleCheck } from './markup.js';
+import { gameRules, TABS } from './rules.js';
+import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
 import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
-import { makeActions, ACTIONS } from './actions.js';
+import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
-import { wealth, setWealth, addTreasure, inventoryRows, uniqueName, TREASURE_PER_HOARD } from './inventory.js';
+import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
 import { plain } from './markup.js';
 import { makeUsage, useItem, signed } from './usage.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
-const CATS = SHIP ? ['playbook', 'ship'] : ['playbook', 'basic', 'special', 'ship', 'downtime'];
-const CAT_LABEL = { basic: 'Basic', special: 'Special', ship: 'Ship', downtime: 'Downtime' };
 const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['inventory', 'Inventory'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
 const PAGE = SHIP ? 'ship' : '';
 
@@ -31,7 +31,6 @@ if (!game || !tabName) {
 const client = new GameClient(game);
 pageShell(app, client, PAGE);
 const store = client.tab(tabName);
-const rulesStore = client.tab('Rules');
 const uiKey = gkey(game, `ui:${tabName.toLowerCase()}`);
 // Only the character's signed-in player (or the GM) edits a sheet; anyone signed in edits the ship.
 const canEdit = () => client.canEdit(SHIP ? 'Ship' : tabName);
@@ -39,7 +38,7 @@ const ui = Object.assign({ tab: 'sheet', cat: 'all', open: [] }, ls.get(uiKey, {
 const openSet = new Set(ui.open);
 const saveUi = () => { ui.open = [...openSet]; ls.set(uiKey, ui); };
 
-let R = indexRules(rulesStore.rows);
+let R = gameRules(client);
 let st = parseSheet(store.rows);
 let base = serializeSheet(st);
 let editing = false;
@@ -73,7 +72,7 @@ store.on(e => {
   if (e.missing) render();
   else if (e.fromServer) adopt();
 });
-rulesStore.on(() => { R = indexRules(rulesStore.rows); render(); });
+for (const t of TABS) client.tab(t).on(() => { R = gameRules(client); render(); });
 let couldEdit = canEdit();
 client.on(e => {
   if (e.list || e.key) refreshNav(client, PAGE);
@@ -88,8 +87,17 @@ const used = (key, n, line) => { if (!editing && n) usage.add(key, n, line); };
 const actions = makeActions({ st: () => st, rules: () => R, changed, render: () => render(), editing: () => editing, used });
 
 /* ---------- helpers ---------- */
-const track = name => st.tracks[name.toLowerCase()];
+const track = name => (name ? st.tracks[name.toLowerCase()] : undefined);
 const playbook = () => R.playbook(st.info.playbook);
+const sys = () => systemOf(R, SHIP ? SHIP_TYPE : typeOf(R, st.info.playbook));
+const W = () => wealthOf(sys());
+const same_ = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+// Move groups from the Rules tab, in its order; the ship page shows the ship's.
+const CATS = () => {
+  const groups = [];
+  for (const m of R.by('move')) { const g = m.group.toLowerCase(); if (g && !groups.includes(g)) groups.push(g); }
+  return ['playbook', ...(SHIP ? groups.filter(g => g === SHIP_TYPE) : groups)];
+};
 const charMove = name => st.moves.find(m => m.name.toUpperCase() === String(name).toUpperCase());
 
 // The character's moves: their playbook's moves (marked or not) plus any custom ones,
@@ -100,23 +108,23 @@ function moveList() {
   const pbMoves = pb ? (SHIP ? pb.smoves : [...pb.moves, ...pb.smoves]) : [];
   for (const m of pbMoves) {
     const mine = charMove(m.name);
-    out.push({ cat: 'playbook', name: m.name, text: mine?.text || m.text, marked: !!mine?.marked, own: true, base: m.text });
+    out.push({ cat: 'playbook', name: m.name, text: mine?.text || m.text, meta: m.meta, marked: !!mine?.marked, own: true, base: m.text });
   }
   for (const m of st.moves) {
-    if (!pbMoves.some(x => x.name.toUpperCase() === m.name.toUpperCase())) out.push({ cat: 'playbook', name: m.name, text: m.text, marked: m.marked, own: true, custom: true });
+    if (!pbMoves.some(x => x.name.toUpperCase() === m.name.toUpperCase())) out.push({ cat: 'playbook', name: m.name, text: m.text, meta: {}, marked: m.marked, own: true, custom: true });
   }
-  for (const cat of CATS.slice(1)) for (const m of R.moves(cat)) out.push({ cat, name: m.name, text: m.text, marked: true });
+  for (const cat of CATS().slice(1)) for (const m of R.moves(cat)) out.push({ cat, name: m.name, text: m.text, meta: m.meta, marked: true });
   return out;
 }
 
-const catLabel = c => (c === 'playbook' ? st.info.playbook || 'Playbook' : CAT_LABEL[c]);
+const catLabel = c => (c === 'playbook' ? st.info.playbook || 'Playbook' : cap(c));
 
 /* ---------- rendering ---------- */
 function headerHTML() {
   const E = editing;
-  const harm = track(SHIP ? 'wreck' : 'harm');
-  const luck = track(SHIP ? 'renown' : 'luck');
-  const trackHTML = (label, t, kind) => t ? `<div class="track ${kind}"><span class="lbl">${label}</span><span class="pips">${pips(`t:${t.name}`, t.pips, label)}</span>${E ? pm(`t:${t.name}`) : ''}</div>` : '';
+  // The harm and luck tracks (role=harm, role=luck) sit at the top, under whatever names the game gives them.
+  const vitals = sys().tracks.filter(d => VITALS.includes(d.role)).map(d => [d, track(d.name)]).filter(([, t]) => t);
+  const trackHTML = (label, t, kind) => `<div class="track ${kind}"><span class="lbl">${escTxt(label)}</span><span class="pips">${pips(`t:${t.name}`, t.pips, label)}</span>${E ? pm(`t:${t.name}`) : ''}</div>`;
   const stats = st.stats.map((s, i) => E
     ? `<div class="stat"><input class="in sk" data-bind="stat:${i}:k" value="${esc(s.k)}" aria-label="Stat"><input class="in sv" type="number" step="1" data-bind="stat:${i}:v" value="${s.v}" aria-label="${esc(s.k)}"></div>`
     : `<button class="stat" data-act="roll-stat" data-i="${i}" title="Roll"><span class="sk">${escTxt(s.k)}</span>${ICON.die}<span class="sv">${fmt(s.v)}</span></button>`).join('');
@@ -125,32 +133,37 @@ function headerHTML() {
       <div class="ident">
         ${E ? `<input class="in name" data-bind="info:name" value="${esc(st.info.name || '')}" aria-label="Name">` : `<h1 class="name">${escTxt(st.info.name || tabName)}</h1>`}
         <div class="pb"><span class="lbl">Playbook</span>${E ? `<input class="in" data-bind="info:playbook" value="${esc(st.info.playbook || '')}" aria-label="Playbook">` : `<span>${escTxt(st.info.playbook || '—')}</span>`}</div>
-        ${st.state.downtime ? '<button class="pill" data-act="tab" data-tab="log">Downtime</button>' : ''}
+        ${st.state.downtime ? `<button class="pill" data-act="tab" data-tab="log">${escTxt(cap(actions.dtGroup()))}</button>` : ''}
       </div>
       <div class="tools">
         ${canEdit() ? `<button class="ic${E ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${E}">${ICON.pen}</button>` : ''}
         <button class="ic" data-act="sheet-menu" title="Sheet options" aria-label="Sheet options">${ICON.dots}</button>
       </div>
     </div>
-    <div class="vitals">${trackHTML(SHIP ? 'Wreck' : 'Harm', harm, 'harm')}${trackHTML(SHIP ? 'Renown' : 'Luck', luck, 'luck')}</div>
+    <div class="vitals">${vitals.map(([d, t]) => trackHTML(t.name, t, d.role)).join('')}</div>
     <div class="stats">${stats}</div>
     <nav class="tabs">${SECTION_TABS.map(([k, l]) => `<button data-act="tab" data-tab="${k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
   </header>`;
 }
+
+const VITALS = ['harm', 'luck'];
+// Tracks shown somewhere other than their section card's header.
+const placed = () => sys().tracks.filter(d => [...VITALS, 'treasure', 'hoard'].includes(d.role)).map(d => d.name.toLowerCase());
 
 const pm = path => `<span class="pm"><button class="mini" data-act="rm-pip" data-path="${esc(path)}" aria-label="Remove">−</button><button class="mini" data-act="add-pip" data-path="${esc(path)}" aria-label="Add">+</button></span>`;
 
 function sectionHTML(s, i) {
   const E = editing;
   const t = track(s.title);
-  const isBonds = s.title.toLowerCase() === 'bonds';
+  const isBonds = same_(s.title, sys().title('bonds') || '\u0000');
+  const isXp = same_(s.title, sys().title('xp') || '\u0000');
   let h = '<section class="card"><div class="shead">' +
     (E ? `<input class="in st" data-bind="sec:${i}:title" value="${esc(s.title)}" aria-label="Title">` : `<h2>${escTxt(s.title)}</h2>`) +
-    (t && !['harm', 'luck', 'wreck', 'renown'].includes(t.name.toLowerCase()) ? `<span class="pips">${pips(`t:${t.name}`, t.pips, s.title)}</span>` : '') +
+    (t && !placed().includes(t.name.toLowerCase()) ? `<span class="pips">${pips(`t:${t.name}`, t.pips, s.title)}</span>` : '') +
     (E && !isBonds ? pm(`t:${s.title}`) : '') +
     (E ? `<button class="mini del" data-act="rm-section" data-i="${i}" title="Delete" aria-label="Delete">×</button>` : '') +
-    (s.title.toLowerCase() === 'experience' && !E ? `<span class="lvl">Level ${parseInt(st.info.level, 10) || 0}</span>` : '') +
-    (s.title.toLowerCase() === 'experience' && E ? `<label class="lvl">Level <input class="in lv" type="number" min="0" step="1" data-bind="info:level" value="${esc(parseInt(st.info.level, 10) || 0)}"></label>` : '') +
+    (isXp && !E ? `<span class="lvl">Level ${parseInt(st.info.level, 10) || 0}</span>` : '') +
+    (isXp && E ? `<label class="lvl">Level <input class="in lv" type="number" min="0" step="1" data-bind="info:level" value="${esc(parseInt(st.info.level, 10) || 0)}"></label>` : '') +
     '</div>';
   if (E) h += `<input class="in note" data-bind="sec:${i}:note" value="${esc(s.note || '')}" aria-label="Note">`;
   else if (s.note) h += `<div class="note">${escTxt(s.note)}</div>`;
@@ -181,12 +194,12 @@ function moveHTML(m, i, forceOpen) {
       (m.custom ? `<button class="mini del" data-act="rm-move" data-name="${esc(m.name)}" aria-label="Delete">×</button>` : '') +
       `</div><textarea class="in rtext" data-bind="move:${esc(encodeURIComponent(m.name))}:text" aria-label="${esc(m.name)}">${escTxt(m.text || '')}</textarea></div>`;
   }
-  const r = rollFor(m.text, st.stats);
+  const r = rollOf(m.meta, st.stats);
   const chip = r ? `<button class="chip" data-act="roll-move" data-i="${i}" title="Roll">${ICON.die}<span>${escTxt(r.label)}${r.stat ? ' ' + fmt(r.mod) : ''}</span></button>` : '';
   const a = canEdit() && actions.forMove(m);
-  const act = a ? `<button class="chip" data-act="run" data-kind="${a.kind}"${a.ok ? ` title="${esc(ACTIONS[a.kind])}"` : ` title="${esc(a.why)}" disabled`}>${escTxt(a.label)}</button>` : '';
-  const lc = canEdit() && !SHIP && actions.luckCost(m);
-  const luck = lc ? `<button class="chip" data-act="spend-luck" data-i="${i}" title="${lc.ok ? 'Spend luck' : 'Not enough luck'}"${lc.ok ? '' : ' disabled'}>${lc.n ? `${lc.n} luck` : 'Luck'}</button>` : '';
+  const act = a ? `<button class="chip" data-act="run" data-kind="${a.kind}"${a.ok ? ` title="${esc(a.label)}"` : ` title="${esc(a.why)}" disabled`}>${escTxt(a.label)}</button>` : '';
+  const lc = canEdit() && !SHIP && actions.cost(m);
+  const luck = lc ? `<button class="chip" data-act="spend" data-i="${i}" title="${esc(lc.ok ? `Spend ${lc.word}` : `Not enough ${lc.word}`)}"${lc.ok ? '' : ' disabled'}>${escTxt(lc.n ? `${lc.n} ${lc.word}` : cap(lc.word))}</button>` : '';
   const open = forceOpen || openSet.has(id);
   return `<details class="move${m.cat === 'playbook' && !m.marked ? ' off' : ''}" data-id="${esc(id)}"${open ? ' open' : ''}><summary>${mk}<span class="mn">${escTxt(m.name)}</span>${chip}${luck}${act}</summary>` +
     `<div class="mbody"${m.own ? ` data-move="${esc(m.name)}"` : ''}>${md(m.text)}</div></details>`;
@@ -197,7 +210,7 @@ function moveListHTML() {
   const q = query.trim().toLowerCase();
   const all = moveList();
   lastMoves = all;
-  const cats = ui.cat === 'all' ? CATS : [ui.cat];
+  const cats = ui.cat === 'all' ? CATS() : [ui.cat];
   let out = '';
   for (const c of cats) {
     const items = [];
@@ -207,7 +220,7 @@ function moveListHTML() {
       items.push(moveHTML(m, i, !!q));
     });
     if (!items.length && !(editing && c === 'playbook' && !q)) continue;
-    out += `<div class="mgroup"><h3>${escTxt(c === 'playbook' ? `${catLabel(c)} moves` : `${CAT_LABEL[c]} moves`)}</h3>${items.join('')}` +
+    out += `<div class="mgroup"><h3>${escTxt(`${catLabel(c)} moves`)}</h3>${items.join('')}` +
       (editing && c === 'playbook' ? '<button class="add sm" data-act="add-move">+</button>' : '') + '</div>';
   }
   if (R.empty && !out) return '<div class="empty">The Rules tab hasn’t loaded yet.</div>';
@@ -215,7 +228,7 @@ function moveListHTML() {
 }
 
 function movesHTML() {
-  const cats = [['all', 'All'], ...CATS.map(c => [c, catLabel(c)])];
+  const cats = [['all', 'All'], ...CATS().map(c => [c, catLabel(c)])];
   return `<div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search" value="${esc(query)}" aria-label="Search moves" autocomplete="off">
       <div class="cats">${cats.map(([k, l]) => `<button data-act="cat" data-cat="${k}" class="${ui.cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
@@ -223,27 +236,34 @@ function movesHTML() {
 }
 
 /* ---------- inventory: treasure and hoard pips, notes, and items ---------- */
-const isWealth = name => /^(treasure|hoard)$/i.test(name);
+const isWealth = name => { const w = W(); return [w.t, w.h].some(n => n && same_(n, name)); };
+const isTnotes = s => s.tab === 'inventory' && !!W().title && same_(s.title, W().title);
+const lw = s => String(s).toLowerCase();
 
 function inventoryHTML() {
   const E = editing;
   const can = canEdit();
-  const others = st.sections.map((s, i) => (s.tab === 'inventory' && s.title.toLowerCase() !== 'treasure' ? sectionHTML(s, i) : '')).join('');
+  const w = W();
+  const others = st.sections.map((s, i) => (s.tab === 'inventory' && !isTnotes(s) ? sectionHTML(s, i) : '')).join('');
   const more = `<div class="cols">${others}</div>` + (E ? '<button class="add" data-act="add-section" data-tab="inventory">+</button>' : '');
-  if (!st.items.length && !st.tracks.treasure && !st.tracks.hoard) return fillHTML() + more;
-  const ti = st.sections.findIndex(s => s.tab === 'inventory' && s.title.toLowerCase() === 'treasure');
+  if (!st.items.length && !track(w.t) && !track(w.h)) return fillHTML() + more;
+  const ti = st.sections.findIndex(isTnotes);
   const ts = st.sections[ti];
-  const row = (label, name) => {
+  const row = name => {
     const t = track(name) || { name, pips: [] };
-    return `<div class="wrow"><span class="lbl">${label}</span><span class="pips">${pips(`t:${t.name}`, t.pips, label)}</span>` +
-      (can && name === 'treasure' ? '<span class="pm"><button class="mini" data-act="treasure" data-n="-1" aria-label="Spend 1-treasure">−</button><button class="mini" data-act="treasure" data-n="1" aria-label="Gain 1-treasure">+</button></span>' : '') + '</div>';
+    return `<div class="wrow"><span class="lbl">${escTxt(name)}</span><span class="pips">${pips(`t:${t.name}`, t.pips, name)}</span>` +
+      (can && name === w.t ? `<span class="pm"><button class="mini" data-act="treasure" data-n="-1" aria-label="${esc(`Spend 1-${lw(w.t)}`)}">−</button><button class="mini" data-act="treasure" data-n="1" aria-label="${esc(`Gain 1-${lw(w.t)}`)}">+</button></span>` : '') + '</div>';
   };
-  let h = '<div class="cols"><section class="card wealth"><div class="shead"><h2>Treasure</h2></div>' +
-    `<div class="note">${escTxt(ts?.note || `(${TREASURE_PER_HOARD}-treasure = 1-hoard)`)}</div>` + row('Treasure', 'treasure') + row('Hoard', 'hoard');
-  if (ts && E) h += `<textarea class="in rtext" data-bind="sec:${ti}:text" aria-label="Treasure notes" placeholder="When you got it">${escTxt(ts.text || '')}</textarea>`;
-  else if (ts?.text) h += `<div class="rich" data-sec="${ti}">${md(ts.text)}</div>`;
-  else if (!ts && E) h += '<button class="add sm" data-act="add-tnotes">+ Notes</button>';
-  h += '</section><section class="card"><div class="shead"><h2>Items</h2><span class="cnt">' + st.items.length + '</span></div><ul class="items">' +
+  let h = '';
+  if (w.t || w.h) {
+    h += `<section class="card wealth"><div class="shead"><h2>${escTxt(w.title || w.t)}</h2></div>` +
+      `<div class="note">${escTxt(ts?.note || w.note)}</div>` + (w.t ? row(w.t) : '') + (w.h ? row(w.h) : '');
+    if (ts && E) h += `<textarea class="in rtext" data-bind="sec:${ti}:text" aria-label="${esc(`${w.title} notes`)}" placeholder="When you got it">${escTxt(ts.text || '')}</textarea>`;
+    else if (ts?.text) h += `<div class="rich" data-sec="${ti}">${md(ts.text)}</div>`;
+    else if (!ts && E && w.title) h += '<button class="add sm" data-act="add-tnotes">+ Notes</button>';
+    h += '</section>';
+  }
+  h = '<div class="cols">' + h + '<section class="card"><div class="shead"><h2>Items</h2><span class="cnt">' + st.items.length + '</span></div><ul class="items">' +
     st.items.map((it, j) => (E ? itemEditHTML(it, j) : itemHTML(it, j, can))).join('') +
     '</ul>' + (E ? '<div class="additem"><input class="in" id="newitem" placeholder="Add an item" aria-label="New item" autocomplete="off"><button class="pbtn" data-act="add-item">Add</button></div>' : '') +
     '</section></div>';
@@ -310,28 +330,24 @@ function useItemAt(j) {
   });
 }
 
-// A sheet made before the Inventory tab still has its kit as one card: offer to split it into items.
+// A sheet with no inventory yet: offer to start one from a kit.
 function fillHTML() {
   if (!canEdit()) return '<div class="empty">No inventory yet.</div>';
   const kits = (playbook()?.kits || []).filter(k => !k.meta.extra);
-  const mine = st.sections.find(s => s.tab === 'sheet' && s.title.toLowerCase() === 'kit');
-  const match = mine && kits.find(k => [k.text, k.orig?.text].some(t => t && plain(t) === plain(mine.text)));
-  const cur = match ? match.name : mine ? '@sheet' : kits[0]?.name;
-  const opt = (v, label) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${escTxt(label)}</option>`;
-  if (!kits.length && !mine) return '<section class="card setup"><h2>Inventory</h2><div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv" data-src="">Start an empty inventory</button></div></section>';
+  if (!kits.length) return '<section class="card setup"><h2>Inventory</h2><div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv" data-src="">Start an empty inventory</button></div></section>';
+  const opt = (v, label) => `<option value="${esc(v)}"${v === kits[0].name ? ' selected' : ''}>${escTxt(label)}</option>`;
   return `<section class="card setup"><h2>Start the inventory</h2>
-    <div class="status">Each item in the kit becomes its own line, and its treasure goes on the pips.${mine ? ' This replaces the Kit card on the Sheet tab.' : ''}</div>
-    <label class="field"><span class="lbl">From</span><select class="in" id="kitpick">${mine ? opt('@sheet', `This sheet’s Kit card: ${short(mine.text)}`) : ''}${kits.map(k => opt(k.name, `${k.name}: ${short(k.text)}`)).join('')}</select></label>
+    <div class="status">Each item in the kit becomes its own line, and its ${escTxt(lw(W().t || 'treasure'))} goes on the pips.</div>
+    <label class="field"><span class="lbl">From</span><select class="in" id="kitpick">${kits.map(k => opt(k.name, `${k.name}: ${short(k.text)}`)).join('')}</select></label>
     <div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv">Fill the inventory</button></div></section>`;
 }
 
 function fillInventory(src) {
-  const kit = src === '@sheet' ? st.sections.find(s => s.tab === 'sheet' && s.title.toLowerCase() === 'kit')?.text : playbook()?.kits.find(k => k.name === src)?.text;
-  const inv = parseSheet(inventoryRows(kit || ''));
+  const kit = playbook()?.kits.find(k => k.name === src)?.text;
+  const inv = parseSheet(inventoryRows(sys(), kit || ''));
   Object.assign(st.tracks, inv.tracks);
-  if (!st.sections.some(s => s.tab === 'inventory' && s.title.toLowerCase() === 'treasure')) st.sections.push(...inv.sections);
+  if (!st.sections.some(isTnotes)) st.sections.push(...inv.sections);
   st.items = inv.items;
-  st.sections = st.sections.filter(s => !(s.tab === 'sheet' && s.title.toLowerCase() === 'kit'));
 }
 
 function addItem() {
@@ -375,7 +391,14 @@ async function createShip() {
   } catch (e) { msg.textContent = e.message; }
 }
 
+// Bonds show in the bonds section's card (section role=bonds); add one if the tab has bonds but no such row yet.
+function ensureBondsCard() {
+  const t = sys().title('bonds');
+  if (t && st.bonds.length && !st.sections.some(s => same_(s.title, t))) st.sections.push({ tab: 'sheet', title: t, text: '', note: '' });
+}
+
 function render() {
+  ensureBondsCard();
   const ro = !canEdit();
   if (ro) editing = false;
   const sheetShown = store.loaded && !store.missing;
@@ -408,13 +431,14 @@ function clickPip(btn) {
   const bond = btn.hasAttribute('data-bond');
   const arr = path.startsWith('b:') ? st.bonds[+path.slice(2)]?.pips : st.tracks[path.slice(2).toLowerCase()]?.pips;
   if (!arr) return;
-  if (!bond && isWealth(path.slice(2))) { // treasure and hoard are counts: carry 5-treasure into hoard
-    const w = wealth(st);
-    const isT = path.slice(2).toLowerCase() === 'treasure';
+  if (!bond && isWealth(path.slice(2))) { // treasure and hoard are counts: a full treasure track carries into hoard
+    const W_ = W();
+    const w = wealth(st, W_);
+    const isT = same_(path.slice(2), W_.t);
     const cur = isT ? w.treasure : w.hoard;
     const n = cur === j + 1 ? j : j + 1;
-    const r = isT ? setWealth(st, n, w.hoard) : setWealth(st, w.treasure, n);
-    if (r.hoard > w.hoard && isT) toast(`${TREASURE_PER_HOARD}-treasure became 1-hoard.`);
+    const r = isT ? setWealth(st, W_, n, w.hoard) : setWealth(st, W_, w.treasure, n);
+    if (r.hoard > w.hoard && isT) toast(`${W_.per}-${lw(W_.t)} became 1-${lw(W_.h)}.`);
     const name = track(path.slice(2)).name;
     used(`t:${name.toLowerCase()}`, n - cur, k => `${name} ${signed(k)}`);
     changed();
@@ -426,7 +450,7 @@ function clickPip(btn) {
     if (editing) v = v ? 0 : 1;      // mark / unmark
     else if (!v) return;             // unmarked bonds can't be used
     else v = v === 1 ? 2 : 1;        // use / restore
-  } else if (editing && path.toLowerCase() === 't:harm') v = (v + 1) % 3;
+  } else if (editing && same_(path.slice(2), sys().name('harm') || '\u0000')) v = (v + 1) % 3; // harm can be crossed out
   else if (v === 2) return;
   else v = v ? 0 : 1;
   const was = arr[j] || 0;
@@ -436,7 +460,7 @@ function clickPip(btn) {
   changed();
   if (bond) {
     const b = st.bonds[+path.slice(2)];
-    const title = st.sections.find(s => s.title.toLowerCase() === 'bonds')?.title || '';
+    const title = sys().title('bonds');
     used(`b:${b.name.toLowerCase()}`, v === 2 ? 1 : -1, k => `${title ? `${title}: ` : ''}${b.name} ${k > 0 ? 'used' : 'restored'}${Math.abs(k) > 1 ? ` ×${Math.abs(k)}` : ''}`);
   } else if (was !== v) {
     const t = st.tracks[path.slice(2).toLowerCase()];
@@ -492,7 +516,7 @@ app.addEventListener('click', e => {
     case 'roll-stat': { const s = st.stats[i]; doRoll(s.k, s.v, 2); break; }
     case 'roll-move': {
       const m = lastMoves[i];
-      const r = m && rollFor(m.text, st.stats);
+      const r = m && rollOf(m.meta, st.stats);
       if (!r) break;
       doRoll(r.stat || r.ask ? `${m.name} · ${r.label}` : m.name, r.mod, r.dice, ({ total }) => {
         if (canEdit() && actions.noteRoll(m, total)) changed();
@@ -503,7 +527,7 @@ app.addEventListener('click', e => {
     case 'rm-pip': setTrack(b.dataset.path, p => p.pop()); changed(); render(); break;
     case 'add-section': st.sections.push({ tab: b.dataset.tab, title: uniqueTitle('New section'), text: '', note: '' }); changed(); render(); break;
     case 'rm-section': if (armed(b)) { st.sections.splice(i, 1); changed(); render(); } break;
-    case 'add-bond': st.bonds.push({ name: uniqueBond('Someone'), pips: [0, 0, 0] }); changed(); render(); break;
+    case 'add-bond': st.bonds.push({ name: uniqueBond('Someone'), pips: Array(Math.max(1, sum(sys().section('bonds')?.size))).fill(0) }); changed(); render(); break;
     case 'rm-bond': if (armed(b)) { st.bonds.splice(+b.dataset.j, 1); changed(); render(); } break;
     case 'mv-mark': {
       const m = charMove(b.dataset.name);
@@ -513,28 +537,28 @@ app.addEventListener('click', e => {
     case 'add-move': st.moves.push({ name: uniqueMove('NEW MOVE'), marked: true, text: '' }); changed(); render(); break;
     case 'rm-move': if (armed(b)) { st.moves = st.moves.filter(m => m.name !== b.dataset.name); changed(); render(); } break;
     case 'run': if (canEdit()) actions.open(b.dataset.kind); break;
-    case 'spend-luck': if (canEdit() && lastMoves[i]) actions.spendLuck(lastMoves[i]); break;
+    case 'spend': if (canEdit() && lastMoves[i]) actions.spend(lastMoves[i]); break;
     case 'rm-log': if (armed(b)) { st.log.splice(i, 1); changed(); render(); } break;
-    case 'dt-moves': ui.tab = 'moves'; ui.cat = 'downtime'; saveUi(); render(); break;
+    case 'dt-moves': ui.tab = 'moves'; ui.cat = actions.dtGroup() || 'all'; saveUi(); render(); break;
     case 'ship-create': if (canEdit()) createShip(); break;
     case 'treasure': {
       if (!canEdit()) break;
-      const before = wealth(st);
-      const r = addTreasure(st, +b.dataset.n);
-      if (!r) { toast('No treasure left to spend.'); break; }
-      { const name = track('treasure').name; used(`t:${name.toLowerCase()}`, +b.dataset.n, k => `${name} ${signed(k)}`); }
-      if (r.hoard > before.hoard) toast(`${TREASURE_PER_HOARD}-treasure became 1-hoard.`);
-      else if (r.hoard < before.hoard) toast(`Broke 1-hoard into ${TREASURE_PER_HOARD}-treasure.`);
+      const w = W();
+      const before = wealth(st, w);
+      const r = addTreasure(st, w, +b.dataset.n);
+      if (!r) { toast(`No ${lw(w.t)} left to spend.`); break; }
+      used(`t:${lw(w.t)}`, +b.dataset.n, k => `${w.t} ${signed(k)}`);
+      if (r.hoard > before.hoard) toast(`${w.per}-${lw(w.t)} became 1-${lw(w.h)}.`);
+      else if (r.hoard < before.hoard) toast(`Broke 1-${lw(w.h)} into ${w.per}-${lw(w.t)}.`);
       changed(); render(); break;
     }
     case 'add-item': addItem(); break;
     case 'use-item': useItemAt(+b.dataset.j); break;
     case 'rm-item': if (canEdit() && editing && armed(b)) { st.items.splice(+b.dataset.j, 1); changed(); render(); } break;
-    case 'add-tnotes': st.sections.push({ tab: 'inventory', title: 'Treasure', text: '', note: `(${TREASURE_PER_HOARD}-treasure = 1-hoard)` }); changed(); render(); break;
+    case 'add-tnotes': if (W().title) { st.sections.push({ tab: 'inventory', title: W().title, text: '', note: W().note }); changed(); render(); } break;
     case 'fill-inv': {
       if (!canEdit()) break;
       const src = b.dataset.src ?? document.getElementById('kitpick')?.value ?? '';
-      if (src && st.sections.some(s => s.tab === 'sheet' && s.title.toLowerCase() === 'kit') && !armed(b)) break;
       fillInventory(src); changed(); render(); break;
     }
   }
@@ -612,16 +636,11 @@ document.addEventListener('keydown', e => {
   }
 });
 
-/* ---------- sheet menu: embed link, import from the old one-page sheet ---------- */
+/* ---------- sheet menu: embed link ---------- */
 function sheetMenu() {
-  const local = (() => { try { return localStorage.getItem('rapscallion:nexa:v1'); } catch { return null; } })();
   const o = modal(`
     <div class="prow"><h2>${escTxt(st.info.name || tabName)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
     <div class="prow"><button class="pbtn" data-s="embed">Copy Notion embed link</button></div>
-    ${canEdit() ? `<div class="mhd lbl">Import from the old one-page sheet</div>
-    <div class="status">Replaces this character’s sheet with data from the old nexa.html (⋯ → Download, then paste it here).</div>
-    <textarea class="in json" spellcheck="false" placeholder="Paste the downloaded JSON" aria-label="Old sheet JSON">${local ? escTxt(local) : ''}</textarea>
-    <div class="prow"><span class="grow"></span><button class="pbtn" data-s="import">Import</button></div>` : ''}
     <div class="status" data-msg></div>`, { label: 'Sheet options' });
   const say = m => { o.querySelector('[data-msg]').textContent = m; };
   o.addEventListener('click', async e => {
@@ -631,60 +650,11 @@ function sheetMenu() {
       const link = `${url.origin}${url.pathname}sheet.html?c=${encodeURIComponent(tabName)}${url.hash}`;
       try { await navigator.clipboard.writeText(link); say('Copied. Paste it into a Notion /embed block.'); } catch { say(link); }
     }
-    if (s === 'import' && canEdit()) {
-      const btn = e.target.closest('[data-s]');
-      let old;
-      try { old = JSON.parse(o.querySelector('textarea').value); } catch { say('That isn’t valid JSON.'); return; }
-      if (!old || !Array.isArray(old.sections)) { say('That doesn’t look like the old sheet’s data.'); return; }
-      if (!armed(btn)) { say('Click Import again to replace this sheet.'); return; }
-      st = fromLegacy(old);
-      changed();
-      closeModal();
-      render();
-      toast('Imported. Saving to the sheet…');
-    }
   });
-}
-
-// Convert the old nexa.html state (v1/v2) to this sheet's shape.
-function fromLegacy(old) {
-  const ns = { info: {}, stats: [], tracks: {}, bonds: [], sections: [], moves: [], specials: [], advances: {}, log: [], state: {} };
-  ns.info.name = old.name || st.info.name || tabName;
-  ns.info.playbook = old.playbook || st.info.playbook || '';
-  if (st.info.player) ns.info.player = st.info.player;
-  ns.info.level = String(old.level || 0);
-  ns.stats = (old.stats || []).map(s => ({ k: s.k, v: parseInt(s.v, 10) || 0 }));
-  if (Array.isArray(old.harm)) ns.tracks.harm = { name: 'Harm', pips: old.harm.slice() };
-  if (Array.isArray(old.luck)) ns.tracks.luck = { name: 'Luck', pips: old.luck.slice() };
-  for (const sec of old.sections || []) {
-    const title = sec.title || 'Section';
-    if (Array.isArray(sec.track)) ns.tracks[title.toLowerCase()] = { name: title, pips: sec.track.slice() };
-    if (sec.type === 'bonds') {
-      for (const r of sec.rows || []) ns.bonds.push({ name: r.name || 'Someone', pips: (r.pips || []).slice() });
-      ns.sections.push({ tab: sec.tab === 'notes' ? 'notes' : 'sheet', title, text: '', note: sec.note || '' });
-    } else {
-      ns.sections.push({ tab: sec.tab === 'notes' ? 'notes' : 'sheet', title, text: htmlToMarkup(sec.html || ''), note: sec.note || '' });
-    }
-  }
-  // Keep a move's own text only where it differs from the Rules tab (e.g. checked dark powers),
-  // so later fixes to the Rules tab still reach this sheet.
-  const pbMoves = R.playbook(ns.info.playbook)?.moves || [];
-  for (const m of old.moves || []) {
-    if (m.cat !== 'playbook' && !String(m.id || '').startsWith('u')) continue;
-    let text = htmlToMarkup(m.html || '');
-    const rule = pbMoves.find(x => x.name.toUpperCase() === String(m.name).toUpperCase());
-    if (rule && !/\[x\]/i.test(text) && plain(text) === plain(rule.text)) text = '';
-    if (m.off && !text) continue;
-    ns.moves.push({ name: m.name, marked: !m.off, text });
-  }
-  for (const a of old.advances || []) if (a.n) ns.advances[a.kind || a.t] = a.n;
-  for (const e of old.log || []) ns.log.push({ id: logId(e.at), at: e.at, title: e.title, items: e.items || [], note: e.note || '' });
-  if (old.downtime) ns.state.downtime = old.downtime;
-  return ns;
 }
 
 /* ---------- start ---------- */
 render();
 client.watch(tabName); // Rules is read once per visit (cached by digest), not polled
-client.read([tabName, 'Rules']).catch(() => render()); // a wrong or missing passphrase opens the prompt (see wireNav)
+client.read([tabName, ...TABS]).catch(() => render()); // a wrong or missing passphrase opens the prompt (see wireNav)
 client.startPolling();

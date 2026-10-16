@@ -1,88 +1,82 @@
-// Session Begins, Session Ends, Chapter's End, Begin/Leave Downtime and Level Up for a character sheet.
-// The rule text shown in each dialog comes from the Rules tab (procedure rows); the mechanics
-// live here. ctx = {st(), rules(), changed(), render(), editing(), used(key, n, line)}; used offers
-// a change for the log (usage.js).
+// The log's actions for a character sheet: Session Begins, Session Ends, Chapter's End,
+// Begin/Leave Downtime and Level Up, or whatever the game calls them. Rules rows with action=
+// (procedure and move rows) name each action and give the text its dialog shows; choice rows
+// with the action as their Group are its options (see system.js). What each one does is here.
+// ctx = {st(), rules(), changed(), render(), editing(), used(key, n, line)}; used offers a change
+// for the log (usage.js).
 
 import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal, toast } from './core.js';
-import { md, plain } from './markup.js';
+import { md } from './markup.js';
 import { logId } from './codec.js';
-import { atSession, gainsFrom, rollFor, luckFloorOf } from './rules.js';
+import { systemOf, typeOf, floorOf, trackSize, sum, effects, atSession, rollOf, cap } from './system.js';
 
-export const ACTIONS = {
-  session: 'Session Begins',
-  'session-end': 'Session Ends',
-  chapter: 'Chapter’s End',
-  'dt-begin': 'Begin Downtime',
-  'dt-leave': 'Leave Downtime',
-  advance: 'Level Up',
-};
-// Short UI labels; the full wording is in the rule text shown above them.
-const CHAPTER_CHOICES = [['xp', '+1 experience'], ['luck', '+2 luck'], ['heal', 'Heal 2 harm']];
-const DT_SLOTS = { port: 2, sea: 1 };
-// Moves on the Moves tab that run one of these actions instead of a roll.
-const MOVE_ACTIONS = { 'BEGIN DOWNTIME': 'dt-begin', 'LEAVE DOWNTIME': 'dt-leave' };
+// The actions the site knows, in the order the log shows them.
+const ORDER = ['session-begin', 'session-end', 'chapter-end', 'begin-downtime', 'leave-downtime', 'level-up'];
+const low = s => String(s ?? '').trim().toLowerCase();
 
 export function makeActions(ctx) {
   const st = () => ctx.st();
   const R = () => ctx.rules();
-  const track = name => st().tracks[name] || null;
-  const xpTrack = () => track('experience');
-  const xpCount = () => (xpTrack()?.pips || []).filter(v => v === 1).length;
+  const sys = () => systemOf(R(), typeOf(R(), st().info.playbook));
+  const byName = name => (name ? st().tracks[name.toLowerCase()] || null : null);
+  const track = role => byName(sys().name(role));
+  const word = role => sys().word(role);
+  const marks = t => (t?.pips || []).filter(v => v === 1).length;
   const level = () => parseInt(st().info.level, 10) || 0;
-  const xpNeeded = () => level() + 6; // experience equal to the next level + 5
-  const statVal = k => (st().stats.find(s => s.k.toLowerCase() === k) || { v: 0 }).v;
-  const luckFloor = () => Math.max(0, ...R().house('session').map(luckFloorOf));
-  const luckTarget = () => Math.min(track('luck')?.pips.length || 0, Math.max(luckFloor(), statVal('spitfire')));
+  const nums = () => ({ stats: st().stats, level: level() });
+  const xpCount = () => marks(track('xp'));
+  const xpNeeded = () => {
+    const d = sys().track('xp');
+    return d?.size ? trackSize({ size: d.size }, nums()) : track('xp')?.pips.length || 0;
+  };
+
+  const rowsOf = id => R().recs.filter(r => low(r.meta.action) === id);
+  const has = id => rowsOf(id).length > 0;
+  const label = id => rowsOf(id).find(r => r.meta.label)?.meta.label || rowsOf(id)[0]?.name || id;
+  const choices = id => R().by('choice', id);
+  // The move group that holds the downtime moves: the one Begin Downtime's move row is in.
+  const dtGroup = () => low(rowsOf('begin-downtime').find(r => r.kind === 'move')?.group);
+
+  const section = title => (title ? st().sections.find(s => s.title.toLowerCase() === title.toLowerCase()) : null);
+  const bondDef = () => sys().section('bonds');
+  const bondSize = () => sum(bondDef()?.size) || Infinity;
   const usedBonds = () => st().bonds.reduce((n, b) => n + b.pips.filter(v => v === 2).length, 0);
   const bondCount = b => b.pips.filter(v => v > 0).length;
   const playbook = () => R().playbook(st().info.playbook);
   const unmarkedMoves = () => (playbook()?.moves || []).filter(m => !st().moves.some(x => x.name.toUpperCase() === m.name.toUpperCase() && x.marked));
-  const section = title => st().sections.find(s => s.title.toLowerCase() === title.toLowerCase());
-  const moveText = name => (R().moves('downtime').find(m => m.name.toUpperCase() === name) || {}).text || '';
+
   // The character's vice, oddity and marked moves that do something when a session starts or ends.
   function sessionMoves(when) {
     const pb = playbook();
-    const pbMoves = pb?.moves || [];
     const mine = name => st().moves.find(x => x.name.toUpperCase() === name.toUpperCase());
     // The one the sheet names, when the playbook offers a choice.
-    const chosen = (list, title, all) => {
-      const v = (section(title)?.text || '').toLowerCase();
+    const chosen = (list, role, all) => {
+      const v = (section(sys().title(role))?.text || '').toLowerCase();
       const named = list.filter(x => v.includes(x.name.toLowerCase()));
       return named.length || !all ? named : list;
     };
-    const vices = chosen(pb?.vices || [], 'vice', true);
-    const oddities = chosen(pb?.oddities || [], 'oddity', false);
-    const moves = [
-      ...pbMoves.filter(m => mine(m.name)?.marked).map(m => ({ name: m.name, text: mine(m.name).text || m.text, meta: m.meta })),
-      ...st().moves.filter(m => m.marked && !pbMoves.some(x => x.name.toUpperCase() === m.name.toUpperCase())),
-    ];
-    return [...vices, ...oddities, ...moves].filter(m => atSession(when, m.text, m.meta)).map(m => ({ name: m.name, text: m.text, gains: gainsFrom(m.text) }));
+    const moves = (pb?.moves || []).filter(m => mine(m.name)?.marked).map(m => ({ ...m, text: mine(m.name).text || m.text }));
+    return [...chosen(pb?.vices || [], 'vice', true), ...chosen(pb?.oddities || [], 'oddity', false), ...moves]
+      .filter(m => atSession(when, m.meta)).map(m => ({ name: m.name, text: m.text, meta: m.meta, gains: effects(m.meta.gain) }));
   }
   let sessMoves = [];
-  const marks = name => (track(name)?.pips || []).filter(v => v === 1).length;
+  const gainText = e => `+${e.from ? marks(byName(e.from)) : e.n} ${word(e.role)}`;
   const sessionList = (when, none) => {
     sessMoves = sessionMoves(when);
     if (!sessMoves.length) return none ? `<div class="status">${none}</div>` : '';
     const what = m => {
-      const r = rollFor(m.text, st().stats);
-      return [m.gains.luck && `+${m.gains.luck} luck`, m.gains.luckFrom && `+${marks(m.gains.luckFrom)} luck`, m.gains.xp && `+${m.gains.xp} experience`,
-        r && `roll ${r.stat ? `${r.label} ${fmt(r.mod)}` : r.label} on the Moves tab`].filter(Boolean).join(', ');
+      const r = rollOf(m.meta, st().stats);
+      return [...m.gains.map(gainText), r && `roll ${r.stat ? `${r.label} ${fmt(r.mod)}` : r.label} on the Moves tab`].filter(Boolean).join(', ');
     };
     return '<div class="opts">' + sessMoves.map((m, k) =>
       `<div class="opt endm"><label class="eff"><input type="checkbox" data-eff="sess:${k}">${escTxt(m.name)}` +
       `${what(m) ? `<span class="cnt">${escTxt(what(m))}</span>` : ''}</label><div class="mbody">${md(m.text)}</div></div>`).join('') + '</div>';
   };
-  // Tick a listed move: log it, and mark the luck or experience it says to.
+  // Tick a listed move: log it, and mark what it says to.
   function runSessionMoves(on, items) {
     sessMoves.forEach((m, k) => {
       if (!on(`sess:${k}`)) return;
-      const got = [];
-      const want = m.gains.luckFrom ? marks(m.gains.luckFrom) : m.gains.luck;
-      const luck = want && track('luck') ? markN(track('luck').pips, want) : 0;
-      if (luck) got.push(`+${luck} luck`);
-      let xp = 0;
-      while (xp < m.gains.xp && markXp(m.name)) xp++;
-      if (xp) got.push(`+${xp} experience`);
+      const got = gain(m.gains, m.name);
       items.push(got.length ? `${m.name}: ${got.join(', ')}` : m.name);
     });
   }
@@ -92,21 +86,33 @@ export function makeActions(ctx) {
     for (let j = 0; j < pipsArr.length && done < n; j++) if (pipsArr[j] === 0) { pipsArr[j] = 1; done++; }
     return done;
   }
-  function healN(n) {
-    const h = track('harm');
+  function healN(role, n) {
+    const h = track(role);
     let done = 0;
     for (let j = (h?.pips.length || 0) - 1; j >= 0 && done < n; j--) if (h.pips[j] === 1) { h.pips[j] = 0; done++; }
     return done;
   }
-  // Mark the next experience tally and note why in the Experience section, e.g. "1 (Chapter’s End)".
+  // Mark the next experience tally and note why in the experience section, e.g. "1 (Chapter’s End)".
   function markXp(reason) {
-    const t = xpTrack();
+    const t = track('xp');
     const j = t ? t.pips.indexOf(0) : -1;
     if (j < 0) return false;
     t.pips[j] = 1;
-    const s = section('experience');
+    const s = section(sys().title('xp'));
     if (s) s.text = (s.text.trim() ? s.text.replace(/\s+$/, '') + '\n' : '') + `- 1 (${reason})`;
     return true;
+  }
+  // gain=…: mark tracks, as many as there's room for. Returns what was marked, e.g. ["+2 luck"].
+  function gain(list, reason) {
+    const got = [];
+    for (const e of list) {
+      const want = e.from ? marks(byName(e.from)) : e.n || 0;
+      let n = 0;
+      if (e.role === 'xp') while (n < want && markXp(reason)) n++;
+      else if (track(e.role)) n = markN(track(e.role).pips, want);
+      if (n) got.push(`+${n} ${word(e.role)}`);
+    }
+    return got;
   }
   // Leave Downtime heals harm taken before downtime began, not fresh harm taken during it.
   function healable() {
@@ -114,53 +120,73 @@ export function makeActions(ctx) {
     const before = st().state.downtime?.harm || h;
     return h.map((v, j) => v === 1 && before[j] === 1);
   }
+  // Session Begins refills tracks with refill= up to it (at least a house rule's floor).
+  const refills = () => sys().tracks.filter(t => t.refill && byName(t.name)).map(t => {
+    const pips = byName(t.name).pips;
+    return { t, pips, have: marks({ pips }), target: Math.min(pips.length, Math.max(floorOf(R(), t.role), sum(t.refill, nums()))) };
+  });
 
-  const eff = (key, label, ok) =>
-    `<label class="eff${ok ? '' : ' off'}"><input type="checkbox" data-eff="${key}"${ok ? ' checked' : ' disabled'}>${escTxt(label)}</label>`;
-  const select = (k, items) => `<select class="in sub" data-sub="${k}">${items.map(([v, t]) => `<option value="${esc(v)}">${escTxt(t)}</option>`).join('')}</select>`;
-
-  function ruleFor(kind) {
-    // Session steps are numbered; the first is how a session begins.
-    if (kind === 'session-end') return R().by('procedure', 'session').slice(1).find(r => /\b(END|CLOS)/i.test(r.name) || atSessionEnd(r.text)) || null;
-    const map = { session: 'session', chapter: 'chapter', 'dt-begin': 'downtime', advance: 'advance' };
-    return map[kind] ? R().procedure(map[kind]) : null;
+  // A choice row's effect, and whether it would do anything now.
+  const usable = c => (low(c.meta.refresh) === 'bonds' ? usedBonds() > 0 : true);
+  const choiceLabel = c => (low(c.meta.refresh) === 'bonds' ? `${c.name} (${usedBonds()})` : c.name);
+  function doChoice(c, reason, items) {
+    if (low(c.meta.refresh) === 'bonds') {
+      let n = 0;
+      st().bonds.forEach(b => { b.pips = b.pips.map(v => (v === 2 ? (n++, 1) : v)); });
+      if (n) items.push(`${c.name} (${n})`);
+    }
+    items.push(...gain(effects(c.meta.gain), reason));
+    for (const e of effects(c.meta.heal)) {
+      const n = healN(e.role, e.n ?? Infinity);
+      if (n) items.push(`Healed ${n} ${word(e.role)}`);
+    }
   }
+
+  const eff = (key, text, ok) =>
+    `<label class="eff${ok ? '' : ' off'}"><input type="checkbox" data-eff="${key}"${ok ? ' checked' : ' disabled'}>${escTxt(text)}</label>`;
+  const select = (k, items) => `<select class="in sub" data-sub="${k}">${items.map(([v, t]) => `<option value="${esc(v)}">${escTxt(t)}</option>`).join('')}</select>`;
 
   function controls(kind) {
     const s = st();
-    if (kind === 'session') {
-      const have = (track('luck')?.pips || []).filter(v => v === 1).length;
-      const t = luckTarget();
-      return eff('luck', `Refresh luck up to ${t} (${have})`, have < t) + sessionList('start', '');
+    if (kind === 'session-begin') {
+      return refills().map(({ t, have, target }) => eff(`refill:${t.name}`, `Refresh ${word(t.role) || t.name.toLowerCase()} up to ${target} (${have})`, have < target)).join('') + sessionList('start', '');
     }
     if (kind === 'session-end') return sessionList('end', 'Nothing on this sheet happens at the end of a session.');
-    if (kind === 'chapter') {
+    if (kind === 'chapter-end') {
+      const cs = choices(kind);
+      const picks = Math.max(0, ...rowsOf(kind).map(r => parseInt(r.meta.picks, 10) || 0));
+      const pickable = cs.map((c, k) => [c, k]).filter(([c]) => c.meta.pick);
       const pick = n => `<select class="in" data-pick="${n}" aria-label="Choice ${n + 1}"><option value="">—</option>` +
-        CHAPTER_CHOICES.map(([k, t]) => `<option value="${k}">${t}</option>`).join('') + '</select>';
-      return eff('bonds', `Replenish all bonds (${usedBonds()})`, usedBonds() > 0) + `<div class="picks">${pick(0)}${pick(1)}</div>`;
+        pickable.map(([c, k]) => `<option value="${k}">${escTxt(c.name)}</option>`).join('') + '</select>';
+      return cs.map((c, k) => (c.meta.pick ? '' : eff(`choice:${k}`, choiceLabel(c), usable(c)))).join('') +
+        (pickable.length && picks ? `<div class="picks">${Array.from({ length: picks }, (_, n) => pick(n)).join('')}</div>` : '');
     }
-    if (kind === 'dt-begin') {
-      return '<div class="opts">' + [['port', 'In port'], ['sea', 'At sea']].map(([v, t], k) =>
-        `<label class="optl"><input type="radio" name="where" value="${v}"${k ? '' : ' checked'}><span>${t}</span><span class="cnt">${DT_SLOTS[v]} downtime move${DT_SLOTS[v] > 1 ? 's' : ''}</span></label>`).join('') + '</div>';
+    if (kind === 'begin-downtime') {
+      return '<div class="opts">' + choices(kind).map((c, k) => {
+        const n = sum(c.meta.slots);
+        return `<label class="optl"><input type="radio" name="where" value="${k}"${k ? '' : ' checked'}><span>${escTxt(c.name)}</span>` +
+          `${c.meta.slots != null ? `<span class="cnt">${n} ${escTxt(cap(dtGroup()))} move${n === 1 ? '' : 's'}</span>` : ''}</label>`;
+      }).join('') + '</div>';
     }
-    if (kind === 'dt-leave') {
+    if (kind === 'leave-downtime') {
       const n = healable().filter(Boolean).length;
-      return eff('heal', `Heal all harm (${n})`, n > 0);
+      return track('harm') ? eff('heal', `Heal all ${word('harm')} (${n})`, n > 0) : '';
     }
-    if (kind === 'advance') {
+    if (kind === 'level-up') {
       let h = `<div class="lvl">Level ${level()} → ${level() + 1}</div><div class="opts">`;
       R().advances().forEach((a, k) => {
-        const label = a.text.trim() || a.name;
+        const text = a.text.trim() || a.name;
         const kindA = a.meta.kind;
-        const taken = s.advances[kindA || label] || 0;
+        const taken = s.advances[kindA || text] || 0;
+        const top = parseInt(a.meta.cap, 10);
         let sub = '';
         let ok = true;
         if (kindA === 'trait') {
-          const opts = s.stats.filter(x => x.v < 3).map(x => [x.k, `${x.k} ${fmt(x.v)}`]); // base traits stop at +3
-          ok = taken < (parseInt(a.meta.max, 10) || 3) && opts.length > 0;
+          const opts = s.stats.filter(x => !(x.v >= top)).map(x => [x.k, `${x.k} ${fmt(x.v)}`]);
+          ok = taken < (parseInt(a.meta.max, 10) || Infinity) && opts.length > 0;
           sub = select(k, opts);
         } else if (kindA === 'bond') {
-          const rows = s.bonds.map((b, j) => [j, `${b.name} (${bondCount(b)})`, b]).filter(x => bondCount(x[2]) < 3);
+          const rows = s.bonds.map((b, j) => [j, `${b.name} (${bondCount(b)})`, b]).filter(x => bondCount(x[2]) < Math.min(bondSize(), x[2].pips.length));
           ok = rows.length > 0;
           sub = select(k, rows.map(x => [x[0], x[1]]));
         } else if (kindA === 'move') {
@@ -168,10 +194,10 @@ export function makeActions(ctx) {
           ok = ms.length > 0;
           sub = select(k, ms);
         } else if (kindA === 'oddity') {
-          sub = `<input class="in sub" data-sub="${k}" aria-label="Oddity name">`;
+          sub = `<input class="in sub" data-sub="${k}" aria-label="${esc(sys().title('oddity') || 'Name')}">`;
         }
         h += `<div class="opt${ok ? '' : ' off'}"><label class="optl"><input type="radio" name="adv" value="${k}"${ok ? '' : ' disabled'}>` +
-          `<span>${escTxt(label)}</span>${taken ? `<span class="cnt">×${taken}</span>` : ''}</label>${ok ? sub : ''}</div>`;
+          `<span>${escTxt(text)}</span>${taken ? `<span class="cnt">×${taken}</span>` : ''}</label>${ok ? sub : ''}</div>`;
       });
       return h + '<div class="opt"><label class="optl"><input type="radio" name="adv" value="other"><input class="in other" aria-label="Other advance"></label></div></div>';
     }
@@ -179,17 +205,12 @@ export function makeActions(ctx) {
   }
 
   function open(kind) {
-    const title = ACTIONS[kind];
-    let h = `<div class="prow"><h2>${title}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>`;
-    if (kind === 'dt-begin' || kind === 'dt-leave') {
-      const mt = moveText(kind === 'dt-begin' ? 'BEGIN DOWNTIME' : 'LEAVE DOWNTIME');
-      if (mt) h += `<div class="mbody rule">${md(mt)}</div>`;
-    }
-    const rule = ruleFor(kind);
-    if (rule?.text) h += `<div class="mbody rule">${md(rule.text)}</div>`;
+    const title = label(kind);
+    let h = `<div class="prow"><h2>${escTxt(title)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>`;
+    for (const r of rowsOf(kind)) if (r.text) h += `<div class="mbody rule">${md(r.text)}</div>`;
     h += controls(kind) +
       `<textarea class="in anote" placeholder="Note" aria-label="Note"></textarea>
-       <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-run>${title}</button></div>`;
+       <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-run>${escTxt(title)}</button></div>`;
     const o = modal(h, { label: title, wide: true });
     const pickRadio = el => { const r = el.closest('.opt')?.querySelector('input[type=radio]'); if (r && !r.disabled) r.checked = true; };
     o.addEventListener('focusin', e => { if (e.target.matches('.sub, .other')) pickRadio(e.target); });
@@ -201,66 +222,59 @@ export function makeActions(ctx) {
     const s = st();
     const on = k => !!o.querySelector(`[data-eff="${k}"]`)?.checked;
     const items = [];
-    if (kind === 'session') {
-      if (on('luck')) {
-        const l = track('luck');
-        const need = luckTarget() - l.pips.filter(v => v === 1).length;
-        const n = need > 0 ? markN(l.pips, need) : 0;
-        if (n) items.push(`+${n} luck`);
+    const title = label(kind);
+    if (kind === 'session-begin') {
+      for (const { t, pips, have, target } of refills()) {
+        const n = on(`refill:${t.name}`) && target > have ? markN(pips, target - have) : 0;
+        if (n) items.push(`+${n} ${word(t.role) || t.name.toLowerCase()}`);
       }
       runSessionMoves(on, items);
     } else if (kind === 'session-end') {
       runSessionMoves(on, items);
-    } else if (kind === 'chapter') {
-      if (on('bonds')) {
-        let n = 0;
-        s.bonds.forEach(b => { b.pips = b.pips.map(v => (v === 2 ? (n++, 1) : v)); });
-        if (n) items.push(`Replenished ${n} bond${n === 1 ? '' : 's'}`);
-      }
-      o.querySelectorAll('[data-pick]').forEach(sel => {
-        if (sel.value === 'xp') { if (markXp(ACTIONS.chapter)) items.push('+1 experience'); }
-        else if (sel.value === 'luck') { const n = track('luck') ? markN(track('luck').pips, 2) : 0; if (n) items.push(`+${n} luck`); }
-        else if (sel.value === 'heal') { const n = healN(2); if (n) items.push(`Healed ${n} harm`); }
-      });
-    } else if (kind === 'dt-begin') {
-      const where = o.querySelector('input[name=where]:checked')?.value || 'port';
-      s.state.downtime = { at: Date.now(), where, harm: (track('harm')?.pips || []).slice(), moves: [] };
-      items.push(where === 'sea' ? 'At sea' : 'In port');
-    } else if (kind === 'dt-leave') {
+    } else if (kind === 'chapter-end') {
+      const cs = choices(kind);
+      cs.forEach((c, k) => { if (!c.meta.pick && on(`choice:${k}`)) doChoice(c, title, items); });
+      o.querySelectorAll('[data-pick]').forEach(sel => { if (sel.value !== '' && cs[+sel.value]) doChoice(cs[+sel.value], title, items); });
+    } else if (kind === 'begin-downtime') {
+      const c = choices(kind)[+(o.querySelector('input[name=where]:checked')?.value || 0)];
+      s.state.downtime = { at: Date.now(), where: c?.name || '', slots: c ? sum(c.meta.slots) : 0, harm: (track('harm')?.pips || []).slice(), moves: [] };
+      if (c) items.push(c.name);
+    } else if (kind === 'leave-downtime') {
       (s.state.downtime?.moves || []).forEach(m => items.push(`${m.name} (${m.total})`));
       if (on('heal') && track('harm')) {
         const heal = healable();
         const n = heal.filter(Boolean).length;
         track('harm').pips = track('harm').pips.map((v, j) => (heal[j] ? 0 : v));
-        if (n) items.push(`Healed ${n} harm`);
+        if (n) items.push(`Healed ${n} ${word('harm')}`);
       }
       s.state.downtime = null;
-    } else if (kind === 'advance') {
+    } else if (kind === 'level-up') {
       const next = level() + 1;
       const pick = o.querySelector('input[name=adv]:checked');
-      let bondXp = null;
+      let fullBond = null;
       items.push(`Level ${next}`);
       if (pick && pick.value !== 'other') {
         const k = +pick.value;
         const a = R().advances()[k];
-        const label = a.text.trim() || a.name;
+        const text = a.text.trim() || a.name;
         const sub = o.querySelector(`[data-sub="${k}"]`);
-        const key = a.meta.kind || label;
+        const key = a.meta.kind || text;
         s.advances[key] = (s.advances[key] || 0) + 1;
-        items.push(label);
+        items.push(text);
         if (a.meta.kind === 'trait' && sub) {
           const stat = s.stats.find(x => x.k === sub.value);
-          if (stat) { stat.v = Math.min(3, stat.v + 1); items.push(`${stat.k} ${fmt(stat.v)}`); }
+          const top = parseInt(a.meta.cap, 10);
+          if (stat) { stat.v = Number.isFinite(top) ? Math.min(top, stat.v + 1) : stat.v + 1; items.push(`${stat.k} ${fmt(stat.v)}`); }
         } else if (a.meta.kind === 'bond' && sub) {
           const b = s.bonds[+sub.value];
           const j = b ? b.pips.indexOf(0) : -1;
-          if (j >= 0) { b.pips[j] = 1; items.push(`+1 bond: ${b.name}`); if (bondCount(b) === 3) bondXp = b.name; }
+          if (j >= 0) { b.pips[j] = 1; items.push(`+1: ${b.name}`); if (bondCount(b) >= Math.min(bondSize(), b.pips.length)) fullBond = b.name; }
         } else if (a.meta.kind === 'move' && sub) {
           const m = s.moves.find(x => x.name.toUpperCase() === sub.value.toUpperCase());
           if (m) m.marked = true; else s.moves.push({ name: sub.value, marked: true, text: '' });
           items.push(sub.value);
         } else if (a.meta.kind === 'oddity' && sub && sub.value.trim()) {
-          const odd = section('oddity');
+          const odd = section(sys().title('oddity'));
           if (odd) odd.text = (odd.text.trim() ? odd.text.replace(/\s+$/, '') + '\n\n' : '') + `**${sub.value.trim()}**`;
           items.push(sub.value.trim());
         }
@@ -268,16 +282,16 @@ export function makeActions(ctx) {
         const t = (o.querySelector('.other')?.value || '').trim();
         if (t) items.push(t);
       }
-      // Level up: erase all experience tally marks; the next level needs one more.
+      // Level up: erase all experience tally marks; the next level may need more.
       s.info.level = String(next);
-      const xt = xpTrack();
+      const xt = track('xp');
       if (xt) xt.pips = Array(xpNeeded()).fill(0);
-      // Gaining a third bond through this advance gives its experience immediately.
-      if (bondXp && markXp(`3 bonds with ${bondXp}`)) items.push('+1 experience');
+      // Filling a bond through this advance gives what a full bond does (full=…) immediately.
+      if (fullBond) items.push(...gain(effects(bondDef()?.full), fullBond));
     }
     const note = (o.querySelector('.anote')?.value || '').trim();
     const at = Date.now();
-    s.log.push({ id: logId(at), at, title: ACTIONS[kind], items, note });
+    s.log.push({ id: logId(at), at, title, items, note });
     ctx.changed();
     closeModal();
     ctx.render();
@@ -288,20 +302,18 @@ export function makeActions(ctx) {
     const dt = s.state.downtime;
     const xp = xpCount();
     const need = xpNeeded();
-    const btn = (kind, label, cls = '', attrs = '') => `<button class="act${cls}" data-act="run" data-kind="${kind}"${attrs}>${label}</button>`;
-    let h = readOnly ? '' : '<div class="actions">' +
-      btn('session', ACTIONS.session) +
-      btn('session-end', ACTIONS['session-end']) +
-      btn('chapter', ACTIONS.chapter) +
-      (dt ? btn('dt-leave', ACTIONS['dt-leave'], ' live') : btn('dt-begin', ACTIONS['dt-begin'])) +
-      btn('advance', `${ACTIONS.advance}<span class="cnt">${xp}/${need}</span>`, '', xp < need ? ' disabled' : '') +
-      '</div>';
+    const btn = (kind, text, cls = '', attrs = '') => `<button class="act${cls}" data-act="run" data-kind="${kind}"${attrs}>${text}</button>`;
+    const shown = ORDER.filter(k => has(k) && !(k === 'begin-downtime' && dt) && !(k === 'leave-downtime' && !dt));
+    let h = readOnly ? '' : '<div class="actions">' + shown.map(k =>
+      k === 'level-up' ? btn(k, `${escTxt(label(k))}<span class="cnt">${xp}/${need}</span>`, '', xp < need ? ' disabled' : '')
+        : btn(k, escTxt(label(k)), k === 'leave-downtime' ? ' live' : '')).join('') + '</div>';
     if (dt) {
       const moves = dt.moves || [];
-      h += `<div class="dtbar">Downtime <time>${fmtDate(dt.at)}</time>` +
-        `<span class="cnt">${dt.where === 'sea' ? 'At sea' : 'In port'} ${moves.length}/${DT_SLOTS[dt.where] || 2}</span>` +
+      const g = cap(dtGroup());
+      h += `<div class="dtbar">${escTxt(g)} <time>${fmtDate(dt.at)}</time>` +
+        `<span class="cnt">${escTxt(dt.where || '')} ${moves.length}/${dt.slots ?? '–'}</span>` +
         (moves.length ? `<span class="dtm">${moves.map(m => escTxt(`${m.name} (${m.total})`)).join(' · ')}</span>` : '') +
-        '<button class="pill" data-act="dt-moves">Downtime moves</button></div>';
+        `<button class="pill" data-act="dt-moves">${escTxt(g)} moves</button></div>`;
     }
     const entries = s.log.map((e, i) =>
       `<article class="entry"><div class="ehead"><span class="et">${escTxt(e.title)}</span><time>${e.at ? fmtDate(e.at) : ''}</time>` +
@@ -313,58 +325,58 @@ export function makeActions(ctx) {
     return h + (entries || '<div class="empty">—</div>');
   }
 
-  // The action a move runs, and whether it can run now (only one of Begin/Leave Downtime applies).
+  // The action a move runs (action= on its Rules row), and whether it can run now: only one of
+  // Begin and Leave Downtime applies at a time.
   function forMove(move) {
-    const kind = move.cat === 'downtime' && MOVE_ACTIONS[move.name.toUpperCase()];
-    if (!kind) return null;
+    const kind = low(move.meta?.action);
+    if (kind !== 'begin-downtime' && kind !== 'leave-downtime') return null;
     const dt = !!st().state.downtime;
-    return { kind, label: kind === 'dt-begin' ? 'Begin' : 'Leave', ok: kind === 'dt-begin' ? !dt : dt,
-      why: kind === 'dt-begin' ? 'Already in downtime' : 'Not in downtime' };
+    const begin = kind === 'begin-downtime';
+    return { kind, label: label(kind), ok: begin ? !dt : dt, why: begin ? `${label('leave-downtime')} first` : `${label('begin-downtime')} first` };
   }
 
-  // Luck a move spends outright: "spend 1-luck", "pay 3-luck", "spend x-luck" (x asks how much).
-  // Not "you don't have to spend 1-luck".
-  function luckCost(move) {
-    const m = plain(move.text).match(/(?<!have to )\b(?:spend|pay) (\d+|x)-luck\b/i);
-    if (!m || !track('luck')) return null;
-    const n = m[1].toLowerCase() === 'x' ? null : +m[1];
-    const have = track('luck').pips.filter(v => v === 1).length;
-    return { n, have, ok: have >= (n || 1) };
+  // What a move spends outright (spend=luck:1; luck:x asks how much), and whether there's enough.
+  function cost(move) {
+    const e = effects(move.meta?.spend)[0];
+    const t = e && track(e.role);
+    if (!t) return null;
+    const have = marks(t);
+    return { role: e.role, word: word(e.role), n: e.n, have, ok: have >= (e.n || 1) };
   }
 
-  function spendLuck(move) {
-    const c = luckCost(move);
+  function spend(move) {
+    const c = cost(move);
     if (!c?.ok) return;
-    const spend = n => {
-      const l = track('luck').pips;
+    const take = n => {
+      const l = track(c.role).pips;
       let done = 0;
       for (let j = l.length - 1; j >= 0 && done < n; j--) if (l[j] === 1) { l[j] = 0; done++; }
       ctx.changed();
       ctx.render();
-      toast(`Spent ${done} luck: ${move.name} (${c.have - done} left)`);
-      const name = track('luck').name;
+      toast(`Spent ${done} ${c.word}: ${move.name} (${c.have - done} left)`);
+      const name = track(c.role).name;
       ctx.used?.(`spend:${move.name}`, done, k => `${move.name}: ${name} −${k}`);
     };
-    if (c.n) { spend(c.n); return; }
+    if (c.n) { take(c.n); return; }
     const o = modal(`<div class="prow"><h2>${escTxt(move.name)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
-      <label class="field"><span class="lbl">Luck to spend (${c.have})</span><input class="in" type="number" data-luck min="1" max="${c.have}" value="1"></label>
-      <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-spend>Spend luck</button></div>`, { label: move.name });
-    o.querySelector('[data-luck]').focus();
+      <label class="field"><span class="lbl">${escTxt(cap(c.word))} to spend (${c.have})</span><input class="in" type="number" data-spend-n min="1" max="${c.have}" value="1"></label>
+      <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-spend>Spend ${escTxt(c.word)}</button></div>`, { label: move.name });
+    o.querySelector('[data-spend-n]').focus();
     o.addEventListener('click', e => {
       if (!e.target.closest('[data-spend]')) return;
-      const n = Math.min(c.have, Math.max(1, parseInt(o.querySelector('[data-luck]').value, 10) || 1));
+      const n = Math.min(c.have, Math.max(1, parseInt(o.querySelector('[data-spend-n]').value, 10) || 1));
       closeModal();
-      spend(n);
+      take(n);
     });
   }
 
   // Count downtime moves rolled during downtime.
   function noteRoll(move, total) {
     const dt = st().state.downtime;
-    if (!dt || move.cat !== 'downtime') return false;
+    if (!dt || !dtGroup() || low(move.cat) !== dtGroup()) return false;
     (dt.moves = dt.moves || []).push({ name: move.name, total });
     return true;
   }
 
-  return { open, logHTML, noteRoll, forMove, luckCost, spendLuck, armed, xpCount, xpNeeded };
+  return { open, logHTML, noteRoll, forMove, cost, spend, armed, xpCount, xpNeeded, label, dtGroup };
 }

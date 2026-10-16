@@ -159,7 +159,55 @@ workbook, and replaces every tab with that file's tabs, in its order.
   out, and the dialog lists it.
 - The first time you use it, Google asks you to authorize the script.
 
-The script reads the file itself, so it needs no access to anything but this spreadsheet.
+The script reads the file itself, so it needs no access to anything but this spreadsheet. The new
+tabs get the checks **setUpChecks** makes (see below) as they come in.
+
+## The game's mechanics
+
+The site knows no stat, track or move names and no numbers of its own. The **System** tab holds
+them, as `Kind | Group | Name | Text | Meta` rows of these kinds (Group is a playbook type, as in a
+playbook's `type=`: a character type such as `pirate`, `ship`, or `npc`). Everyone can read it;
+it's edited only in the spreadsheet.
+
+- `stat`: a stat, in sheet order (Blood, Vinegar, …). An oddity's or ship kit's `traits=` follows that order.
+- `track`: a track new sheets start with. Meta: `role=` (what the site does with it: `harm`,
+  `luck`, `vice`, `xp`, `treasure`, `hoard`), `size=` (pips: `6`, `Steadfast+3`, `level+6`; a
+  playbook's `harm=8` overrides it), `start=` (marks it starts with, e.g. `Spitfire`), `refill=`
+  (Session Begins marks it back up to this).
+- `section`: a card new sheets start with. Meta: `role=`, `tab=` (sheet, notes or inventory),
+  `fill=` (vices, oddity, kit, specials, questions, lastwords: copied from the playbook). Its Text
+  is the card's starting note; `{Fortune+5}` in it is worked out. The bonds section's `size=` is
+  the pips per bond and `full=xp:1` what filling one gives.
+- `choice`: an option. Group `chapter-end` (`pick` for the two picks; `gain=xp:1`, `heal=harm:2`,
+  `refresh=bonds`), `begin-downtime` (`slots=2`), `npc` (NPC sizes: `size=` harm), `clock` (`size=`).
+
+Rules rows say what they do in their own Meta, instead of the site reading their wording:
+
+- Moves, vices and oddities: `roll=Vinegar` (or `2d6`, `1d6`, `"+bonds spent"` for a number the
+  player says), `per="-1 per scar"`, `adj` (a free modifier), `session=start` / `end` /
+  `start,end`, `gain=luck:1` (or `xp:1`, or `luck:unrest` for what the unrest track has marked),
+  `spend=luck:1` (or `luck:x`).
+- The log's actions: `action=session-begin`, `session-end`, `chapter-end`, `begin-downtime`,
+  `leave-downtime` or `level-up`, with `label="Session Begins"`, on the procedure (and downtime
+  move) rows whose text the action shows. Chapter's End takes `picks=2`.
+- House rules: `floor=luck:1`. The trait advance: `cap=3` (traits stop at +3).
+
+`tools/xlsx/mechanics.py` adds a game's System tab and Rules Meta to a workbook. The System tab
+needs script version 6.
+
+## Guarding the sheet
+
+Run **setUpChecks** once per game: in the Apps Script editor, pick it in the function list next
+to **Run** and click **Run**. Run it again after adding tabs by hand; tabs the site makes, and tabs
+replaced from an xlsx, get the checks themselves. It:
+
+- protects the Rules, System and README tabs with a warning, so editing them takes a deliberate click;
+- limits the Kind column on Rules and System, and Rules' Vis column, to what the site knows;
+- on character and Ship tabs, suggests the site's kinds and refuses a stat that isn't a number
+  or a track or bond that isn't pip symbols;
+- warns before anyone edits the hidden Version column.
+
+The site itself never edits the Rules or System tab, and the script isn't held back by any of this.
 
 ## Updating the script later
 

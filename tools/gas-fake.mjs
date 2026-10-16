@@ -118,7 +118,12 @@ class Range {
   setFontWeights(w) { this.cells((c, r, col) => { c.bold = w[r][col] === 'bold'; }); return this; }
   setBackgrounds(b) { this.cells((c, r, col) => { c.bg = b[r][col] || null; }); return this; }
   setWraps(w) { this.cells((c, r, col) => { c.wrap = !!w[r][col]; }); return this; }
-  setDataValidation(rule) { this.cells(c => { c.rule = rule; }); return this; }
+  // Checks and protection are recorded, not enforced: Sheets doesn't hold scripts to them either.
+  setDataValidation(rule) {
+    this.sheet.validations.push({ row: this.row, col: this.col, rows: this.nr, cols: this.nc, rule });
+    this.cells(c => { c.rule = rule; });
+    return this;
+  }
   getDataValidation() { return this.sheet.cell(this.row, this.col).rule || null; }
   getNumberFormat() { return this.sheet.cell(this.row, this.col).fmt || 'General'; }
   getA1Notation() {
@@ -129,7 +134,7 @@ class Range {
 }
 
 class Sheet {
-  constructor(ss, name) { this.ss = ss; this.name = name; this.grid = []; this.frozen = 0; this.maxCols = MAX_COLUMNS; this.hidden = new Set(); }
+  constructor(ss, name) { this.ss = ss; this.name = name; this.grid = []; this.frozen = 0; this.maxCols = MAX_COLUMNS; this.hidden = new Set(); this.validations = []; this.protections = []; }
   cell(r, c) {
     if (r > MAX_ROWS) throw new Error('Those rows are out of bounds.');
     if (c > this.maxCols) throw new Error('Those columns are out of bounds.');
@@ -251,8 +256,10 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
           const rule = { allowInvalid: true };
           const b = {
             requireValueInList: (list, dropdown = true) => { Object.assign(rule, { list: [...list], dropdown }); return b; },
+            requireFormulaSatisfied: f => { rule.formula = f; return b; },
             setAllowInvalid: a => { rule.allowInvalid = !!a; return b; },
-            build: () => rule,
+            setHelpText: t => { rule.help = t; return b; },
+            build: () => ({ ...rule }),
           };
           return b;
         },
@@ -361,6 +368,7 @@ export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.
     doPostRaw: contents => parse(ctx.doPost({ postData: { contents, type: 'text/plain' } })),
     call: body => parse(ctx.doPost({ postData: { contents: JSON.stringify(body), type: 'text/plain' } })),
     onEdit: e => { if (typeof ctx.onEdit === 'function') ctx.onEdit(e); },
+    run: name => ctx[name](), // a function run from the Apps Script editor, e.g. setUpChecks
     ctx,
   };
 }

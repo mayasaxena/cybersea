@@ -1,45 +1,58 @@
 // A character's inventory: treasure and hoard as pip tracks, plus a list of items.
-// Treasure carries over into hoard as it fills (5-treasure is 1-hoard), and borrows back from
+// Treasure carries over into hoard as it fills (a full treasure track is 1-hoard), and borrows back from
 // it when spent. Starting items come from a kit's text, split into one row per item.
 
 import { formatTrack } from './codec.js';
+import { fillIn, sum } from './system.js';
 
-export const TREASURE_PER_HOARD = 5;
-const MIN_HOARD_PIPS = 5;
+// The game's treasure and hoard tracks (role=treasure, role=hoard): their names, how much
+// treasure makes a hoard (the treasure track's size) and the hoard track's starting size.
+export function wealthOf(sys) {
+  const t = sys.track('treasure');
+  const h = sys.track('hoard');
+  return {
+    t: t?.name || '', h: h?.name || '',
+    per: Math.max(1, sum(t?.size)), min: sum(h?.size),
+    note: fillIn(sys.section('treasure')?.note || ''),
+    title: sys.title('treasure'),
+  };
+}
 
 const count = pips => (pips || []).filter(v => v === 1).length;
 const filled = (n, len) => Array.from({ length: len }, (_, i) => (i < n ? 1 : 0));
+const tk = name => String(name).toLowerCase();
 
 // Treasure and hoard as counts, from a sheet state's tracks.
-export function wealth(st) {
-  return { treasure: count(st.tracks.treasure?.pips), hoard: count(st.tracks.hoard?.pips) };
+export function wealth(st, w) {
+  return { treasure: count(st.tracks[tk(w.t)]?.pips), hoard: count(st.tracks[tk(w.h)]?.pips) };
 }
 
-// Write counts back as tracks. Treasure over 4 carries into hoard; hoard pips grow as needed.
-export function setWealth(st, treasure, hoard) {
+// Write counts back as tracks. A full treasure track carries into hoard; hoard pips grow as needed.
+export function setWealth(st, w, treasure, hoard) {
   let t = Math.max(0, treasure | 0);
   let h = Math.max(0, hoard | 0);
-  h += Math.floor(t / TREASURE_PER_HOARD);
-  t %= TREASURE_PER_HOARD;
-  st.tracks.treasure = { name: st.tracks.treasure?.name || 'Treasure', pips: filled(t, TREASURE_PER_HOARD) };
-  st.tracks.hoard = { name: st.tracks.hoard?.name || 'Hoard', pips: filled(h, Math.max(MIN_HOARD_PIPS, h + 1)) };
+  h += Math.floor(t / w.per);
+  t %= w.per;
+  st.tracks[tk(w.t)] = { name: st.tracks[tk(w.t)]?.name || w.t, pips: filled(t, w.per) };
+  st.tracks[tk(w.h)] = { name: st.tracks[tk(w.h)]?.name || w.h, pips: filled(h, Math.max(w.min, h + 1)) };
   return { treasure: t, hoard: h };
 }
 
 // Add (or with a negative n, spend) treasure. Spending more than the loose treasure breaks a
 // hoard into treasure. Returns null, and changes nothing, when there isn't enough.
-export function addTreasure(st, n) {
-  const { treasure, hoard } = wealth(st);
-  const total = hoard * TREASURE_PER_HOARD + treasure + n;
+export function addTreasure(st, w, n) {
+  const { treasure, hoard } = wealth(st, w);
+  const total = hoard * w.per + treasure + n;
   if (total < 0) return null;
-  return setWealth(st, total % TREASURE_PER_HOARD, Math.floor(total / TREASURE_PER_HOARD));
+  return setWealth(st, w, total % w.per, Math.floor(total / w.per));
 }
 
 // Split a kit's text into items and its treasure. Takes either a comma-separated line
 // ("Dagger (rusty), cloak, 1-treasure") or a "- item" list; sub-bullets join their item in
-// parentheses. Commas inside parentheses don't split. "N-treasure" and "N-hoard (of treasure)"
-// become treasure, with anything after them kept as a note.
-export function splitKit(text) {
+// parentheses. Commas inside parentheses don't split. "N-<treasure>" and "N-<hoard> (of
+// <treasure>)", in the game's words for them, become treasure, with anything after them kept as a note.
+const reEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function splitKit(text, w = { t: '', h: '' }) {
   const src = String(text || '').trim();
   let parts;
   if (/^\s*- /m.test(src)) {
@@ -61,13 +74,14 @@ export function splitKit(text) {
     }
     parts.push(cur);
   }
+  const names = [w.t, w.h].filter(Boolean).map(reEsc).join('|');
   const out = { items: [], treasure: 0, hoard: 0, notes: [] };
   for (let p of parts) {
     p = p.trim().replace(/^and\s+/i, '').replace(/\.$/, '').trim();
     if (!p) continue;
-    const m = p.match(/^(\d+)[-\s]*(treasure|hoard)(?:\s+of\s+treasure)?\b\s*(.*)$/i);
+    const m = names && p.match(new RegExp(`^(\\d+)[-\\s]*(${names})(?:\\s+of\\s+${reEsc(w.t || w.h)})?\\b\\s*(.*)$`, 'i'));
     if (m) {
-      if (m[2].toLowerCase() === 'hoard') out.hoard += +m[1]; else out.treasure += +m[1];
+      if (w.h && m[2].toLowerCase() === w.h.toLowerCase()) out.hoard += +m[1]; else out.treasure += +m[1];
       out.notes.push(p);
       continue;
     }
@@ -85,18 +99,19 @@ export function uniqueName(name, taken) {
   return n;
 }
 
-// Rows for a new inventory from a kit's text: treasure and hoard tracks, a Treasure notes card,
-// and one item row per item.
-export function inventoryRows(kitText) {
-  const k = splitKit(kitText);
+// Rows for a new inventory from a kit's text: treasure and hoard tracks, their notes card
+// (section role=treasure), and one item row per item.
+export function inventoryRows(sys, kitText) {
+  const w = wealthOf(sys);
+  const k = splitKit(kitText, w);
   const st = { tracks: {} };
-  setWealth(st, k.treasure, k.hoard);
+  const rows = [];
+  if (w.t && w.h) {
+    setWealth(st, w, k.treasure, k.hoard);
+    rows.push(['track', w.t, formatTrack(st.tracks[tk(w.t)].pips), ''], ['track', w.h, formatTrack(st.tracks[tk(w.h)].pips), '']);
+  }
+  if (w.title) rows.push(['inventory', w.title, k.notes.length ? `- Starting kit: ${k.notes.join(', ')}` : '', w.note]);
   const names = [];
   for (const it of k.items) names.push(uniqueName(it, names));
-  return [
-    ['track', 'Treasure', formatTrack(st.tracks.treasure.pips), ''],
-    ['track', 'Hoard', formatTrack(st.tracks.hoard.pips), ''],
-    ['inventory', 'Treasure', k.notes.length ? `- Starting kit: ${k.notes.join(', ')}` : '', `(${TREASURE_PER_HOARD}-treasure = 1-hoard)`],
-    ...names.map(n => ['item', n, '', '']),
-  ];
+  return [...rows, ...names.map(n => ['item', n, '', ''])];
 }

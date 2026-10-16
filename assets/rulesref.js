@@ -1,7 +1,7 @@
 // Player reference: rules.html?g=<game>. Everything in the Rules tab the crew can see.
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
-import { indexRules } from './rules.js';
+import { gameRules, TABS } from './rules.js';
 import { esc, pageShell, refreshNav } from './core.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
@@ -18,7 +18,7 @@ const store = client.tab('Rules');
 const main = document.createElement('main');
 app.append(main);
 const KEYS = ['moves', 'playbooks', 'tags', 'reference', 'world', 'other'];
-let R = indexRules(store.rows);
+let R = gameRules(client);
 let tab = 'moves';
 let query = '';
 
@@ -47,7 +47,7 @@ main.addEventListener('input', e => {
 document.addEventListener('keydown', e => {
   if (e.key === '/' && !e.target.closest('input,textarea,select')) { e.preventDefault(); document.getElementById('q')?.focus(); }
 });
-store.on(() => { R = indexRules(store.rows); render(); });
+for (const t of TABS) client.tab(t).on(() => { R = gameRules(client); render(); });
 client.on(e => { if (e.list) refreshNav(client, 'rules'); });
 render();
-client.read(['Rules']).catch(() => render());
+client.read(TABS).catch(() => render());

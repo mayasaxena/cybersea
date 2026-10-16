@@ -72,6 +72,7 @@ function replaceTabs_(ss, book) {
     ss.moveActiveSheet(i + 1);
   });
   made.forEach((sh, i) => { if (book.tabs[i].hidden) sh.hideSheet(); });
+  made.forEach(sh => guard_(sh)); // setUpChecks's checks, as on a tab the site makes
   ss.setActiveSheet(made.find(sh => !sh.isSheetHidden()) || made[0]);
 
   // Rows remembered as removed (see gone_) were the old tabs' rows.

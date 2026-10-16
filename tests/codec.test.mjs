@@ -29,10 +29,8 @@ test('log rows round-trip', () => {
 
 test('a sheet survives parse → serialize unchanged', () => {
   const st = parseSheet(sampleCharacter);
-  const rows = serializeSheet(st).filter(r => !(r[0] === 'sheet' && r[1] === 'Bonds'));
   const norm = rs => rs.map(r => r.join('|')).sort();
-  assert.deepEqual(norm(rows), norm(sampleCharacter));
-  assert.ok(st.sections.some(s => s.title === 'Bonds'), 'a Bonds card is added when there are bonds');
+  assert.deepEqual(norm(serializeSheet(st)), norm(sampleCharacter));
 });
 
 test('the sign-in row: read loosely, and left alone by the sheet', () => {
