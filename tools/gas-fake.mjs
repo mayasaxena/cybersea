@@ -293,7 +293,10 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
         base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
         base64Decode: str => [...Buffer.from(String(str), 'base64')].map(b => (b > 127 ? b - 256 : b)),
         newBlob: (bytes, type, name) => blob(bytes, type, name),
-        unzip: b => unzip(Buffer.from(b.getBytes().map(x => x & 255))).map(([name, data]) => blob([...data].map(x => (x > 127 ? x - 256 : x)), null, name)),
+        unzip: b => {
+          if (b.getContentType() !== 'application/zip') throw new Error(`Invalid argument: ContentType. Should be of type: application/zip`);
+          return unzip(Buffer.from(b.getBytes().map(x => x & 255))).map(([name, data]) => blob([...data].map(x => (x > 127 ? x - 256 : x)), null, name));
+        },
       },
     },
   };

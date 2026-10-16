@@ -16,7 +16,6 @@
  * only, script.container.ui (the menu and dialog) and script.external_request (Code.gs's pictures).
  */
 
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const MAX_XLSX_BYTES = 20 * 1024 * 1024;
 
 function onOpen() {
@@ -40,7 +39,8 @@ function replaceWithXlsx(name, data) {
   if (bytes.length > MAX_XLSX_BYTES) return { ok: false, error: 'That file is too big.' };
   let book;
   try {
-    book = readXlsx_(Utilities.unzip(Utilities.newBlob(bytes, XLSX_MIME, name)));
+    // An .xlsx is a zip, and Utilities.unzip only takes a blob typed as one.
+    book = readXlsx_(Utilities.unzip(Utilities.newBlob(bytes, 'application/zip', name)));
   } catch (err) {
     return { ok: false, error: 'That doesn’t look like an .xlsx file (' + (err.message || err) + '). Nothing was changed.' };
   }
