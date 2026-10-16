@@ -29,7 +29,7 @@ test('a good deployment passes every check and can be opened', async () => {
 
 test('a wrong passphrase and an unreachable URL are explained', async () => {
   let p = await run(h.srv.apis[0].url, 'nope');
-  assert.match(await p.textContent('#out'), /didn’t match CREW_KEY or GM_KEY/);
+  assert.match(await p.textContent('#out'), /didn’t match GM_KEY/);
   p = await run('http://127.0.0.1:9/exec', KEYS.GM_KEY);
   assert.match(await p.textContent('#out'), /No answer/);
 });

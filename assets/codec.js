@@ -42,6 +42,13 @@ export function formatLog(e) {
 }
 export const logId = (at = Date.now()) => `${new Date(at).toISOString()}~${Math.random().toString(36).slice(2, 6)}`;
 
+/* ---------- signing in as a character ---------- */
+// One row on a character's tab says someone is playing them: signin | Signed in | yes.
+// It stays until someone signs out. The sheet page neither reads nor writes it.
+export const isSigninRow = r => String(r[0]).trim().toLowerCase() === 'signin';
+export const isSignedIn = rows => rows.some(r => isSigninRow(r) && /^(yes|y|true|1|●|x)$/i.test(String(r[2] ?? '').trim()));
+export const signinRow = on => ['signin', 'Signed in', on ? 'yes' : '', ''];
+
 /* ---------- characters and the ship ---------- */
 // Both use the same shape; a ship just has different stats and tracks.
 export function parseSheet(rows) {

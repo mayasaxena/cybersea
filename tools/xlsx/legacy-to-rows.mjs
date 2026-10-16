@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { start } from '../dev-server.mjs';
-import { HEADER, KEYS } from '../../tests/fixtures/game.mjs';
+import { HEADER } from '../../tests/fixtures/game.mjs';
 
 const [oldPath, rulesPath, tabName = 'Nexa', outPath] = process.argv.slice(2);
 if (!oldPath || !rulesPath || !outPath) {
@@ -19,7 +19,7 @@ const api = srv.apis[0];
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
-  const invite = Buffer.from(JSON.stringify({ api: api.url, key: KEYS.CREW_KEY, name: 'Convert' })).toString('base64url');
+  const invite = Buffer.from(JSON.stringify({ api: api.url, name: 'Convert' })).toString('base64url');
   await page.goto(`${srv.site}/sheet.html?c=${encodeURIComponent(tabName)}#join=${invite}`);
   await page.waitForSelector('[data-act="sheet-menu"]');
   await page.click('[data-act="sheet-menu"]');

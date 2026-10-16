@@ -41,7 +41,7 @@ form.addEventListener('submit', async e => {
     html += line(true, 'Reading the sheet', `Game “${escTxt(r.game)}”, signed in as <b>${escTxt(r.role)}</b>. Tabs: ${escTxt(tabs)}. Rules rows: ${rules}. Round trips: ${times.map(t => Math.round(t)).join(', ')} ms.`);
     if (!rules) html += line(false, 'Rules tab', 'The Rules tab is empty or missing; moves and playbooks won’t show up.');
   } catch (err) {
-    const hint = err.code === 'auth' ? 'The passphrase didn’t match CREW_KEY or GM_KEY in Script properties.' : err.code === 'html' ? 'Google returned an error page. Re-deploy (Manage deployments → Edit → New version) and try again.' : '';
+    const hint = err.code === 'auth' ? 'The passphrase didn’t match GM_KEY in Script properties (or CREW_KEY, if you set one).' : err.code === 'html' ? 'Google returned an error page. Re-deploy (Manage deployments → Edit → New version) and try again.' : '';
     html += line(false, 'Reading the sheet', `${escTxt(err.message)} ${hint}`);
     show();
     return;

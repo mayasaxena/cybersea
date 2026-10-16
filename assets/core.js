@@ -1,7 +1,8 @@
 // Shared UI pieces: icons, pips, dice, toast, dialogs, theme, the top bar and its menu.
 
 import { esc, escTxt } from './markup.js';
-import { ls, listGames, inviteUrl, href, upsertGame, forgetGame, inviteFromText } from './games.js';
+import { isSignedIn } from './codec.js';
+import { ls, listGames, inviteUrl, href, joinGame, forgetGame, inviteFromText } from './games.js';
 
 export { esc, escTxt };
 
@@ -140,15 +141,84 @@ export function navHTML(client, page) {
   return `<nav class="gnav">
     <a class="gname" href="${esc(href('index.html', g))}">${escTxt(g?.name || 'Cybersea')}</a>
     <div class="glinks">${links}</div>
+    ${whoChip(client)}
     <button class="ic" data-nav="menu" title="Menu" aria-label="Menu">${ICON.dots}<i class="sdot ${client ? client.status === 'idle' ? 'busy' : client.status : 'off'}"></i></button>
   </nav>`;
+}
+
+/* ---------- who you're signed in as ---------- */
+const characterNames = client => client.list.filter(t => t.kind === 'character').map(t => t.name);
+
+// GM, your character, or "Sign in". Empty until the first read says what this device can do.
+function whoChip(client) {
+  if (!client) return '';
+  const me = client.me;
+  const [cls, text, title] = client.locked ? ['off', 'Sign in', 'Enter the passphrase']
+    : client.role === 'gm' ? ['gm', 'GM', 'Signed in as the GM']
+    : me ? ['me', me, `Signed in as ${me}`]
+    : client.role === 'crew' ? ['anyone', 'Sign in', 'Sign in as your character']
+    : ['wait', '', ''];
+  return `<button class="who who-${cls}" data-nav="who" title="${esc(title)}" aria-label="${esc(title || 'Signing in')}">${escTxt(text)}</button>`;
+}
+
+const whoText = client => (client.role === 'gm' ? 'GM' : client.me || client.role || 'not signed in');
+
+// Your character's button signs you in; clicking it again signs you out. Others show if they're taken.
+export function pickerHTML(client, { looking = false } = {}) {
+  const me = client.me;
+  const btn = (n, label, sub = '') => `<button class="pbtn pick" data-me="${esc(n)}" aria-pressed="${!!n && n === me}">${escTxt(label)}${sub ? `<span class="sub">${escTxt(sub)}</span>` : ''}</button>`;
+  return `<div class="picks">${characterNames(client).map(n => btn(n, n, n === me ? 'you · click to sign out' : isSignedIn(client.tab(n).rows) ? 'signed in' : '')).join('')}${looking ? btn('', 'Just looking') : ''}</div>`;
+}
+
+export function pick(client, el) {
+  const n = el.dataset.me;
+  client.setMe(n && n === client.me ? '' : n);
+}
+
+export function openWho(client, { fresh = false } = {}) {
+  const g = client.game;
+  const me = client.me;
+  let title, body;
+  if (client.locked || !client.role) {
+    title = 'Not signed in';
+    body = `<p>${escTxt(client.error || 'This game needs a passphrase.')}</p>
+      <div class="prow">${g.key ? '<button class="pbtn" data-w="gm-out">Continue as crew</button>' : ''}<span class="grow"></span><button class="pbtn primary" data-w="key">Enter passphrase</button></div>`;
+  } else if (client.role === 'gm') {
+    title = 'Signed in as the GM';
+    body = `<p>You used the GM passphrase, so you can see and change everything, including the GM page.</p>
+      <div class="prow"><a class="pbtn primary" href="${esc(href('gm.html', g))}">GM page</a><span class="grow"></span><button class="pbtn" data-w="gm-out">Sign out of GM</button></div>`;
+  } else {
+    title = me ? `Signed in as ${me}` : 'Sign in as your character';
+    body = `<p>Click your character to sign in, and again to sign out. The crew sees who’s signed in. Anyone can still open any sheet.</p>
+      ${pickerHTML(client)}
+      <div class="prow">${me ? `<a class="pbtn primary" href="${esc(href('sheet.html', g, { c: me }))}">Open my sheet</a>` : ''}<span class="grow"></span><button class="pbtn" data-w="key">I’m the GM</button></div>`;
+  }
+  const o = modal(`<div class="prow"><h2>${escTxt(title)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
+    <div class="note">${escTxt(g.name || 'Game')}</div>${body}`, { label: 'Who you are' });
+  o.addEventListener('click', e => {
+    const p = e.target.closest('[data-me]');
+    if (p) { pick(client, p); openWho(client, { fresh: true }); }
+    if (e.target.closest('[data-w="key"]')) askKey(client, client.role === 'crew' ? 'Enter the GM passphrase.' : '');
+    if (e.target.closest('[data-w="gm-out"]')) { closeModal(); client.setKey(''); client.read().catch(() => {}); }
+  });
+  // Who's signed in lives on each character's tab: fetch them all (unchanged ones cost little).
+  if (!fresh && client.role === 'crew') {
+    client.read([...new Set([...client.watched, ...characterNames(client)])])
+      .then(() => { if (document.querySelector('[role="dialog"][aria-label="Who you are"]')) openWho(client, { fresh: true }); })
+      .catch(() => {});
+  }
 }
 
 export function wireNav(root, client) {
   root.addEventListener('click', e => {
     if (e.target.closest('[data-nav="menu"]')) openMenu(client);
+    if (e.target.closest('[data-nav="who"]')) openWho(client);
   });
   client?.on(e => {
+    if (e.me || e.list || e.key || e.auth) {
+      const w = document.querySelector('.gnav .who');
+      if (w) w.outerHTML = whoChip(client);
+    }
     if (e.status) {
       const dot = document.querySelector('.gnav .sdot');
       if (dot) { dot.className = 'sdot ' + client.status; dot.title = client.error || ''; }
@@ -170,12 +240,12 @@ export function openMenu(client) {
     <div class="prow"><span class="lbl">Theme</span>
       <div class="seg">${['auto', 'dark', 'light'].map(t => `<button data-theme-set="${t}" class="${theme === t ? 'on' : ''}">${t}</button>`).join('')}</div></div>
     ${g ? `
-    <div class="mhd lbl">${escTxt(g.name)} · ${escTxt(client.role || 'not signed in')}</div>
+    <div class="mhd lbl">${escTxt(g.name)} · ${escTxt(whoText(client))}</div>
     <div class="status" id="sync-status">${escTxt(statusText(client))}</div>
     <div class="prow">
-      <button class="pbtn" data-m="invite">Copy invite link</button>
-      ${client.role === 'gm' && client.crewKey ? '<button class="pbtn" data-m="crew-invite">Copy crew invite</button>' : ''}
-      <button class="pbtn" data-m="key">Change passphrase</button>
+      <button class="pbtn" data-m="invite">${client.role === 'gm' ? 'Copy crew invite' : 'Copy invite link'}</button>
+      ${client.role === 'gm' ? '<button class="pbtn" data-m="gm-invite">Copy GM link</button>' : ''}
+      <button class="pbtn" data-m="key">${client.role === 'gm' ? 'Change passphrase' : 'GM sign-in'}</button>
     </div>` : ''}
     <div class="mhd lbl">Games</div>
     <div class="glist">${games.map(x => `<div class="prow"><a href="${esc(href('index.html', x))}" class="${g && x.id === g.id ? 'cur' : ''}">${escTxt(x.name)}</a><span class="grow"></span><button class="mini" data-forget="${esc(x.id)}" title="Forget this game" aria-label="Forget">×</button></div>`).join('') || '<div class="status">None yet.</div>'}</div>
@@ -191,9 +261,12 @@ export function openMenu(client) {
       return;
     }
     const m = e.target.closest('[data-m]')?.dataset.m;
-    if (m === 'invite') say((await copy(inviteUrl(g))) ? 'Copied. Anyone with this link gets your access level.' : inviteUrl(g));
-    if (m === 'crew-invite') say((await copy(inviteUrl(g, client.crewKey))) ? 'Copied the crew invite.' : inviteUrl(g, client.crewKey));
-    if (m === 'key') askKey(client);
+    if (m === 'invite') {
+      const url = inviteUrl(g, client.role === 'gm' ? client.crewKey : g.key);
+      say((await copy(url)) ? 'Copied. Send it to the crew.' : url);
+    }
+    if (m === 'gm-invite') say((await copy(inviteUrl(g))) ? 'Copied. It gives GM access, so keep it to yourself.' : inviteUrl(g));
+    if (m === 'key') askKey(client, client.role === 'gm' ? '' : 'Enter the GM passphrase.');
     const f = e.target.closest('[data-forget]');
     if (f && armed(f)) {
       forgetGame(f.dataset.forget);
@@ -204,8 +277,7 @@ export function openMenu(client) {
     e.preventDefault();
     const inv = inviteFromText(e.target.querySelector('input').value);
     if (!inv) { say('That doesn’t look like an invite link.'); return; }
-    const ng = upsertGame({ api: inv.api, key: inv.key, name: inv.name || 'Game' });
-    location.href = href('index.html', ng);
+    location.href = href('index.html', joinGame(inv));
   });
 }
 

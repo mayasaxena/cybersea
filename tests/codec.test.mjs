@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTrack, formatTrack, parseBond, formatBond, parseStat, formatStat, parseSheet, serializeSheet, diffRows, applyPending, parseLog, formatLog } from '../assets/codec.js';
+import { parseTrack, formatTrack, parseBond, formatBond, parseStat, formatStat, parseSheet, serializeSheet, diffRows, applyPending, parseLog, formatLog, isSignedIn, signinRow } from '../assets/codec.js';
 import { sampleCharacter } from './fixtures/game.mjs';
 
 test('pip symbols, including hand-typed ones', () => {
@@ -33,6 +33,19 @@ test('a sheet survives parse → serialize unchanged', () => {
   const norm = rs => rs.map(r => r.join('|')).sort();
   assert.deepEqual(norm(rows), norm(sampleCharacter));
   assert.ok(st.sections.some(s => s.title === 'Bonds'), 'a Bonds card is added when there are bonds');
+});
+
+test('the sign-in row: read loosely, and left alone by the sheet', () => {
+  assert.equal(isSignedIn([['info', 'Name', 'Testa', '']]), false);
+  assert.equal(isSignedIn([signinRow(true)]), true);
+  assert.equal(isSignedIn([signinRow(false)]), false);
+  assert.equal(isSignedIn([['SignIn', 'Signed in', ' Yes ', '']]), true, 'typed by hand');
+  assert.equal(isSignedIn([['signin', 'Signed in', 'no', '']]), false);
+  const rows = [...sampleCharacter, signinRow(true)];
+  assert.equal(serializeSheet(parseSheet(rows)).some(r => r[0] === 'signin'), false);
+  // so the sheet page's diffs never touch it
+  const st = parseSheet(rows);
+  assert.deepEqual(diffRows(serializeSheet(st), serializeSheet(st)), { set: [], del: [], ren: [] });
 });
 
 test('diffs: only changed rows, deletes, and renames', () => {

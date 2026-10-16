@@ -1,10 +1,10 @@
 // Crew home: index.html?g=<game>. Without a game: your games, and joining one by invite.
-import { bootstrap, href, listGames, upsertGame, inviteFromText } from './games.js';
+import { bootstrap, href, listGames, joinGame, inviteFromText } from './games.js';
 import { GameClient } from './api.js';
 import { indexRules } from './rules.js';
 import { characterRows } from './build.js';
 import { md, plain } from './markup.js';
-import { esc, escTxt, pageShell, refreshNav, modal, closeModal } from './core.js';
+import { esc, escTxt, pageShell, refreshNav, modal, closeModal, pickerHTML, pick } from './core.js';
 import { crewCardHTML } from './cards.js';
 
 const app = document.getElementById('app');
@@ -29,7 +29,7 @@ if (!game) {
     e.preventDefault();
     const inv = inviteFromText(e.target.querySelector('input').value);
     if (!inv) { app.querySelector('[data-msg]').textContent = 'That doesn’t look like an invite link.'; return; }
-    location.href = href('index.html', upsertGame({ api: inv.api, key: inv.key, name: inv.name || 'Game' }));
+    location.href = href('index.html', joinGame(inv));
   });
 } else {
   const client = new GameClient(game);
@@ -44,9 +44,18 @@ if (!game) {
 
   let listed = false; // the server's tab list has arrived, so an empty crew really is empty
 
+  // Crew who haven't signed in as a character get asked (until they pick one or say they're just looking).
+  const askWho = names => client.role === 'crew' && listed && names.length && !client.me && client.game.as !== '';
+
   function render() {
-    const names = characters();
-    main.innerHTML = `${names.length ? `<div class="crew">${names.map(n => crewCardHTML(client, n)).join('')}</div>` : listed ? '<p class="note">No characters yet.</p>' : ''}
+    const me = client.me;
+    const names = characters().sort((a, b) => (b === me) - (a === me));
+    main.innerHTML = `${askWho(names) ? `<section class="card whoami">
+        <h2>Sign in as your character</h2>
+        ${pickerHTML(client, { looking: true })}
+        <p class="note">The crew sees who’s signed in. To sign out later, use the button at the top right.</p>
+      </section>` : ''}
+      ${names.length ? `<div class="crew">${names.map(n => crewCardHTML(client, n, { me: n === me })).join('')}</div>` : listed ? '<p class="note">No characters yet.</p>' : ''}
       <button class="add" data-act="new">+ New character</button>`;
     document.title = client.game.name || 'Cybersea';
   }
@@ -83,6 +92,7 @@ if (!game) {
         try {
           const r = await client.request({ op: 'create', tab: name, rows });
           client.tab(r.tab).receive(r.d, r.rows);
+          if (client.role === 'crew' && !client.me) client.setMe(r.tab); // a player's new character is theirs
           closeModal();
           location.href = href('sheet.html', client.game, { c: r.tab });
         } catch (e) { msg.textContent = e.message; }
@@ -92,7 +102,12 @@ if (!game) {
     draw();
   }
 
-  main.addEventListener('click', e => { if (e.target.closest('[data-act="new"]')) newCharacter(); });
+  main.addEventListener('click', e => {
+    if (e.target.closest('[data-act="new"]')) newCharacter();
+    const p = e.target.closest('[data-me]');
+    if (p) pick(client, p);
+  });
+  client.on(e => { if (e.me) render(); });
   client.on(e => {
     if (e.list) {
       refreshNav(client, 'home');

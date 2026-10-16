@@ -156,7 +156,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }).then(({ site, apis }) => {
     console.log(`site  ${site}`);
     for (const a of apis) {
-      const invite = Buffer.from(JSON.stringify({ api: a.url, key: KEYS.CREW_KEY, name: a.game.gas.ss.getName() })).toString('base64url');
+      const invite = Buffer.from(JSON.stringify({ api: a.url, name: a.game.gas.ss.getName() })).toString('base64url');
       const gmInvite = Buffer.from(JSON.stringify({ api: a.url, key: KEYS.GM_KEY, name: a.game.gas.ss.getName() })).toString('base64url');
       console.log(`api   ${a.url}\n  crew invite: ${site}/#join=${invite}\n  GM invite:   ${site}/#join=${gmInvite}`);
     }

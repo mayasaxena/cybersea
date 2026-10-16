@@ -1,20 +1,21 @@
 // Read-only summary cards for the crew home and the GM page.
-import { parseSheet } from './codec.js';
+import { parseSheet, isSignedIn } from './codec.js';
 import { href } from './games.js';
 import { plain } from './markup.js';
 import { esc, escTxt, fmt, pipClass } from './core.js';
 
 export const staticPips = (arr, bond = false) => arr.map(v => `<span class="pip${pipClass(v, bond)}" aria-hidden="true"></span>`).join('');
 
-export function crewCardHTML(client, name, { gm = false } = {}) {
-  const st = parseSheet(client.tab(name).rows);
+export function crewCardHTML(client, name, { gm = false, me = false } = {}) {
+  const rows = client.tab(name).rows;
+  const st = parseSheet(rows);
   const harm = st.tracks.harm?.pips || [];
   const luck = st.tracks.luck?.pips || [];
   const xp = (st.tracks.experience?.pips || []).filter(v => v === 1).length;
   const vice = st.tracks.vice?.pips || [];
   const troubles = st.sections.find(x => x.title.toLowerCase() === 'troubles')?.text || '';
   return `<a class="card crewcard" href="${esc(href('sheet.html', client.game, { c: name }))}">
-    <div class="shead"><h2>${escTxt(st.info.name || name)}</h2>${st.state.downtime ? '<span class="pill">Downtime</span>' : ''}${gm && vice.includes(1) ? '<span class="pill vice">Vice</span>' : ''}</div>
+    <div class="shead"><h2>${escTxt(st.info.name || name)}</h2>${me ? '<span class="pill me">You</span>' : isSignedIn(rows) ? '<span class="pill in">Signed in</span>' : ''}${st.state.downtime ? '<span class="pill">Downtime</span>' : ''}${gm && vice.includes(1) ? '<span class="pill vice">Vice</span>' : ''}</div>
     <div class="note">${escTxt([st.info.playbook, st.info.player].filter(Boolean).join(' · '))}</div>
     <div class="cc-row"><span class="lbl">Harm</span><span class="pips harm">${staticPips(harm)}</span></div>
     <div class="cc-row"><span class="lbl">Luck</span><span class="pips luck">${staticPips(luck)}</span></div>

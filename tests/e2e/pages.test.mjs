@@ -50,6 +50,8 @@ test('crew home shows each character (not the ship) and makes new characters', a
   await p.click('[data-create]');
   await p.waitForURL(/sheet\.html\?.*c=Matt/);
   await p.waitForSelector('h1.name');
+  assert.ok(await until(async () => (await p.textContent('.gnav .who')) === 'Matt'), 'a player\'s new character is theirs');
+  assert.ok(await until(async () => (await signedIn(g1, 'Matt')) === 'yes'));
   const rows = await h.tab(g1, 'Matt');
   assert.equal(row(rows, 'info', 'Player')[2], 'Jo');
   assert.equal(row(rows, 'stat', 'Blood')[2], '-2');
@@ -164,6 +166,68 @@ test('two games stay separate, and the menu switches between them', async () => 
   await p.click('.glist a:has-text("Fixture Game"):not(:has-text("2"))');
   await p.waitForSelector('.crewcard');
   assert.equal(await p.textContent('.gname'), 'Fixture Game');
+});
+
+const who = p => p.$eval('.gnav .who', b => b.textContent.trim());
+const TESTA_IN = '.crewcard[href*="c=Testa"] .pill.in';
+const signedIn = async (api, name) => row(await h.tab(api, name), 'signin', 'Signed in')?.[2];
+
+test('players sign in as a character with a click, and out again; everyone sees it', async () => {
+  const p = await h.page();
+  await join(p, g1);
+  await p.waitForSelector('.whoami');
+  assert.equal(await who(p), 'Sign in');
+  await p.click('.whoami [data-me="Testa"]');
+  await p.waitForSelector('.crewcard .pill.me');
+  assert.equal(await who(p), 'Testa');
+  assert.equal(await p.$('.whoami'), null);
+  assert.ok(await until(async () => (await signedIn(g1, 'Testa')) === 'yes'), 'marked in the sheet');
+  await p.reload();
+  await p.waitForSelector('.crewcard .pill.me');
+  assert.equal(await who(p), 'Testa', 'remembered on this device');
+
+  // another player sees Testa is taken
+  const q = await h.page();
+  await join(q, g1);
+  await q.waitForSelector('.whoami .pick .sub');
+  assert.equal(await q.textContent('.whoami [data-me="Testa"] .sub'), 'signed in');
+  await q.waitForSelector(TESTA_IN);
+
+  // clicking Testa again signs out
+  await p.click('.gnav .who');
+  await p.waitForSelector('[role="dialog"] [data-me="Testa"][aria-pressed="true"]');
+  assert.ok(await p.$('[role="dialog"] a[href*="c=Testa"]'), 'links to my sheet');
+  await p.click('[role="dialog"] [data-me="Testa"]');
+  assert.ok(await until(async () => (await who(p)) === 'Sign in'));
+  assert.ok(await until(async () => (await signedIn(g1, 'Testa')) === ''), 'cleared in the sheet');
+  await p.keyboard.press('Escape');
+  assert.equal(await p.$('.crewcard .pill.me'), null);
+  assert.ok(await until(async () => !(await q.$(TESTA_IN))), 'the other player sees it too');
+
+  // signed in by hand in the sheet shows up as well
+  await h.setTab(g1, 'Testa', [...(await h.tab(g1, 'Testa'))].map(r => r.slice(0, 4)).filter(r => r[0] !== 'signin').concat([['signin', 'Signed in', 'yes', '']]));
+  assert.ok(await until(() => q.$(TESTA_IN)));
+  await h.setTab(g1, 'Testa', [...(await h.tab(g1, 'Testa'))].map(r => r.slice(0, 4)).filter(r => r[0] !== 'signin'));
+});
+
+test('the GM badge, and the crew invite needs no passphrase', async () => {
+  const p = await h.page();
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: h.srv.site });
+  await join(p, g1, '', KEYS.GM_KEY);
+  assert.ok(await until(async () => (await who(p)) === 'GM'));
+  assert.equal(await p.$('.whoami'), null, 'the GM isn\'t asked');
+  await p.click('[data-nav="menu"]');
+  await p.click('[data-m="invite"]');
+  await p.waitForSelector('[data-msg]:has-text("Send it to the crew")');
+  const url = await p.evaluate(() => navigator.clipboard.readText());
+  const inv = JSON.parse(Buffer.from(url.split('#join=')[1], 'base64url').toString());
+  assert.equal(inv.key, undefined, 'no passphrase in the crew invite');
+
+  const q = await h.page();
+  await q.goto(url);
+  await q.waitForSelector('.whoami');
+  assert.equal(await who(q), 'Sign in');
+  assert.equal(await q.$$eval('.glinks a', as => as.some(a => a.textContent === 'GM')), false, 'crew access, not GM');
 });
 
 test('the GM link only shows with the GM passphrase', async () => {

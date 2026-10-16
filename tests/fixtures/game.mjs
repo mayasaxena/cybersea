@@ -110,4 +110,5 @@ export function gameTabs({ withCharacter = true } = {}) {
   };
 }
 
-export const KEYS = { CREW_KEY: 'crew-pass', GM_KEY: 'gm-pass' };
+// Crew need no passphrase unless CREW_KEY is set; the fixture game leaves it unset.
+export const KEYS = { GM_KEY: 'gm-pass' };

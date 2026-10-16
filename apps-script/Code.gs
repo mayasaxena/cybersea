@@ -2,11 +2,13 @@
  * Cybersea game API. One spreadsheet = one game; this script is bound to it.
  *
  * Setup (see SETUP.md):
- *   Project Settings > Script properties: CREW_KEY (players) and GM_KEY (GM).
+ *   Project Settings > Script properties: GM_KEY (the GM's passphrase). Optional: CREW_KEY, if
+ *   players should need a passphrase too; without it, anyone with the web app URL (the invite
+ *   link) is crew.
  *   Deploy > New deployment > Web app; Execute as: Me; Who has access: Anyone.
  *
  * Every request is a POST whose body is JSON sent as text/plain (no CORS preflight),
- * carrying the passphrase as "key". Only GET ?op=ping is unauthenticated.
+ * carrying any passphrase as "key".
  *
  * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis), GM, Lore, Ship, and one tab per character
  * (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored.
@@ -48,6 +50,7 @@ function handle_(req) {
   if (throttled_()) return { ok: false, code: 'throttled', error: 'Too many wrong passphrases. Wait a minute and try again.' };
   const role = role_(req.key);
   if (!role) {
+    if (!req.key) return { ok: false, code: 'auth', error: 'This game needs a passphrase.' };
     noteBadKey_();
     return { ok: false, code: 'auth', error: 'Wrong passphrase.' };
   }
@@ -72,15 +75,13 @@ function keys_() {
   return keys;
 }
 
+// GM with the GM passphrase; crew with the crew passphrase, or with none if CREW_KEY isn't set.
 function role_(key) {
   const keys = keys_();
-  if (!keys.crew && !keys.gm) {
-    throw new Error('No passphrases set yet: add CREW_KEY and GM_KEY under Project Settings > Script properties.');
-  }
+  if (!keys.gm) throw new Error('No GM passphrase set yet: add GM_KEY under Project Settings > Script properties.');
   key = String(key || '');
-  if (!key) return null;
-  if (keys.gm && key === keys.gm) return 'gm';
-  if (keys.crew && key === keys.crew) return 'crew';
+  if (key && key === keys.gm) return 'gm';
+  if (keys.crew ? key === keys.crew : !key) return 'crew';
   return null;
 }
 

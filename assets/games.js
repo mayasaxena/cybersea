@@ -1,5 +1,6 @@
 // Which games this browser knows, and how to join one.
-// A game is one spreadsheet's deployed script: {id, name, api, key, role}.
+// A game is one spreadsheet's deployed script: {id, name, api, key, role, as}.
+// `as` is the character this browser is signed in as ('' = just looking).
 // Invite links carry it in the URL fragment (#join=…), which never reaches any server.
 
 import { CONFIG } from '../config.js';
@@ -23,7 +24,8 @@ export function gameId(api) {
 const b64url = s => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64url = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)));
 
-export const encodeInvite = ({ api, key, name }) => b64url(JSON.stringify({ api, key, name }));
+// No key: crew access, which needs none unless the game set a crew passphrase.
+export const encodeInvite = ({ api, key, name }) => b64url(JSON.stringify({ api, ...(key ? { key } : {}), name }));
 export function decodeInvite(s) {
   try {
     const o = JSON.parse(unb64url(String(s).trim()));
@@ -47,6 +49,13 @@ export function upsertGame(g) {
   return merged;
 }
 
+// Register a game from an invite.
+// An invite without a passphrase keeps any you already have (so the GM opening a crew link stays GM).
+export const joinGame = inv => upsertGame({
+  api: inv.api, name: inv.name || 'Game',
+  ...(typeof inv.key === 'string' && inv.key ? { key: inv.key } : {}),
+});
+
 export function forgetGame(id) {
   saveGames(listGames().filter(g => g.id !== id));
   try {
@@ -68,7 +77,7 @@ export function bootstrap() {
   let joined = null;
   if (hash.has('join')) {
     const inv = decodeInvite(hash.get('join'));
-    if (inv) joined = upsertGame({ api: inv.api, key: inv.key, name: inv.name || 'Game' });
+    if (inv) joined = joinGame(inv);
   }
   if (CONFIG.defaultGame && CONFIG.defaultGame.api && !listGames().some(g => g.id === gameId(CONFIG.defaultGame.api))) {
     upsertGame({ api: CONFIG.defaultGame.api, name: CONFIG.defaultGame.name || 'Game', key: '' });

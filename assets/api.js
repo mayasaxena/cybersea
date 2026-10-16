@@ -13,7 +13,7 @@
 
 import { CONFIG } from '../config.js';
 import { ls, gkey, upsertGame } from './games.js';
-import { rowKey, applyPending, diffRows } from './codec.js';
+import { rowKey, applyPending, diffRows, isSigninRow, signinRow } from './codec.js';
 
 export class ApiError extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -115,7 +115,7 @@ export class TabStore extends Emitter {
     if (beacon) {
       // The page is going away: hand the patch to the browser. It stays pending until a later
       // load confirms it (patches are safe to repeat).
-      try { navigator.sendBeacon(this.client.game.api, JSON.stringify({ ...body, key: this.client.game.key })); } catch { /* ignore */ }
+      try { navigator.sendBeacon(this.client.game.api, JSON.stringify({ ...body, key: this.client.game.key || undefined })); } catch { /* ignore */ }
       return;
     }
     if (this.inflight) { this.again = true; return; }
@@ -131,7 +131,7 @@ export class TabStore extends Emitter {
     } catch (e) {
       this.failures++;
       this.client.setStatus('err', e.message);
-      if (e.code === 'auth') this.client.emit({ auth: true });
+      if (e.code === 'auth') { this.client.locked = true; this.client.emit({ auth: true }); }
       else if (e.code !== 'forbidden') this.schedule(Math.min(60000, 1500 * 2 ** this.failures));
     } finally {
       this.inflight = false;
@@ -151,6 +151,7 @@ export class GameClient extends Emitter {
     this.role = game.role || null;
     this.list = ls.get(gkey(game, 'list'), []);
     this.reading = false;
+    this.locked = false; // the sheet turned our passphrase (or lack of one) away
   }
 
   tab(name) {
@@ -167,14 +168,39 @@ export class GameClient extends Emitter {
     this.emit({ status });
   }
 
+  // The character this device is signed in as (honor system; the GM has none).
+  // Until the tab list has any characters, trust what was stored.
+  get me() {
+    if (this.role === 'gm' || !this.game.as) return null;
+    const chars = this.list.filter(t => t.kind === 'character');
+    if (!chars.length) return this.game.as;
+    const want = String(this.game.as).toLowerCase();
+    return chars.find(t => t.name.toLowerCase() === want)?.name || null;
+  }
+
+  // Sign in as a character, or sign out with ''. This device remembers who you are, and the
+  // character's tab is marked so the crew can see they're taken, until someone signs them out.
+  setMe(name) {
+    const old = this.me;
+    if (old && old.toLowerCase() !== String(name).toLowerCase()) this.markSignedIn(old, false);
+    if (name) this.markSignedIn(name, true);
+    this.game = upsertGame({ ...this.game, as: name });
+    this.emit({ me: true });
+  }
+
+  markSignedIn(name, on) {
+    const s = this.tab(name);
+    s.change(s.rows.filter(isSigninRow), [signinRow(on)]);
+  }
+
   setKey(key) {
     this.game = upsertGame({ ...this.game, key });
+    this.locked = false;
     this.emit({ key: true });
   }
 
   request(body) {
-    if (!this.game.key) return Promise.reject(new ApiError('Enter the passphrase for this game.', 'auth'));
-    return call(this.game.api, { ...body, key: this.game.key });
+    return call(this.game.api, { ...body, key: this.game.key || undefined });
   }
 
   // Fetch tabs; only tabs that changed since our cached copy come back with rows.
@@ -201,7 +227,7 @@ export class GameClient extends Emitter {
       return r;
     } catch (e) {
       this.setStatus('err', e.message);
-      if (e.code === 'auth') this.emit({ auth: true });
+      if (e.code === 'auth') { this.locked = true; this.emit({ auth: true }); }
       throw e;
     } finally {
       this.reading = false;
@@ -213,7 +239,7 @@ export class GameClient extends Emitter {
   // Poll watched tabs while the page is visible; flush pending edits when it's hidden or closed.
   startPolling() {
     const tick = () => {
-      if (document.hidden || this.reading || this.anyPending() || !this.game.key) return;
+      if (document.hidden || this.reading || this.anyPending() || this.locked) return;
       this.read().catch(() => {});
     };
     this.pollTimer = setInterval(tick, Number(ls.get('cybersea:pollMs')) || CONFIG.pollMs); // override is for tests

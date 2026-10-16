@@ -245,6 +245,20 @@ select.in{padding:5px 6px}
 .glinks a:hover{color:var(--text)}
 .glinks a[aria-current]{color:var(--cyan);background:color-mix(in srgb,var(--cyan) 10%,transparent)}
 .gnav .ic{width:30px;height:30px}
+.who{margin-left:auto;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);font:700 11px/1 "Chakra Petch",sans-serif;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.who:hover{border-color:var(--cyan);color:var(--text)}
+.who-me{color:var(--cyan);border-color:color-mix(in srgb,var(--cyan) 50%,var(--line))}
+.who-gm{color:var(--pink);border-color:color-mix(in srgb,var(--pink) 50%,var(--line))}
+.who-off{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
+.who-wait{visibility:hidden}
+@media (max-width:560px){.glinks{order:3;flex-basis:100%}}
+.pbtn[aria-pressed="true"]{color:var(--bg);background:var(--cyan);border-color:var(--cyan)}
+.whoami{display:grid;gap:8px;margin-bottom:12px}
+.whoami .note{margin:0}
+.pill.me{border-color:var(--cyan);color:var(--cyan);cursor:inherit}
+.pill.in{border-color:var(--muted);color:var(--muted);cursor:inherit}
+.pbtn.pick{text-align:center}
+.pbtn .sub{display:block;margin-top:4px;font:500 11px/1.2 "IBM Plex Sans",sans-serif;letter-spacing:0;text-transform:none;opacity:.85}
 .top{margin-top:0}
 .empty-page{padding:40px 0;color:var(--muted)}
 .empty-page a,.status a{color:var(--cyan)}

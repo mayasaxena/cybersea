@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createGas, loadCodeGs } from '../tools/gas-fake.mjs';
 
 const H = ['Kind', 'Name', 'Value', 'Notes'];
-const KEYS = { CREW_KEY: 'crew-pass', GM_KEY: 'gm-pass' };
+const KEYS = { GM_KEY: 'gm-pass' }; // no CREW_KEY: crew need no passphrase
 
 function setup(opts = {}) {
   let t = 1_000_000;
@@ -37,7 +37,7 @@ function setup(opts = {}) {
   return { gas, api, tick: ms => { t += ms; } };
 }
 
-const crew = (api, body) => api.call({ key: 'crew-pass', ...body });
+const crew = (api, body) => api.call({ ...body });
 const gm = (api, body) => api.call({ key: 'gm-pass', ...body });
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
@@ -51,7 +51,7 @@ test('explains missing passphrases', () => {
   const { api } = setup({ props: {} });
   const r = api.call({ op: 'read', key: 'x' });
   assert.equal(r.ok, false);
-  assert.match(r.error, /CREW_KEY/);
+  assert.match(r.error, /GM_KEY/);
 });
 
 test('malformed bodies still come back as JSON errors', () => {
@@ -59,7 +59,19 @@ test('malformed bodies still come back as JSON errors', () => {
   const r = api.doPostRaw('{not json');
   assert.equal(r.ok, false);
   assert.ok(r.error);
-  assert.equal(api.call({ key: 'crew-pass', op: 'nope' }).ok, false);
+  assert.equal(crew(api, { op: 'nope' }).ok, false);
+});
+
+test('a crew passphrase is optional', () => {
+  const { api } = setup({ props: { GM_KEY: 'gm-pass', CREW_KEY: 'crew-pass' } });
+  const none = api.call({ op: 'read' });
+  assert.equal(none.code, 'auth');
+  assert.match(none.error, /needs a passphrase/);
+  assert.equal(api.call({ op: 'read', key: 'crew-pass' }).role, 'crew');
+  assert.equal(api.call({ op: 'read', key: 'nope' }).code, 'auth');
+  assert.equal(gm(api, { op: 'read' }).crewKey, 'crew-pass');
+  for (let i = 0; i < 12; i++) api.call({ op: 'read' });
+  assert.equal(api.call({ op: 'read', key: 'crew-pass' }).ok, true, 'a missing passphrase isn’t a wrong guess');
 });
 
 test('wrong passphrases are refused, then throttled for a minute', () => {
@@ -88,7 +100,7 @@ test('GM reads everything', () => {
   assert.equal(r.role, 'gm');
   assert.ok(r.tabs.GM);
   assert.deepEqual(r.tabs.Rules.rows.map(x => x[2]), ['POKE', 'LOOM']);
-  assert.equal(r.crewKey, 'crew-pass');
+  assert.equal(r.crewKey, '');
   assert.equal(crew(api, { op: 'read' }).crewKey, undefined);
 });
 

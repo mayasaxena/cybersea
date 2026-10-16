@@ -1,13 +1,13 @@
 // Shared setup for browser tests: dev server (real Code.gs on a fake sheet) + Chromium.
 import { createRequire } from 'node:module';
 import { start } from '../../tools/dev-server.mjs';
-import { KEYS } from '../fixtures/game.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright'); // run with NODE_PATH=$(npm root -g)
 
-export const invite = (api, key = KEYS.CREW_KEY, name = 'Fixture Game') =>
-  Buffer.from(JSON.stringify({ api, key, name })).toString('base64url');
+// No key: a crew invite.
+export const invite = (api, key = '', name = 'Fixture Game') =>
+  Buffer.from(JSON.stringify({ api, ...(key ? { key } : {}), name })).toString('base64url');
 
 export async function harness({ games = 1, latency, gameOptions } = {}) {
   const srv = await start({ sitePort: 0, apiPort: 0, games, latency, gameOptions });

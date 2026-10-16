@@ -208,14 +208,23 @@ test('importing the old one-page sheet replaces the character', async () => {
   assert.equal(rows.filter(r => r[0] === 'log').length, 1);
 });
 
-test('a wrong passphrase asks for the right one', async () => {
+test('a wrong passphrase asks for the right one, or you can carry on as crew', async () => {
   const p = await h.page();
   await p.goto(`${h.srv.site}/sheet.html?c=Testa#join=${invite(api.url, 'nope')}`);
   await p.waitForSelector('form[data-keyform]');
-  await p.fill('form[data-keyform] input', KEYS.CREW_KEY);
+  await p.fill('form[data-keyform] input', KEYS.GM_KEY);
   await p.click('form[data-keyform] button');
   await p.waitForSelector('h1.name');
   assert.equal(await p.textContent('h1.name'), 'Nexa');
+
+  const q = await h.page();
+  await q.goto(`${h.srv.site}/sheet.html?c=Testa#join=${invite(api.url, 'nope')}`);
+  await q.waitForSelector('form[data-keyform]');
+  await q.keyboard.press('Escape');
+  await q.click('.gnav .who');
+  await q.click('[data-w="gm-out"]');
+  await q.waitForSelector('h1.name');
+  assert.equal(await q.textContent('.gnav .who'), 'Sign in');
 });
 
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {

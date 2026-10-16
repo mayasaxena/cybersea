@@ -34,6 +34,7 @@ README = [
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it.',
     '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
     '  Every other tab is a character sheet. Tabs starting with _ are ignored.',
+    '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
     '',
     'Rows on every tab except Rules: Kind | Name | Value | Notes. Kind + Name identify a row, so keep them unique.',
     '',

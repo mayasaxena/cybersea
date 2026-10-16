@@ -24,8 +24,8 @@ async function openGm(key = KEYS.GM_KEY) {
   return p;
 }
 
-test('the crew passphrase is turned away; the GM passphrase opens the page', async () => {
-  const p = await openGm(KEYS.CREW_KEY);
+test('crew (no passphrase) are turned away; the GM passphrase opens the page', async () => {
+  const p = await openGm('');
   await p.waitForSelector('[data-act="gm-key"]');
   await p.click('[data-act="gm-key"]');
   await p.fill('form[data-keyform] input', KEYS.GM_KEY);
