@@ -250,16 +250,25 @@ test('actions: session, chapter’s end, downtime with a rolled move, level up',
   await p.selectOption('[data-pick="1"]', 'heal');
   await p.click('[data-run]');
 
-  await p.click('[data-kind="dt-begin"]');
+  // Begin and Leave Downtime run from their moves on the Moves tab too
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('[data-act="cat"][data-cat="downtime"]');
+  assert.ok(await p.isDisabled('details[data-id="downtime:LEAVE DOWNTIME"] .chip'), 'not in downtime yet');
+  await p.click('details[data-id="downtime:BEGIN DOWNTIME"] .chip');
   await p.check('input[name=where][value=sea]');
   await p.click('[data-run]');
+  assert.ok(await p.isDisabled('details[data-id="downtime:BEGIN DOWNTIME"] .chip'), 'already in downtime');
+  await p.click('[data-act="tab"][data-tab="sheet"]');
   await p.click('.harm .pip[data-j="2"]'); // fresh harm during downtime
+  await p.click('[data-act="tab"][data-tab="log"]');
   await p.click('[data-act="dt-moves"]');
   await p.click('details[data-id="downtime:DICE GAME"] .chip');
   await p.click('[data-act="tab"][data-tab="log"]');
   assert.match(await p.textContent('.dtbar'), /At sea 1\/1/);
-  await p.click('[data-kind="dt-leave"]');
+  await p.click('[data-act="tab"][data-tab="moves"]');
+  await p.click('details[data-id="downtime:LEAVE DOWNTIME"] .chip');
   await p.click('[data-run]');
+  await p.click('[data-act="tab"][data-tab="log"]');
 
   const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.filter(x => x[0] === 'log').length === 4 && r; });
   const logs = rows.filter(x => x[0] === 'log').map(x => `${x[2]}: ${x[3].replace(/\n/g, ' ')}`);

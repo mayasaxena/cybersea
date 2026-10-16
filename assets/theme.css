@@ -121,6 +121,7 @@ h2{font:700 13px/1.2 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transfo
 .move .mn{flex:1;min-width:0}
 .chip{flex:none;display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--pink);font:700 11px/1 "Chakra Petch",sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
 .chip:hover{border-color:var(--pink)}
+.chip:disabled{opacity:.4;cursor:default;border-color:var(--line)}
 .chip svg{width:13px;height:13px}
 .mbody{padding:0 12px 12px 27px;overflow-wrap:anywhere}
 .move.edit .mbody{padding:8px 12px 12px;margin:0 8px 8px}

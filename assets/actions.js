@@ -16,6 +16,8 @@ export const ACTIONS = {
 // Short UI labels; the full wording is in the rule text shown above them.
 const CHAPTER_CHOICES = [['xp', '+1 experience'], ['luck', '+2 luck'], ['heal', 'Heal 2 harm']];
 const DT_SLOTS = { port: 2, sea: 1 };
+// Moves on the Moves tab that run one of these actions instead of a roll.
+const MOVE_ACTIONS = { 'BEGIN DOWNTIME': 'dt-begin', 'LEAVE DOWNTIME': 'dt-leave' };
 
 export function makeActions(ctx) {
   const st = () => ctx.st();
@@ -254,6 +256,15 @@ export function makeActions(ctx) {
     return h + (entries || '<div class="empty">—</div>');
   }
 
+  // The action a move runs, and whether it can run now (only one of Begin/Leave Downtime applies).
+  function forMove(move) {
+    const kind = move.cat === 'downtime' && MOVE_ACTIONS[move.name.toUpperCase()];
+    if (!kind) return null;
+    const dt = !!st().state.downtime;
+    return { kind, label: kind === 'dt-begin' ? 'Begin' : 'Leave', ok: kind === 'dt-begin' ? !dt : dt,
+      why: kind === 'dt-begin' ? 'Already in downtime' : 'Not in downtime' };
+  }
+
   // Count downtime moves rolled during downtime.
   function noteRoll(move, total) {
     const dt = st().state.downtime;
@@ -262,5 +273,5 @@ export function makeActions(ctx) {
     return true;
   }
 
-  return { open, logHTML, noteRoll, armed, xpCount, xpNeeded };
+  return { open, logHTML, noteRoll, forMove, armed, xpCount, xpNeeded };
 }

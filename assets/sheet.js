@@ -6,7 +6,7 @@ import { parseSheet, serializeSheet, logId } from './codec.js';
 import { md, toggleCheck, htmlToMarkup } from './markup.js';
 import { indexRules, rollFor } from './rules.js';
 import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
-import { makeActions } from './actions.js';
+import { makeActions, ACTIONS } from './actions.js';
 import { shipRows } from './build.js';
 import { plain } from './markup.js';
 
@@ -178,8 +178,10 @@ function moveHTML(m, i, forceOpen) {
   }
   const r = rollFor(m.text, st.stats);
   const chip = r ? `<button class="chip" data-act="roll-move" data-i="${i}" title="Roll">${ICON.die}<span>${escTxt(r.label)}${r.stat ? ' ' + fmt(r.mod) : ''}</span></button>` : '';
+  const a = canEdit() && actions.forMove(m);
+  const act = a ? `<button class="chip" data-act="run" data-kind="${a.kind}"${a.ok ? ` title="${esc(ACTIONS[a.kind])}"` : ` title="${esc(a.why)}" disabled`}>${escTxt(a.label)}</button>` : '';
   const open = forceOpen || openSet.has(id);
-  return `<details class="move${m.cat === 'playbook' && !m.marked ? ' off' : ''}" data-id="${esc(id)}"${open ? ' open' : ''}><summary>${mk}<span class="mn">${escTxt(m.name)}</span>${chip}</summary>` +
+  return `<details class="move${m.cat === 'playbook' && !m.marked ? ' off' : ''}" data-id="${esc(id)}"${open ? ' open' : ''}><summary>${mk}<span class="mn">${escTxt(m.name)}</span>${chip}${act}</summary>` +
     `<div class="mbody"${m.own ? ` data-move="${esc(m.name)}"` : ''}>${md(m.text)}</div></details>`;
 }
 
