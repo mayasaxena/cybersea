@@ -1,0 +1,1293 @@
+{
+ "_doc": "Line-number / column map for the corebook text dump. Line numbers are 1-based source lines. No book text here.",
+ "splits": [
+  {
+   "a": 2043,
+   "b": 2063,
+   "col": 45
+  },
+  {
+   "a": 3217,
+   "b": 3224,
+   "col": 52,
+   "lift": true
+  },
+  {
+   "a": 3225,
+   "b": 3233,
+   "col": 52,
+   "lift": true
+  },
+  {
+   "a": 4942,
+   "b": 4943,
+   "col": 22
+  },
+  {
+   "a": 4954,
+   "b": 4955,
+   "col": 43
+  },
+  {
+   "a": 5123,
+   "b": 5124,
+   "col": 22
+  },
+  {
+   "a": 5142,
+   "b": 5143,
+   "col": 43
+  },
+  {
+   "a": 5169,
+   "b": 5191,
+   "col": 51
+  },
+  {
+   "a": 5197,
+   "b": 5217,
+   "col": 58
+  },
+  {
+   "a": 5307,
+   "b": 5308,
+   "col": 22
+  },
+  {
+   "a": 5322,
+   "b": 5323,
+   "col": 43
+  },
+  {
+   "a": 5354,
+   "b": 5355,
+   "col": 49
+  },
+  {
+   "a": 5360,
+   "b": 5361,
+   "col": 49
+  },
+  {
+   "a": 5367,
+   "b": 5377,
+   "col": 53
+  },
+  {
+   "a": 5383,
+   "b": 5393,
+   "col": 49
+  },
+  {
+   "a": 5492,
+   "b": 5493,
+   "col": 22
+  },
+  {
+   "a": 5507,
+   "b": 5508,
+   "col": 43
+  },
+  {
+   "a": 5552,
+   "b": 5564,
+   "col": 45
+  },
+  {
+   "a": 5568,
+   "b": 5581,
+   "col": 52
+  },
+  {
+   "a": 5675,
+   "b": 5676,
+   "col": 22
+  },
+  {
+   "a": 5687,
+   "b": 5688,
+   "col": 43
+  },
+  {
+   "a": 5712,
+   "b": 5729,
+   "col": 41
+  },
+  {
+   "a": 5732,
+   "b": 5746,
+   "col": 53
+  },
+  {
+   "a": 5751,
+   "b": 5759,
+   "col": 51
+  },
+  {
+   "a": 5850,
+   "b": 5851,
+   "col": 22
+  },
+  {
+   "a": 5862,
+   "b": 5863,
+   "col": 43
+  },
+  {
+   "a": 5913,
+   "b": 5916,
+   "col": 50
+  },
+  {
+   "a": 5922,
+   "b": 5935,
+   "col": 41
+  },
+  {
+   "a": 6027,
+   "b": 6028,
+   "col": 22
+  },
+  {
+   "a": 6040,
+   "b": 6041,
+   "col": 42
+  },
+  {
+   "a": 6074,
+   "b": 6091,
+   "col": 54
+  },
+  {
+   "a": 6097,
+   "b": 6114,
+   "col": 51
+  },
+  {
+   "a": 6204,
+   "b": 6205,
+   "col": 22
+  },
+  {
+   "a": 6218,
+   "b": 6219,
+   "col": 42
+  },
+  {
+   "a": 6257,
+   "b": 6270,
+   "col": 48
+  },
+  {
+   "a": 6274,
+   "b": 6283,
+   "col": 51
+  },
+  {
+   "a": 6374,
+   "b": 6375,
+   "col": 22
+  },
+  {
+   "a": 6389,
+   "b": 6390,
+   "col": 41
+  },
+  {
+   "a": 6415,
+   "b": 6434,
+   "col": 41
+  },
+  {
+   "a": 6448,
+   "b": 6453,
+   "col": 33
+  },
+  {
+   "a": 6455,
+   "b": 6466,
+   "col": 33
+  },
+  {
+   "a": 6569,
+   "b": 6570,
+   "col": 23
+  },
+  {
+   "a": 6621,
+   "b": 6629,
+   "col": 45
+  },
+  {
+   "a": 6750,
+   "b": 6751,
+   "col": 23
+  },
+  {
+   "a": 6785,
+   "b": 6793,
+   "col": 50
+  },
+  {
+   "a": 6911,
+   "b": 6912,
+   "col": 22
+  },
+  {
+   "a": 6950,
+   "b": 6958,
+   "col": 48
+  },
+  {
+   "a": 7560,
+   "b": 7568,
+   "col": 43,
+   "right_at": 7573
+  },
+  {
+   "a": 8688,
+   "b": 8701,
+   "col": 53,
+   "right_at": 8713
+  },
+  {
+   "a": 8714,
+   "b": 8740,
+   "col": 54,
+   "right_at": 8756
+  },
+  {
+   "a": 8757,
+   "b": 8777,
+   "col": 52,
+   "right_at": 8779
+  },
+  {
+   "a": 8807,
+   "b": 8825,
+   "col": 53,
+   "right_at": 8845
+  },
+  {
+   "a": 8846,
+   "b": 8863,
+   "col": 54,
+   "right_at": 8878
+  },
+  {
+   "a": 8879,
+   "b": 8896,
+   "col": 54,
+   "right_at": 8924
+  },
+  {
+   "a": 8925,
+   "b": 8945,
+   "col": 53,
+   "right_at": 8966
+  },
+  {
+   "a": 8967,
+   "b": 8989,
+   "col": 54,
+   "right_at": 8996
+  },
+  {
+   "a": 8997,
+   "b": 9014,
+   "col": 55,
+   "right_at": 9028
+  },
+  {
+   "a": 9413,
+   "b": 9435,
+   "col": 49,
+   "entity": "place"
+  },
+  {
+   "a": 9438,
+   "b": 9464,
+   "col": 49,
+   "entity": "place"
+  },
+  {
+   "a": 9468,
+   "b": 9487,
+   "col": 52,
+   "entity": "place"
+  },
+  {
+   "a": 9490,
+   "b": 9515,
+   "col": 52,
+   "entity": "place"
+  },
+  {
+   "a": 9521,
+   "b": 9539,
+   "col": 54,
+   "entity": "place"
+  },
+  {
+   "a": 9544,
+   "b": 9564,
+   "col": 54,
+   "entity": "place"
+  },
+  {
+   "a": 9570,
+   "b": 9594,
+   "col": 52,
+   "entity": "place"
+  },
+  {
+   "a": 9598,
+   "b": 9617,
+   "col": 52,
+   "entity": "place"
+  },
+  {
+   "a": 9623,
+   "b": 9643,
+   "col": 51,
+   "entity": "place"
+  },
+  {
+   "a": 9646,
+   "b": 9670,
+   "col": 51,
+   "entity": "place"
+  },
+  {
+   "a": 9784,
+   "b": 9814,
+   "col": 41,
+   "entity": "npc"
+  },
+  {
+   "a": 9822,
+   "b": 9839,
+   "col": 51,
+   "entity": "place"
+  },
+  {
+   "a": 9844,
+   "b": 9862,
+   "col": 51,
+   "entity": "place"
+  },
+  {
+   "a": 9934,
+   "b": 9963,
+   "col": 51,
+   "entity": "npc"
+  },
+  {
+   "a": 9971,
+   "b": 9991,
+   "col": 53,
+   "entity": "place"
+  },
+  {
+   "a": 9994,
+   "b": 10010,
+   "col": 53,
+   "entity": "place"
+  },
+  {
+   "a": 10084,
+   "b": 10106,
+   "col": 50,
+   "entity": "npc"
+  },
+  {
+   "a": 10110,
+   "b": 10130,
+   "col": 43,
+   "entity": "npc"
+  },
+  {
+   "a": 10137,
+   "b": 10161,
+   "col": 51,
+   "entity": "place"
+  },
+  {
+   "a": 10224,
+   "b": 10251,
+   "col": 47,
+   "entity": "npc"
+  },
+  {
+   "a": 10257,
+   "b": 10281,
+   "col": 49,
+   "entity": "npc"
+  },
+  {
+   "a": 10288,
+   "b": 10305,
+   "col": 55,
+   "entity": "place"
+  },
+  {
+   "a": 10375,
+   "b": 10407,
+   "col": 42,
+   "entity": "npc"
+  },
+  {
+   "a": 10413,
+   "b": 10439,
+   "col": 36,
+   "entity": "npc"
+  },
+  {
+   "a": 10442,
+   "b": 10468,
+   "col": 37,
+   "entity": "npc"
+  },
+  {
+   "a": 10474,
+   "b": 10500,
+   "col": 41,
+   "entity": "npc"
+  },
+  {
+   "a": 10503,
+   "b": 10528,
+   "col": 38,
+   "entity": "npc"
+  },
+  {
+   "a": 10555,
+   "b": 10585,
+   "col": 42,
+   "entity": "npc"
+  },
+  {
+   "a": 10589,
+   "b": 10615,
+   "col": 49,
+   "entity": "npc"
+  },
+  {
+   "a": 10622,
+   "b": 10642,
+   "col": 55,
+   "entity": "place"
+  },
+  {
+   "a": 10707,
+   "b": 10737,
+   "col": 34,
+   "entity": "npc"
+  },
+  {
+   "a": 10745,
+   "b": 10767,
+   "col": 49,
+   "entity": "place"
+  },
+  {
+   "a": 10771,
+   "b": 10795,
+   "col": 49,
+   "entity": "place"
+  },
+  {
+   "a": 10859,
+   "b": 10892,
+   "col": 40,
+   "entity": "npc"
+  },
+  {
+   "a": 10898,
+   "b": 10925,
+   "col": 45,
+   "entity": "npc"
+  },
+  {
+   "a": 10931,
+   "b": 10954,
+   "col": 59,
+   "entity": "place"
+  },
+  {
+   "a": 11027,
+   "b": 11053,
+   "col": 48,
+   "entity": "npc"
+  },
+  {
+   "a": 11059,
+   "b": 11082,
+   "col": 35,
+   "entity": "npc"
+  },
+  {
+   "a": 11087,
+   "b": 11100,
+   "col": 48,
+   "entity": "npc"
+  }
+ ],
+ "split_lines": {
+  "7565": 36,
+  "6270": 48,
+  "3217": 75
+ },
+ "tables": [
+  {
+   "a": 12048,
+   "b": 12100,
+   "header": 12048,
+   "name_line": 12047,
+   "meta_cols": [
+    2
+   ],
+   "text_cols": [
+    1
+   ]
+  },
+  {
+   "a": 12106,
+   "b": 12136,
+   "header": 12106,
+   "name_line": 12105,
+   "meta_cols": [
+    2
+   ],
+   "text_cols": [
+    1
+   ]
+  },
+  {
+   "a": 12140,
+   "b": 12163,
+   "header": 12140,
+   "kind": "trouble",
+   "name_line": 12139
+  },
+  {
+   "a": 12169,
+   "b": 12196,
+   "header": 12169,
+   "name_line": 12168,
+   "meta_cols": [
+    1
+   ],
+   "text_cols": [
+    2
+   ]
+  },
+  {
+   "a": 12200,
+   "b": 12226,
+   "header": 12200,
+   "name_line": 12199,
+   "meta_cols": [
+    1
+   ],
+   "text_cols": [
+    2
+   ]
+  },
+  {
+   "a": 12232,
+   "b": 12290,
+   "header": 12232,
+   "name_line": 12231,
+   "text_cols": [
+    1,
+    2,
+    3
+   ]
+  }
+ ],
+ "moves": {
+  "basic": [
+   3531,
+   4164
+  ],
+  "special": [
+   4166,
+   4329
+  ],
+  "ship": [
+   4335,
+   4540
+  ],
+  "downtime": [
+   4546,
+   4833
+  ]
+ },
+ "procedures": {
+  "session": [
+   7199,
+   7215
+  ],
+  "chapter": [
+   7252,
+   7260
+  ],
+  "downtime": {
+   "lines": [
+    7137,
+    7139
+   ],
+   "name_line": 7130
+  },
+  "advance": {
+   "lines": [
+    7311,
+    7319
+   ],
+   "name_line": 7285
+  },
+  "experience": {
+   "lines": [
+    7296,
+    7301
+   ],
+   "name_from_first": true
+  }
+ },
+ "advances": [
+  7320,
+  7323
+ ],
+ "specials": [
+  7630,
+  7691
+ ],
+ "pirate_playbooks": [
+  {
+   "a": 4881,
+   "b": 5060,
+   "pick": [
+    [
+     4995,
+     4995
+    ]
+   ]
+  },
+  {
+   "a": 5062,
+   "b": 5244
+  },
+  {
+   "a": 5246,
+   "b": 5427,
+   "pick": [
+    [
+     5365,
+     5365
+    ]
+   ]
+  },
+  {
+   "a": 5429,
+   "b": 5610,
+   "pick": [
+    [
+     5551,
+     5551
+    ]
+   ]
+  },
+  {
+   "a": 5612,
+   "b": 5791,
+   "pick": [
+    [
+     5731,
+     5731
+    ]
+   ]
+  },
+  {
+   "a": 5793,
+   "b": 5966
+  },
+  {
+   "a": 5968,
+   "b": 6143,
+   "pick": [
+    [
+     6072,
+     6072
+    ]
+   ]
+  },
+  {
+   "a": 6145,
+   "b": 6315,
+   "pick": [
+    [
+     6256,
+     6256
+    ]
+   ]
+  },
+  {
+   "a": 6317,
+   "b": 6495
+  }
+ ],
+ "ship_playbooks": [
+  {
+   "a": 6497,
+   "b": 6677
+  },
+  {
+   "a": 6679,
+   "b": 6842
+  },
+  {
+   "a": 6844,
+   "b": 7015
+  }
+ ],
+ "tags": {
+  "item": [
+   1905,
+   1932
+  ],
+  "range": [
+   1944,
+   1948
+  ],
+  "weapon": [
+   1951,
+   1968
+  ],
+  "armor": [
+   1970,
+   1980
+  ],
+  "npc": [
+   2105,
+   2158
+  ]
+ },
+ "coverage": [
+  {
+   "name": "ch5 moves",
+   "a": 3531,
+   "b": 4833
+  },
+  {
+   "name": "pirate+ship playbooks",
+   "a": 4881,
+   "b": 7015
+  },
+  {
+   "name": "downtime limits",
+   "a": 7137,
+   "b": 7139
+  },
+  {
+   "name": "chapter's end",
+   "a": 7252,
+   "b": 7260
+  },
+  {
+   "name": "specials list",
+   "a": 7629,
+   "b": 7691
+  },
+  {
+   "name": "item/weapon/armor tags",
+   "a": 1887,
+   "b": 1980
+  },
+  {
+   "name": "NPC tags",
+   "a": 2066,
+   "b": 2158
+  },
+  {
+   "name": "troubles table",
+   "a": 12139,
+   "b": 12163
+  },
+  {
+   "name": "session anatomy",
+   "a": 7199,
+   "b": 7215
+  },
+  {
+   "name": "experience list",
+   "a": 7296,
+   "b": 7301
+  },
+  {
+   "name": "advancement",
+   "a": 7311,
+   "b": 7323
+  },
+  {
+   "name": "P2 core rules ch.2",
+   "a": 1306,
+   "b": 1859
+  },
+  {
+   "name": "P2 NPC rules ch.2",
+   "a": 1986,
+   "b": 2259
+  },
+  {
+   "name": "P2 traits box",
+   "a": 3217,
+   "b": 3233
+  },
+  {
+   "name": "P2 example oddities",
+   "a": 7403,
+   "b": 7503
+  },
+  {
+   "name": "P2 renown",
+   "a": 7543,
+   "b": 7605
+  },
+  {
+   "name": "P2 Fates chapter",
+   "a": 7752,
+   "b": 9230
+  },
+  {
+   "name": "P2 appendix tables",
+   "a": 12047,
+   "b": 12290
+  },
+  {
+   "name": "P3 world ch.1",
+   "a": 387,
+   "b": 975
+  },
+  {
+   "name": "P3 ch.9 map + locations",
+   "a": 9263,
+   "b": 9670
+  },
+  {
+   "name": "P3 faction codex",
+   "a": 9676,
+   "b": 11100
+  }
+ ],
+ "skip": [
+  {
+   "a": 3531,
+   "b": 3544,
+   "why": "basic moves intro"
+  },
+  {
+   "a": 3550,
+   "b": 3589,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 3598,
+   "b": 3682,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 3690,
+   "b": 3763,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 3774,
+   "b": 3856,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 3862,
+   "b": 3902,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 3909,
+   "b": 3948,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 3957,
+   "b": 4011,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4022,
+   "b": 4104,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4114,
+   "b": 4164,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4166,
+   "b": 4176,
+   "why": "special moves intro"
+  },
+  {
+   "a": 4183,
+   "b": 4214,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4235,
+   "b": 4291,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4309,
+   "b": 4329,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4335,
+   "b": 4367,
+   "why": "ship moves intro"
+  },
+  {
+   "a": 4374,
+   "b": 4393,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4402,
+   "b": 4431,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4438,
+   "b": 4473,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4481,
+   "b": 4508,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4516,
+   "b": 4540,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4546,
+   "b": 4554,
+   "why": "downtime moves intro"
+  },
+  {
+   "a": 4562,
+   "b": 4563,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4569,
+   "b": 4585,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4591,
+   "b": 4613,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4620,
+   "b": 4648,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4658,
+   "b": 4690,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4699,
+   "b": 4724,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4733,
+   "b": 4769,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4779,
+   "b": 4807,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 4816,
+   "b": 4833,
+   "why": "move commentary/examples"
+  },
+  {
+   "a": 1887,
+   "b": 1903,
+   "why": "loot/tags intro prose"
+  },
+  {
+   "a": 1934,
+   "b": 1944,
+   "why": "weapon tags intro prose"
+  },
+  {
+   "a": 1949,
+   "b": 1949,
+   "why": "weapon tags lead-in"
+  },
+  {
+   "a": 2066,
+   "b": 2104,
+   "why": "NPC tags intro prose"
+  },
+  {
+   "a": 1323,
+   "b": 1342,
+   "why": "example/inset (indented block)"
+  },
+  {
+   "a": 1369,
+   "b": 1388,
+   "why": "example/inset (indented block)"
+  },
+  {
+   "a": 1469,
+   "b": 1514,
+   "why": "example/inset (indented block)"
+  },
+  {
+   "a": 1548,
+   "b": 1553,
+   "why": "example/inset (indented block)"
+  }
+ ],
+ "fates": {
+  "movescale": [
+   8140,
+   8157
+  ],
+  "sections": [
+   {
+    "a": 7752,
+    "b": 7838,
+    "group": "responsibility"
+   },
+   {
+    "a": 7843,
+    "b": 7902,
+    "group": "agenda"
+   },
+   {
+    "a": 7908,
+    "b": 8099,
+    "group": "compass"
+   },
+   {
+    "a": 8102,
+    "b": 8482,
+    "group": "move",
+    "examples": 3
+   },
+   {
+    "a": 8488,
+    "b": 9027,
+    "group": "inplay",
+    "appropriate": true,
+    "boxes": [
+     [
+      8580,
+      8585
+     ],
+     [
+      8783,
+      8791
+     ]
+    ]
+   },
+   {
+    "a": 9030,
+    "b": 9230,
+    "group": "prep"
+   }
+  ]
+ },
+ "rules": [
+  {
+   "a": 1306,
+   "b": 1389,
+   "group": "bonds"
+  },
+  {
+   "a": 1393,
+   "b": 1406,
+   "group": "ante"
+  },
+  {
+   "a": 1408,
+   "b": 1420,
+   "group": "compels"
+  },
+  {
+   "a": 1422,
+   "b": 1514,
+   "group": "troubles"
+  },
+  {
+   "a": 1517,
+   "b": 1577,
+   "group": "harm",
+   "exclude": [
+    [
+     1548,
+     1553
+    ]
+   ]
+  },
+  {
+   "a": 1582,
+   "b": 1617,
+   "group": "luck"
+  },
+  {
+   "a": 1623,
+   "b": 1663,
+   "group": "ship"
+  },
+  {
+   "a": 1668,
+   "b": 1728,
+   "group": "wreck"
+  },
+  {
+   "a": 1730,
+   "b": 1754,
+   "group": "space"
+  },
+  {
+   "a": 1758,
+   "b": 1765,
+   "group": "armor"
+  },
+  {
+   "a": 1767,
+   "b": 1781,
+   "group": "cannons"
+  },
+  {
+   "a": 1783,
+   "b": 1859,
+   "group": "currency"
+  },
+  {
+   "a": 1986,
+   "b": 2020,
+   "group": "npc"
+  },
+  {
+   "a": 2022,
+   "b": 2063,
+   "group": "achilles"
+  },
+  {
+   "a": 2066,
+   "b": 2103,
+   "group": "npc"
+  },
+  {
+   "a": 2164,
+   "b": 2198,
+   "group": "lackeys"
+  },
+  {
+   "a": 2200,
+   "b": 2259,
+   "group": "group"
+  },
+  {
+   "a": 7543,
+   "b": 7583,
+   "group": "renown"
+  },
+  {
+   "a": 7588,
+   "b": 7605,
+   "group": "renown",
+   "box": true
+  }
+ ],
+ "traits": [
+  [
+   3217,
+   3224
+  ],
+  [
+   3225,
+   3233
+  ]
+ ],
+ "example_oddities": [
+  7403,
+  7503
+ ],
+ "world": {
+  "range": [
+   386,
+   980
+  ],
+  "locations": [
+   439,
+   496
+  ],
+  "boxes": [
+   [
+    470,
+    475
+   ]
+  ],
+  "toolbox": [
+   9235,
+   9411
+  ],
+  "toolbox_boxes": [
+   [
+    9322,
+    9331
+   ]
+  ]
+ },
+ "locations9": [
+  9408,
+  9670
+ ],
+ "codex": {
+  "range": [
+   9676,
+   11100
+  ]
+ },
+ "hyphens": {
+  "_doc": "Line-end hyphens the automatic rules get wrong, decided by hand (lowercase \"left-right\" as split in the book).",
+  "join": [
+   "avoid-able",
+   "worth-less",
+   "push-over"
+  ],
+  "keep": [
+   "and-wreckage",
+   "half-remembered",
+   "multi-faceted",
+   "spring-wired"
+  ]
+ }
+}

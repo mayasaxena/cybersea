@@ -1,0 +1,9 @@
+# Rulebook text and player data never go in the repo.
+*.xlsx
+*.pdf
+rules.json
+out/
+node_modules/
+test-results/
+__pycache__/
+*.pyc

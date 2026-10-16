@@ -1,0 +1,104 @@
+// Searchable views of the Rules tab, shared by rules.html (crew) and gm.html (GM).
+import { md, plain } from './markup.js';
+import { esc, escTxt } from './core.js';
+
+const cap = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+const PLAYBOOK_KINDS = ['playbook', 'vice', 'kit', 'lastwords', 'question', 'pmove', 'smove', 'pnote', 'renown'];
+const FATE_GROUPS = { responsibility: 'Responsibilities', agenda: 'Agendas', compass: 'Compass points', move: 'Fate moves', movescale: 'Move scale', inplay: 'Playbooks in play', appropriate: 'Appropriate Fates moves' };
+
+function groupLabel(r) {
+  switch (r.kind) {
+    case 'move': return `${cap(r.group)} moves`;
+    case 'procedure': return 'Sessions, chapters, downtime and levels';
+    case 'house': return 'House rules';
+    case 'advance': return 'Advances';
+    case 'tag': return `${cap(r.group)} tags`;
+    case 'trouble': return 'Troubles';
+    case 'table': return r.group;
+    case 'rule': return cap(r.group);
+    case 'special': return 'Ship specials';
+    case 'oddity': return 'Example oddities';
+    case 'fate': return FATE_GROUPS[r.group.toLowerCase()] || cap(r.group);
+    case 'faction': return r.group;
+    case 'location': return 'Locations';
+    default: return r.group ? cap(r.group) : cap(r.kind);
+  }
+}
+
+export const SECTIONS = {
+  moves: { label: 'Moves', test: r => r.kind === 'move' },
+  playbooks: { label: 'Playbooks', test: r => PLAYBOOK_KINDS.includes(r.kind) || (r.kind === 'oddity' && r.group !== 'Example') },
+  tags: { label: 'Tags', test: r => r.kind === 'tag' || r.kind === 'trouble' },
+  reference: { label: 'Reference', test: r => ['procedure', 'house', 'advance', 'table', 'rule', 'special'].includes(r.kind) || (r.kind === 'oddity' && r.group === 'Example') },
+  fates: { label: 'Fates', test: r => r.kind === 'fate' },
+  world: { label: 'World', test: r => ['world', 'location', 'faction'].includes(r.kind) },
+  other: { label: 'Other', test: r => !['move', 'fate', 'world', 'location', 'faction', 'procedure', 'house', 'advance', 'tag', 'trouble', 'table', 'rule', 'special', 'oddity', ...PLAYBOOK_KINDS].includes(r.kind) },
+};
+
+const metaLine = r => Object.entries(r.meta).filter(([k]) => !['start', 'adv'].includes(k)).map(([k, v]) => (v === true ? k : `${k} ${v}`)).join(' · ');
+
+// Tags and troubles are short: show them as an always-visible glossary.
+const GLOSSARY = ['tag', 'trouble'];
+
+export function recordHTML(r, open = false) {
+  if (GLOSSARY.includes(r.kind)) {
+    return `<div class="gloss"><b>${escTxt(r.name)}</b><div class="gdef">${md(r.text)}</div></div>`;
+  }
+  const meta = r.kind === 'table' ? metaLine(r) : '';
+  const body = r.text.trim() ? md(r.text) : '';
+  if (!body) return `<div class="refline"><b>${escTxt(r.name)}</b>${meta ? ` <span class="cnt">${escTxt(meta)}</span>` : ''}</div>`;
+  return `<details class="move"${open ? ' open' : ''}><summary><span class="mn">${escTxt(r.name)}</span>${meta ? `<span class="cnt">${escTxt(meta)}</span>` : ''}</summary><div class="mbody">${body}</div></details>`;
+}
+
+function grouped(recs, open) {
+  const groups = new Map();
+  for (const r of recs) {
+    const g = groupLabel(r);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(r);
+  }
+  return [...groups].map(([g, rs]) => `<div class="mgroup"><h3>${escTxt(g)}</h3>${rs.map(r => recordHTML(r, open)).join('')}</div>`).join('');
+}
+
+function playbookHTML(R, p) {
+  const pb = R.playbook(p.name);
+  const part = (title, body) => (body ? `<div class="pbpart"><h4>${title}</h4>${body}</div>` : '');
+  const items = (rs, f) => rs.map(f).join('');
+  const meta = [p.meta.harm && `Harm ${p.meta.harm}`, p.meta.luck && `Luck ${p.meta.luck}`].filter(Boolean).join(' · ');
+  return `<details class="move pb"><summary><span class="mn">${escTxt(p.name)}</span>${meta ? `<span class="cnt">${meta}</span>` : ''}</summary><div class="mbody">
+    ${p.text ? md(p.text) : ''}
+    ${part('Vice', items(pb.vices, v => `<p><b>${escTxt(v.name)}.</b></p>${md(v.text)}`))}
+    ${part('Oddities', items(pb.oddities, o => `<p><b>${escTxt(o.name)}</b>${o.meta.traits ? ` <span class="cnt">${escTxt(o.meta.traits)}</span>` : ''}</p>${md(o.text)}`))}
+    ${part('Kits', items(pb.kits, k => `<p><b>${escTxt(k.name)}</b>${k.meta.traits ? ` <span class="cnt">${escTxt(k.meta.traits)}</span>` : ''}</p>${md(k.text)}`))}
+    ${part('Moves', items([...pb.moves, ...pb.smoves], m => `<p><b>${escTxt(m.name)}</b>${m.meta.start ? ' <span class="cnt">start</span>' : ''}</p>${md(m.text)}`))}
+    ${part('Renown', items(pb.renown, r => `<p><b>${escTxt(r.name)}</b></p>${md(r.text)}`))}
+    ${part('Last words', pb.lastwords ? md(pb.lastwords.text) : '')}
+    ${part('Questions', items(pb.questions, q => `<p><b>${escTxt(q.name)}.</b> ${escTxt(plain(q.text))}</p>`))}
+    ${part('Notes', items(pb.notes, n => md(n.text)))}
+  </div></details>`;
+}
+
+export function sectionHTML(R, key, query = '') {
+  const sec = SECTIONS[key];
+  const q = query.trim().toLowerCase();
+  if (q) {
+    const hits = R.recs.filter(r => sec.test(r) && r.search.includes(q));
+    return hits.length ? grouped(hits, true) : '<div class="empty">No matches.</div>';
+  }
+  if (key === 'playbooks') {
+    const pirates = R.playbooks('pirate');
+    const ships = R.playbooks('ship');
+    return (pirates.length ? `<div class="mgroup"><h3>Pirate playbooks</h3>${pirates.map(p => playbookHTML(R, p)).join('')}</div>` : '') +
+      (ships.length ? `<div class="mgroup"><h3>Ship playbooks</h3>${ships.map(p => playbookHTML(R, p)).join('')}</div>` : '') || '<div class="empty">No playbooks in the Rules tab.</div>';
+  }
+  const recs = R.recs.filter(sec.test);
+  return recs.length ? grouped(recs, false) : '<div class="empty">Nothing in the Rules tab for this yet.</div>';
+}
+
+export function searchAllHTML(R, keys, query) {
+  const q = query.trim().toLowerCase();
+  const hits = R.recs.filter(r => keys.some(k => SECTIONS[k].test(r)) && r.search.includes(q));
+  return hits.length ? grouped(hits, true) : '<div class="empty">No matches.</div>';
+}
+
+export const sectionHasContent = (R, key) => R.recs.some(SECTIONS[key].test);

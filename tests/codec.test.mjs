@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseTrack, formatTrack, parseBond, formatBond, parseStat, formatStat, parseSheet, serializeSheet, diffRows, applyPending, parseLog, formatLog } from '../assets/codec.js';
+import { sampleCharacter } from './fixtures/game.mjs';
+
+test('pip symbols, including hand-typed ones', () => {
+  assert.deepEqual(parseTrack('●○○✕✕✕'), [1, 0, 0, 2, 2, 2]);
+  assert.deepEqual(parseTrack('x o * 0 1 X'), [2, 0, 1, 0, 1, 2]);
+  assert.equal(formatTrack([1, 0, 2]), '●○✕');
+  assert.deepEqual(parseBond('●○·'), [1, 2, 0]);
+  assert.deepEqual(parseBond('110'), [1, 1, 0]);
+  assert.equal(formatBond([1, 2, 0]), '●○·');
+  assert.equal(parseStat('+2'), 2);
+  assert.equal(parseStat('−1'), -1);
+  assert.equal(parseStat('2'), 2);
+  assert.equal(parseStat('junk'), 0);
+  assert.equal(formatStat(2), '+2');
+  assert.equal(formatStat(-1), '-1');
+});
+
+test('log rows round-trip', () => {
+  const e = parseLog('2026-10-16T03:00:00.000Z~ab12', 'Chapter’s End', '- +1 experience\n- Healed 1 harm\n\nA note\nwith lines');
+  assert.deepEqual(e.items, ['+1 experience', 'Healed 1 harm']);
+  assert.equal(e.note, 'A note\nwith lines');
+  assert.equal(e.at, Date.parse('2026-10-16T03:00:00.000Z'));
+  assert.equal(formatLog(e), '- +1 experience\n- Healed 1 harm\n\nA note\nwith lines');
+  assert.equal(parseLog('x', 't', 'just a note').note, 'just a note');
+});
+
+test('a sheet survives parse → serialize unchanged', () => {
+  const st = parseSheet(sampleCharacter);
+  const rows = serializeSheet(st).filter(r => !(r[0] === 'sheet' && r[1] === 'Bonds'));
+  const norm = rs => rs.map(r => r.join('|')).sort();
+  assert.deepEqual(norm(rows), norm(sampleCharacter));
+  assert.ok(st.sections.some(s => s.title === 'Bonds'), 'a Bonds card is added when there are bonds');
+});
+
+test('diffs: only changed rows, deletes, and renames', () => {
+  const prev = [['info', 'Name', 'Nexa', ''], ['track', 'Harm', '●○○', ''], ['sheet', 'Troubles', '- one', ''], ['sheet', 'Kit', '', '']];
+  const next = [['info', 'Name', 'Nexa', ''], ['track', 'Harm', '●●○', ''], ['sheet', 'Problems', '- one', ''], ['bond', 'Ship', '●··', '']];
+  const d = diffRows(prev, next);
+  assert.deepEqual(d.set, [['track', 'Harm', '●●○', ''], ['sheet', 'Problems', '- one', ''], ['bond', 'Ship', '●··', '']]);
+  assert.deepEqual(d.ren, [['sheet', 'Troubles', 'Problems']]);
+  assert.deepEqual(d.del, [['sheet', 'Kit']]);
+  assert.deepEqual(diffRows(prev, prev), { set: [], del: [], ren: [] });
+});
+
+test('pending changes apply on top of server rows in order', () => {
+  const server = [['info', 'Name', 'Nexa', ''], ['sheet', 'Troubles', 'a', ''], ['sheet', 'Kit', 'b', ''], ['track', 'Harm', '○', '']];
+  const out = applyPending(server, [
+    { row: ['sheet', 'Problems', 'a2', ''], seq: 2 },
+    { ren: ['sheet', 'Troubles', 'Problems'], row: ['sheet', 'Troubles'], seq: 1 },
+    { row: ['sheet', 'Kit', '', ''], del: true, seq: 3 },
+    { row: ['sheet', 'Story', 'c', ''], seq: 4 },
+  ]);
+  assert.deepEqual(out, [['info', 'Name', 'Nexa', ''], ['sheet', 'Problems', 'a2', ''], ['sheet', 'Story', 'c', ''], ['track', 'Harm', '○', '']]);
+});
