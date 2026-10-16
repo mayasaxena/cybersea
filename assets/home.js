@@ -5,7 +5,7 @@ import { indexRules } from './rules.js';
 import { characterRows } from './build.js';
 import { md, plain } from './markup.js';
 import { esc, escTxt, pageShell, refreshNav, modal, closeModal } from './core.js';
-import { crewCardHTML, shipCardHTML } from './cards.js';
+import { crewCardHTML } from './cards.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -42,9 +42,11 @@ if (!game) {
 
   const characters = () => client.list.filter(t => t.kind === 'character').map(t => t.name);
 
+  let listed = false; // the server's tab list has arrived, so an empty crew really is empty
+
   function render() {
     const names = characters();
-    main.innerHTML = `<div class="crew">${names.map(n => crewCardHTML(client, n)).join('')}${shipCardHTML(client)}</div>
+    main.innerHTML = `${names.length ? `<div class="crew">${names.map(n => crewCardHTML(client, n)).join('')}</div>` : listed ? '<p class="note">No characters yet.</p>' : ''}
       <button class="add" data-act="new">+ New character</button>`;
     document.title = client.game.name || 'Cybersea';
   }
@@ -94,17 +96,17 @@ if (!game) {
   client.on(e => {
     if (e.list) {
       refreshNav(client, 'home');
-      const want = ['Ship', ...characters()];
+      const want = characters();
       const fresh = want.filter(n => !client.watched.has(n));
       want.forEach(n => client.watch(n));
       if (fresh.length) client.read().catch(() => {});
     }
   });
   render();
-  for (const n of [...characters(), 'Ship']) client.tab(n).on(render);
-  client.on(e => { if (e.list) { for (const n of characters()) client.tab(n).on(render); render(); } });
+  for (const n of characters()) client.tab(n).on(render);
+  client.on(e => { if (e.list) { listed = true; for (const n of characters()) client.tab(n).on(render); render(); } });
   // Rules is read once per visit (cached by digest); only the crew's tabs are polled.
-  client.watch('Ship', ...characters());
+  client.watch(...characters());
   client.read(['Rules', ...client.watched]).catch(() => render());
   client.startPolling();
 }

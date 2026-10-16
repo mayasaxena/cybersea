@@ -35,12 +35,13 @@ test('with no game, the start page offers to join by invite link', async () => {
   assert.match(p.url(), /[?&]g=/);
 });
 
-test('crew home shows each character and the ship, and makes new characters', async () => {
+test('crew home shows each character (not the ship) and makes new characters', async () => {
   const p = await h.page();
   await join(p, g1);
   await p.waitForSelector('.crewcard h2');
-  const names = await until(async () => { const n = await p.$$eval('.crewcard h2', hs => hs.map(x => x.textContent)); return n.length === 2 && n; });
-  assert.deepEqual(names, ['Testa', 'The Gull']);
+  const names = await until(async () => { const n = await p.$$eval('.crewcard h2', hs => hs.map(x => x.textContent)); return n.length === 1 && n; });
+  assert.deepEqual(names, ['Testa']);
+  assert.equal(await p.$('.crewcard[href*="ship.html"]'), null, 'the ship has its own page');
   await p.click('[data-act="new"]');
   await p.fill('[data-f="name"]', 'Matt');
   await p.fill('[data-f="player"]', 'Jo');
