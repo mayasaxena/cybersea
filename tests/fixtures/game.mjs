@@ -12,6 +12,7 @@ export const rules = [
   R('move', 'basic', 'SWEET TALK', 'When you *sweet talk* someone, roll +POLISH. On a hit, they listen.'),
   R('move', 'basic', 'FLIP A COIN', 'When you *flip a coin*, pay **1-luck** and invent a helpful detail.'),
   R('move', 'special', 'CHEAT DEATH', 'When you *cheat death*, **roll blank**. ^Take -1 per scar.^'),
+  R('move', 'special', 'SCARPER', 'When you *scarper*, spend any number of bonds and roll +bonds spent.'),
   R('move', 'special', 'COUNT THE LOOT', 'When your crew *counts the loot*, one of the crew rolls **1d6**.'),
   R('move', 'ship', 'RAM IT', 'When your crew *rams something*, roll +STEADFAST.'),
   R('move', 'ship', 'CHART A COURSE', 'When your crew *charts a course*, the navigator rolls +SPITFIRE.'),

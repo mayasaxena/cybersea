@@ -337,8 +337,9 @@ app.addEventListener('click', e => {
       const m = lastMoves[i];
       const r = m && rollFor(m.text, st.stats);
       if (!r) break;
-      const { total } = doRoll(r.stat ? `${m.name} · ${r.label}` : m.name, r.mod, r.dice);
-      if (canEdit() && actions.noteRoll(m, total)) changed();
+      doRoll(r.stat || r.ask ? `${m.name} · ${r.label}` : m.name, r.mod, r.dice, ({ total }) => {
+        if (canEdit() && actions.noteRoll(m, total)) changed();
+      }, r);
       break;
     }
     case 'add-pip': setTrack(b.dataset.path, p => { if (p.length < 20) p.push(0); }); changed(); render(); break;
