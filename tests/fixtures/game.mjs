@@ -42,6 +42,7 @@ export const rules = [
   R('oddity', 'Trickster', 'THIRD EYE', 'You can see secrets, at a price.', 'traits=0,-1,0,+2'),
   R('oddity', 'Trickster', 'CARD SHARP', 'You never lose at cards, almost.', 'traits=-2,+1,+1,+1'),
   R('kit', 'Trickster', 'Kit 1', 'Dagger, cloak, tarot deck'),
+  R('kit', 'Trickster', 'Kit 2', 'Bone dice, a lantern (cracked, still works), 6-treasure'),
   R('lastwords', 'Trickster', 'Last Words', 'When you speak your last words, choose one:\n\n- Go out in fire.\n- Make one more deal.'),
   R('question', 'Trickster', '1', 'What does your passenger want?'),
   R('pmove', 'Trickster', 'SUMMON', 'Mark 2 powers. When you summon a power, spend 1-luck and roll +SPITFIRE.\n\n[ ] Shadow cloak.\n[ ] Fire burst.\n[ ] Shape change.', 'start'),

@@ -63,6 +63,9 @@ test('crew home shows each character (not the ship) and makes new characters', a
   assert.equal(row(rows, 'move', 'HEX'), undefined, 'advance moves start unmarked');
   assert.match(row(rows, 'sheet', 'Oddity')[2], /^\*\*CARD SHARP\*\*/);
   assert.match(row(rows, 'notes', 'Last Words')[2], /last words/);
+  assert.equal(row(rows, 'sheet', 'Kit'), undefined, 'the kit is items now');
+  assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Dagger', 'Cloak', 'Tarot deck']);
+  assert.equal(row(rows, 'track', 'Treasure')[2], '○○○○○');
 });
 
 test('playbooks with an extra starting move offer the pick', async () => {
