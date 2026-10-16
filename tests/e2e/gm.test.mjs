@@ -42,6 +42,15 @@ test('the crew view updates live and flags a marked vice', async () => {
   assert.ok(await until(() => p.$('.crewcard .pill.vice')));
 });
 
+test('crew cards show the GM each sheet at a glance: vice, moves, ship cargo', async () => {
+  const p = await openGm();
+  await p.waitForSelector('.crewcard');
+  const testa = await p.textContent('.crewcard:has-text("Testa")');
+  assert.match(testa, /Vice\s*Haunted/);
+  assert.match(testa, /Moves\s*SUMMON, HAGGLE/);
+  assert.match(await p.textContent('.crewcard[href*="ship.html"]'), /Cargo\s*Crate of limes/);
+});
+
 test('NPCs: tag definitions, harm by size, renames carry harm, deletes', async () => {
   const p = await openGm();
   await p.waitForSelector('[data-tab="npcs"]');

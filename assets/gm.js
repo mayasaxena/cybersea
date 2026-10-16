@@ -61,7 +61,7 @@ const pipsHTML = (id, arr) => arr.map((v, j) => `<button class="pip${pipClass(v)
 
 /* ---------- views ---------- */
 function crewHTML() {
-  return `<div class="crew">${characters().map(n => crewCardHTML(client, n, { gm: true })).join('')}${shipCardHTML(client)}</div>`;
+  return `<div class="crew">${characters().map(n => crewCardHTML(client, n, { gm: true })).join('')}${shipCardHTML(client, { gm: true })}</div>`;
 }
 
 // NPC tags link to their definitions in the Rules tab.
