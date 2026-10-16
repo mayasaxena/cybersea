@@ -91,7 +91,7 @@ if (!game) {
         msg.textContent = 'Creating…';
         try {
           const r = await client.request({ op: 'create', tab: name, rows });
-          client.tab(r.tab).receive(r.d, r.rows);
+          client.tab(r.tab).receive(r, r.at);
           if (client.role === 'crew' && !client.me) client.setMe(r.tab); // a player's new character is theirs
           closeModal();
           location.href = href('sheet.html', client.game, { c: r.tab });

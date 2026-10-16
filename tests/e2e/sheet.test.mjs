@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, invite, signIn } from './harness.mjs';
-import { KEYS } from '../fixtures/game.mjs';
+import { KEYS, CODE_V2 } from '../fixtures/game.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
@@ -21,13 +21,14 @@ async function until(fn, ms = 6000) {
 
 let h;
 let api;
-test.before(async () => { h = await harness(); api = h.srv.apis[0]; });
+let v2; // a game whose script predates row versions
+test.before(async () => { h = await harness({ games: 2, gameOptions: [{}, { codePath: CODE_V2 }] }); [api, v2] = h.srv.apis; });
 test.after(async () => { await h.close(); });
 
 // Opens Testa's sheet signed in as Testa (pass as: null to stay signed out).
-async function openSheet(opts, { c = 'Testa', as = 'Testa' } = {}) {
+async function openSheet(opts, { c = 'Testa', as = 'Testa', game = api } = {}) {
   const p = await h.page(opts);
-  await p.goto(`${h.srv.site}/sheet.html?c=${encodeURIComponent(c)}#join=${invite(api.url)}`);
+  await p.goto(`${h.srv.site}/sheet.html?c=${encodeURIComponent(c)}#join=${invite(game.url)}`);
   await p.waitForSelector('h1.name');
   if (as) {
     await signIn(p, as);
@@ -37,6 +38,15 @@ async function openSheet(opts, { c = 'Testa', as = 'Testa' } = {}) {
 }
 const who = p => p.$eval('.gnav .who', b => b.textContent.trim());
 const withRow = (rows, r) => rows.map(x => x.slice(0, 4)).filter(x => !(x[0] === r[0] && x[1] === r[1])).concat([r]);
+// The next `count` answers from the sheet are lost (the script still runs).
+const fail = (count, game = api) => fetch(`${game.base}/__test/fail`, { method: 'POST', body: JSON.stringify({ count }) });
+const track = (p, cls) => p.$$eval(`.${cls} .pip`, ps => ps.map(e => (e.classList.contains('on') ? '●' : e.classList.contains('x') ? '✕' : '○')).join(''));
+const queued = p => p.evaluate(() => Object.keys(localStorage).filter(k => k.includes(':pending:')).some(k => localStorage.getItem(k) !== '{}'));
+// Change one row of a tab in Sheets, where it is.
+async function editRow(game, tab, r) {
+  const rows = (await h.tab(game, tab)).map(x => x.slice(0, 4));
+  await h.setTab(game, tab, rows.map(x => (x[0] === r[0] && x[1] === r[1] ? r : x)));
+}
 
 test('editing needs you signed in as that character', async () => {
   const before = row(await h.tab(api, 'Testa'), 'track', 'Harm')[2];
@@ -167,9 +177,58 @@ test('edits made while the sheet is unreachable survive a reload', async () => {
   assert.equal(await p.$eval('.harm .pip[data-j="0"]', el => (el.classList.contains('on') ? '●' : '○')), want, 'shown from the saved pending edit');
   await fetch(`${api.base}/__test/fail`, { method: 'POST', body: JSON.stringify({ count: 0 }) });
   assert.ok(await until(async () => row(await h.tab(api, 'Testa'), 'track', 'Harm')[2][0] === want, 20000));
-  // The beacon sent while reloading may have saved it already; wait until the page itself has
-  // nothing queued, or its retry could land in a later test.
-  assert.ok(await until(() => p.evaluate(() => Object.keys(localStorage).filter(k => k.includes(':pending:')).every(k => localStorage.getItem(k) === '{}')), 30000));
+});
+
+test('a change sent as the page closed doesn’t undo a newer edit when the page sends it again', async () => {
+  const p = await openSheet();
+  const harm = async () => row(await h.tab(api, 'Testa'), 'track', 'Harm')[2];
+  const before = await harm();
+  await fail(50);
+  await p.click('.harm .pip[data-j="0"]');
+  const mine = await track(p, 'harm');
+  await sleep(300);
+  await p.reload(); // the beacon sent on the way out lands, but nothing tells the page
+  await p.waitForSelector('h1.name');
+  assert.ok(await until(async () => (await harm()) === mine), 'the beacon landed');
+  assert.ok(await queued(p), 'the page still has it queued');
+  // Meanwhile the GM puts Harm back as it was, in Sheets. Then the page gets through.
+  await editRow(api, 'Testa', ['track', 'Harm', before, '']);
+  await fail(0);
+  assert.ok(await until(async () => !(await queued(p)), 30000), 'the page settled its queue');
+  assert.equal(await harm(), before, 'the GM’s edit stands');
+  assert.ok(await until(async () => (await track(p, 'harm')) === before), 'and the page shows it');
+  assert.match(await p.textContent('#toast'), /Not saved: Harm changed on the sheet first/);
+});
+
+test('an edit made on top of one the sheet never answered still saves', async () => {
+  const p = await openSheet();
+  const luck = async () => row(await h.tab(api, 'Testa'), 'track', 'Luck')[2];
+  await fail(3);
+  await p.click('.luck .pip[data-j="7"]');
+  const first = await track(p, 'luck');
+  assert.ok(await until(async () => (await luck()) === first), 'it landed, unanswered');
+  await p.click('.luck .pip[data-j="6"]');
+  const second = await track(p, 'luck');
+  assert.ok(await until(async () => (await luck()) === second && !(await queued(p)), 30000));
+  assert.doesNotMatch(await p.textContent('body'), /Not saved/);
+});
+
+test('a game whose script predates row versions saves edits as before', async () => {
+  const p = await openSheet(undefined, { game: v2 });
+  assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'signin', 'Signed in')?.[2] === 'yes'));
+  await p.click('.harm .pip[data-j="1"]');
+  const mine = await track(p, 'harm');
+  assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'track', 'Harm')[2] === mine));
+  assert.equal((await h.tab(v2, 'Testa'))[0][4], '', 'no Version column');
+  // offline edits survive, and are sent as they are
+  await fail(50, v2);
+  await p.click('.harm .pip[data-j="2"]');
+  const next = await track(p, 'harm');
+  await sleep(300);
+  await p.reload();
+  await p.waitForSelector('h1.name');
+  await fail(0, v2);
+  assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'track', 'Harm')[2] === next && !(await queued(p)), 30000));
 });
 
 test('actions: session, chapter’s end, downtime with a rolled move, level up', async () => {

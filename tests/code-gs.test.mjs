@@ -39,12 +39,33 @@ function setup(opts = {}) {
 
 const crew = (api, body) => api.call({ ...body });
 const gm = (api, body) => api.call({ key: 'gm-pass', ...body });
+const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
+
+// A tab as a page would have it: rows, versions, and when the sheet read them.
+function look(api, name, who = crew) {
+  const r = who(api, { op: 'read', tabs: [name] });
+  const t = r.tabs[name];
+  return { ...t, at: r.at, ver: (kind, n) => { const i = t.rows.findIndex(x => x[0] === kind && x[1] === n); return i < 0 ? '' : t.vers[i]; } };
+}
+
+// What a change is based on, as the site sends it (see when_ in Code.gs).
+let stamps = 0;
+const newStamp = () => `stamp${String(++stamps).padStart(4, '0')}`;
+const on = (base, seen, stamp = newStamp()) => ({ base, seen, stamp });
+
+// Type into a row as someone would in Sheets; Sheets then runs onEdit (unless trigger is false,
+// standing in for a change that bypasses it).
+function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
+  const range = gas.ss.getSheetByName(tab).getRange(rowNum, 1, 1, cells.length);
+  range.setValues([cells]);
+  if (trigger) api.onEdit({ range });
+}
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 2 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 3 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 2 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 3 });
 });
 
 test('explains missing passphrases', () => {
@@ -214,4 +235,233 @@ test('selftest reports every probe surviving the round trip', () => {
   const r = gm(api, { op: 'selftest' });
   assert.equal(r.ok, true, JSON.stringify(r.results?.filter(x => !x.ok)));
   assert.equal(gas.ss.getSheetByName('_selftest'), null);
+});
+
+/* ---------- row versions ---------- */
+
+test('every row has a version, kept in a hidden plain-text column', () => {
+  const { api, gas } = setup();
+  const a = look(api, 'Nexa');
+  assert.equal(a.vers.length, a.rows.length);
+  assert.ok(a.vers.every(v => v.startsWith('~')), 'rows never written by the site go by their contents');
+  assert.equal(crew(api, { op: 'read', tabs: ['Rules'] }).tabs.Rules.vers, undefined);
+  const again = look(api, 'Nexa');
+  assert.deepEqual([again.d, again.vers], [a.d, a.vers]);
+
+  const r = crew(api, { op: 'patch', tab: 'Nexa', set: [['track', 'Harm', '●●○✕✕✕', '', on([a.ver('track', 'Harm')], a.at)]] });
+  assert.deepEqual(r.skipped, []);
+  const b = look(api, 'Nexa');
+  assert.deepEqual(b.rows, r.rows);
+  assert.deepEqual(b.vers, r.vers);
+  assert.match(b.ver('track', 'Harm'), /^stamp\d+$/, 'the row has the change’s stamp');
+  assert.deepEqual(b.vers.filter((v, i) => i !== 2), a.vers.filter((v, i) => i !== 2), 'other rows keep theirs');
+
+  const sh = gas.ss.getSheetByName('Nexa');
+  assert.equal(sh.getRange(1, 5).getDisplayValues()[0][0], 'Version');
+  assert.ok(sh.isColumnHiddenByUser(5));
+  assert.equal(sh.cell(4, 5).fmt, '@');
+  assert.equal(sh.cell(40, 5).fmt, '@', 'the whole column is plain text');
+});
+
+test('a change to a row that changed since is skipped, even if it has changed back', () => {
+  const { api } = setup();
+  const a = look(api, 'Nexa');
+  // someone else changes Harm, then puts it back
+  for (const v of ['●●●✕✕✕', '●○○✕✕✕']) {
+    const b = look(api, 'Nexa');
+    assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [['track', 'Harm', v, '', on([b.ver('track', 'Harm')], b.at)]] }).skipped, []);
+  }
+  const r = crew(api, {
+    op: 'patch', tab: 'Nexa', set: [
+      ['track', 'Harm', '○○○✕✕✕', '', on([a.ver('track', 'Harm')], a.at)],
+      ['stat', 'Spitfire', '+3', '', on([a.ver('stat', 'Spitfire')], a.at)],
+    ],
+  });
+  assert.deepEqual(r.skipped, [['track', 'Harm']]);
+  assert.equal(row(r.rows, 'track', 'Harm')[2], '●○○✕✕✕', 'the answer has the sheet’s row to show instead');
+  assert.equal(row(r.rows, 'stat', 'Spitfire')[2], '+3', 'rows that didn’t change since still save');
+});
+
+test('edits made in Sheets count, with or without onEdit', () => {
+  const { api, gas } = setup();
+  const a = look(api, 'Nexa');
+  const harmTo = (v, base) => crew(api, { op: 'patch', tab: 'Nexa', set: [['track', 'Harm', v, '', on([base], a.at)]] });
+  // typed over and back by hand: onEdit stamps it each time
+  byHand(gas, api, 'Nexa', 4, ['track', 'Harm', '●●●●●●']);
+  byHand(gas, api, 'Nexa', 4, ['track', 'Harm', '●○○✕✕✕']);
+  const b = look(api, 'Nexa');
+  assert.notEqual(b.ver('track', 'Harm'), a.ver('track', 'Harm'));
+  assert.notEqual(b.d, a.d, 'a new version alone is news to readers');
+  assert.deepEqual(harmTo('○○○✕✕✕', a.ver('track', 'Harm')).skipped, [['track', 'Harm']]);
+
+  // changed some way that skips onEdit: the row's hash no longer matches its stamp
+  byHand(gas, api, 'Nexa', 4, ['track', 'Harm', '●●○✕✕✕'], { trigger: false });
+  const c = look(api, 'Nexa');
+  assert.match(c.ver('track', 'Harm'), /^~/);
+  assert.deepEqual(harmTo('○○○✕✕✕', b.ver('track', 'Harm')).skipped, [['track', 'Harm']]);
+  assert.deepEqual(harmTo('○○○✕✕✕', c.ver('track', 'Harm')).skipped, []);
+});
+
+test('onEdit leaves alone what the site doesn’t edit', () => {
+  const { api, gas } = setup();
+  const a = look(api, 'Nexa');
+  for (const [tab, r, c] of [['Rules', 2, 1], ['README', 1, 1], ['_scratch', 1, 1], ['Nexa', 1, 1], ['Nexa', 4, 6]]) {
+    api.onEdit({ range: gas.ss.getSheetByName(tab).getRange(r, c) });
+  }
+  assert.deepEqual(look(api, 'Nexa').vers, a.vers);
+  assert.equal(gas.ss.getSheetByName('Rules').getLastColumn(), 6, 'no Version column on Rules');
+  assert.equal(gas.ss.getSheetByName('README').getLastColumn(), 1);
+});
+
+test('a change sent again after it landed goes through quietly, and so does one made on top of it', () => {
+  const { api, gas } = setup();
+  const a = look(api, 'Nexa');
+  const v0 = a.ver('track', 'Harm');
+  const first = ['track', 'Harm', '●●○✕✕✕', '', on([v0], a.at, 'stamp1001')];
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [first] }).skipped, []);
+  const edits = gas.ss.edits;
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [first] }).skipped, [], 'the page never heard back, so it sends it again');
+  assert.equal(gas.ss.edits, edits, 'nothing to write');
+  // a newer change, made before hearing back: based on the old version, or on what the first left
+  const second = ['track', 'Harm', '●●●✕✕✕', '', on([v0, 'stamp1001'], a.at, 'stamp1002')];
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [second] }).skipped, []);
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [first] }).skipped, [['track', 'Harm']], 'but not the first again');
+  assert.equal(row(look(api, 'Nexa').rows, 'track', 'Harm')[2], '●●●✕✕✕');
+});
+
+test('changes sent without versions (pages from before version 3) go ahead as before', () => {
+  const { api } = setup();
+  const a = look(api, 'Nexa');
+  crew(api, { op: 'patch', tab: 'Nexa', set: [['track', 'Harm', '●●●✕✕✕', '', on([a.ver('track', 'Harm')], a.at)]] });
+  const r = crew(api, { op: 'patch', tab: 'Nexa', ren: [['stat', 'Spitfire', 'Fire']], set: [['track', 'Harm', '○○○✕✕✕', ''], ['stat', 'Fire', '2', '']], del: [['info', 'Name']] });
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(r.rows.map(x => `${x[0]}|${x[1]}|${x[2]}`), ['stat|Fire|2', 'track|Harm|○○○✕✕✕', 'custom|Hand-added|#FORMULA =1+1']);
+  assert.match(look(api, 'Nexa').ver('track', 'Harm'), /^[a-z0-9]+$/, 'stamped all the same');
+});
+
+test('deletes: a stale change neither brings a row back nor deletes a newer one', () => {
+  const { api } = setup();
+  const a = look(api, 'Nexa');
+  const at = (kind, name) => on([a.ver(kind, name)], a.at);
+  let b = look(api, 'Nexa');
+  crew(api, { op: 'patch', tab: 'Nexa', del: [['track', 'Harm', on([b.ver('track', 'Harm')], b.at)]], set: [['stat', 'Spitfire', '+3', '', on([b.ver('stat', 'Spitfire')], b.at)]] });
+  const r = crew(api, { op: 'patch', tab: 'Nexa', set: [['track', 'Harm', '●●●✕✕✕', '', at('track', 'Harm')]], del: [['stat', 'Spitfire', at('stat', 'Spitfire')], ['track', 'Harm', at('track', 'Harm')]] });
+  assert.deepEqual(r.skipped, [['stat', 'Spitfire'], ['track', 'Harm']], 'deleting what’s gone already is no change');
+  assert.equal(row(r.rows, 'track', 'Harm'), undefined);
+  assert.equal(row(r.rows, 'stat', 'Spitfire')[2], '+3');
+  // the page's own delete, unconfirmed, then the row added back: based on either
+  b = look(api, 'Nexa');
+  const del = on([b.ver('stat', 'Spitfire')], b.at);
+  crew(api, { op: 'patch', tab: 'Nexa', del: [['stat', 'Spitfire', del]] });
+  const back = crew(api, { op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+1', '', on([b.ver('stat', 'Spitfire'), del.stamp], b.at)]] });
+  assert.deepEqual(back.skipped, []);
+  assert.equal(row(back.rows, 'stat', 'Spitfire')[2], '+1');
+});
+
+test('a row taken away stays away: a stale change doesn’t bring it back', () => {
+  const { api, gas, tick } = setup();
+  // signing in adds the row; the page doesn't hear back, so it will send it again
+  const a = look(api, 'Nexa');
+  const signIn = ['signin', 'Signed in', 'yes', '', on([a.ver('signin', 'Signed in')], a.at)];
+  assert.equal(signIn[4].base[0], '', 'no such row yet');
+  crew(api, { op: 'patch', tab: 'Nexa', set: [signIn] });
+  // the GM signs Nexa out by clearing the row in Sheets
+  tick(1000);
+  const sh = gas.ss.getSheetByName('Nexa');
+  const at = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues().findIndex(r => r[0] === 'signin') + 2;
+  byHand(gas, api, 'Nexa', at, ['', '', '', '']);
+  tick(1000);
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [signIn] }).skipped, [['signin', 'Signed in']]);
+  assert.equal(row(look(api, 'Nexa').rows, 'signin', 'Signed in'), undefined);
+  // a page that has seen it gone can sign in again
+  tick(1000);
+  const b = look(api, 'Nexa');
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Nexa', set: [['signin', 'Signed in', 'yes', '', on([b.ver('signin', 'Signed in')], b.at)]] }).skipped, []);
+
+  // the same when the row is deleted from the site, or typed over in Sheets
+  const lore = look(api, 'Lore');
+  const rumor = ['rumor', 'The Bell', 'rings', '', on([''], lore.at)];
+  crew(api, { op: 'patch', tab: 'Lore', set: [rumor] });
+  tick(1000);
+  const c = look(api, 'Lore');
+  crew(api, { op: 'patch', tab: 'Lore', del: [['rumor', 'The Bell', on([c.ver('rumor', 'The Bell')], c.at)]] });
+  tick(1000);
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Lore', set: [rumor] }).skipped, [['rumor', 'The Bell']]);
+  const place = ['place', 'The Reef', 'sharp', '', on([''], c.at)];
+  crew(api, { op: 'patch', tab: 'Lore', set: [place] });
+  tick(1000);
+  byHand(gas, api, 'Lore', 3, ['place', 'The Shoal', 'sharp', '']);
+  tick(1000);
+  assert.deepEqual(crew(api, { op: 'patch', tab: 'Lore', set: [place] }).skipped, [['place', 'The Reef']]);
+});
+
+test('renames are checked against the old name, and a skipped one keeps its new name off the sheet', () => {
+  const { api } = setup();
+  const a = look(api, 'Nexa');
+  const renameHarm = w => ({ op: 'patch', tab: 'Nexa', ren: [['track', 'Harm', 'Wounds', w]], set: [['track', 'Wounds', '●○○✕✕✕', '', on([''], a.at)]] });
+  // someone else changed Harm first
+  const b = look(api, 'Nexa');
+  crew(api, { op: 'patch', tab: 'Nexa', set: [['track', 'Harm', '●●○✕✕✕', '', on([b.ver('track', 'Harm')], b.at)]] });
+  const r = crew(api, renameHarm(on([a.ver('track', 'Harm')], a.at)));
+  assert.deepEqual(r.skipped, [['track', 'Harm'], ['track', 'Wounds']]);
+  assert.deepEqual(r.rows.filter(x => x[0] === 'track').map(x => `${x[1]}|${x[2]}`), ['Harm|●●○✕✕✕']);
+
+  // made to the current row: renamed in place; sending it again changes nothing
+  const c = look(api, 'Nexa');
+  const ok = renameHarm(on([c.ver('track', 'Harm')], c.at));
+  ok.set[0][2] = '●●○✕✕✕';
+  assert.deepEqual(crew(api, ok).skipped, []);
+  const again = crew(api, ok);
+  assert.deepEqual(again.skipped, []);
+  assert.deepEqual(again.rows.map(x => x[1]), ['Name', 'Spitfire', 'Wounds', 'Hand-added']);
+  assert.equal(look(api, 'Nexa').ver('track', 'Wounds'), ok.set[0][4].stamp, 'the row carries the set’s stamp');
+});
+
+test('renames of rows the sheet never had, and the old name used again', () => {
+  const { api } = setup();
+  const a = look(api, 'Lore');
+  // added and renamed before reaching the sheet: only the new name arrives
+  const r = crew(api, { op: 'patch', tab: 'Lore', ren: [['note', 'New note', 'Tides', on([''], a.at)]], set: [['note', 'Tides', 'high', '', on([''], a.at)]] });
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(r.rows.map(x => x[1]), ['Hacker’s Haven', 'Tides']);
+  // renamed, then a new row under the old name in the same patch (it's based on the rename)
+  const b = look(api, 'Lore');
+  const ren = on([b.ver('note', 'Tides')], b.at);
+  const both = crew(api, {
+    op: 'patch', tab: 'Lore',
+    ren: [['note', 'Tides', 'Currents', ren]],
+    set: [['note', 'Currents', 'high', '', on([''], b.at)], ['note', 'Tides', 'low', '', on([b.ver('note', 'Tides'), ren.stamp], b.at)]],
+  });
+  assert.deepEqual(both.skipped, []);
+  assert.deepEqual(both.rows.map(x => `${x[1]}|${x[2]}`), ['Hacker’s Haven|A port.', 'Currents|high', 'Tides|low']);
+});
+
+test('the Version column goes after any columns already there', () => {
+  const { api, gas } = setup({ tabs: { Ship: [['Kind', 'Name', 'Value', 'Notes', 'Mine'], ['stat', 'Speed', '1', '', 'keep me']] } });
+  gas.ss.getSheetByName('Ship').maxCols = 5; // a tab trimmed to its columns
+  const a = look(api, 'Ship');
+  crew(api, { op: 'patch', tab: 'Ship', set: [['stat', 'Speed', '2', '', on([a.ver('stat', 'Speed')], a.at)]] });
+  const sh = gas.ss.getSheetByName('Ship');
+  assert.deepEqual(sh.getRange(1, 1, 2, 6).getDisplayValues().map(r => r.join('|')), ['Kind|Name|Value|Notes|Mine|Version', 'stat|Speed|2||keep me|' + sh.getRange(2, 6).getDisplayValues()[0][0]]);
+  assert.match(look(api, 'Ship').ver('stat', 'Speed'), /^stamp/);
+});
+
+test('create stamps the new tab’s rows; reads and patches say when they read the sheet', () => {
+  const { api, tick } = setup();
+  const r = crew(api, { op: 'create', tab: 'Matt', rows: [['info', 'Name', 'Matt', '']] });
+  assert.equal(r.vers.length, 1);
+  assert.match(r.vers[0], /^[a-z0-9]+$/);
+  tick(5);
+  assert.equal(look(api, 'Matt').at, r.at + 5);
+  assert.deepEqual(look(api, 'Matt').vers, r.vers);
+});
+
+test('removed rows are remembered within a property’s size', () => {
+  const { api, gas } = setup();
+  const notes = Array.from({ length: 200 }, (_, i) => ['note', `A fairly long note title, number ${i}`, 'x', '']);
+  crew(api, { op: 'patch', tab: 'Lore', set: notes });
+  crew(api, { op: 'patch', tab: 'Lore', del: notes.map(n => [n[0], n[1], on(null, 0)]) });
+  const gone = gas.docProps['gone:lore'];
+  assert.equal(Object.keys(JSON.parse(gone)).length, 150);
+  assert.ok(gone.length < 9000, `${gone.length} characters`); // Apps Script allows 9 kB per property
 });

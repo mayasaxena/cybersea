@@ -113,8 +113,12 @@ export function gameTabs({ withCharacter = true } = {}) {
 // Crew need no passphrase unless CREW_KEY is set; the fixture game leaves it unset.
 export const KEYS = { GM_KEY: 'gm-pass' };
 
+// Code.gs as it was at version 2 (before row versions), as a deployment that hasn't been updated
+// still runs it.
+export const CODE_V2 = new URL('./code-v2.gs', import.meta.url);
+
 // Code.gs as deployed before version 2: every request needed a passphrase, and a missing one was
-// answered "Wrong passphrase."
+// answered "Wrong passphrase." Apply it to CODE_V2.
 export function asOldScript(src) {
   const swap = (s, a, b) => { if (!s.includes(a)) throw new Error(`asOldScript: no ${a}`); return s.replace(a, b); };
   src = swap(src, 'const API_VERSION = 2;', 'const API_VERSION = 1;');

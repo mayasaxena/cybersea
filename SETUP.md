@@ -78,6 +78,13 @@ You can edit any tab in Google Sheets as well; the site picks up changes within 
 seconds. The README tab explains the columns and symbols. Keep **Kind + Name** unique on each
 tab: that pair is how the site finds a row.
 
+The tabs the site edits also get a hidden **Version** column, which the script keeps up to date,
+for edits made in Google Sheets too. If a page sends an edit made to an out-of-date copy of a
+row (a player who was offline, say), the sheet keeps the newer row and the player is told their
+edit wasn't saved. Leave that column alone. The one change the script can't notice is a whole
+row being deleted, so a page that missed it could add the row back: to remove a row, clear its
+cells instead.
+
 ## Updating the script later
 
 When [`apps-script/Code.gs`](apps-script/Code.gs) changes in this repository:
@@ -87,6 +94,9 @@ When [`apps-script/Code.gs`](apps-script/Code.gs) changes in this repository:
 
 Editing the deployment keeps the same URL. Creating a *new* deployment gives a new URL, and
 everyone would need a new invite link.
+
+The site keeps working with an older script, without what came later; `diag.html` says when
+there's a newer one.
 
 Whoever owns the template should paste the new `Code.gs` into the template's script too, so new
 games start with the current version.

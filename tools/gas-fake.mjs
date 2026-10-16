@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
 const MAX_ROWS = 1000;
+const MAX_COLUMNS = 26; // a new sheet's size; insertColumnsAfter adds more
 
 class Cell {
   constructor() { this.v = ''; this.formula = null; this.fmt = null; }
@@ -46,6 +47,13 @@ class Range {
     }
     return out;
   }
+  getSheet() { return this.sheet; }
+  getRow() { return this.row; }
+  getColumn() { return this.col; }
+  getNumRows() { return this.nr; }
+  getNumColumns() { return this.nc; }
+  getLastRow() { return this.row + this.nr - 1; }
+  getLastColumn() { return this.col + this.nc - 1; }
   getDisplayValues() { return this.cells(c => c.display()); }
   getValues() { return this.cells(c => (c.formula ? '' : c.v)); }
   setValues(values) {
@@ -66,9 +74,10 @@ class Range {
 }
 
 class Sheet {
-  constructor(ss, name) { this.ss = ss; this.name = name; this.grid = []; this.frozen = 0; }
+  constructor(ss, name) { this.ss = ss; this.name = name; this.grid = []; this.frozen = 0; this.maxCols = MAX_COLUMNS; this.hidden = new Set(); }
   cell(r, c) {
     if (r > MAX_ROWS) throw new Error('Those rows are out of bounds.');
+    if (c > this.maxCols) throw new Error('Those columns are out of bounds.');
     while (this.grid.length < r) this.grid.push([]);
     const row = this.grid[r - 1];
     while (row.length < c) row.push(new Cell());
@@ -76,13 +85,23 @@ class Sheet {
   }
   getName() { return this.name; }
   getMaxRows() { return MAX_ROWS; }
+  getMaxColumns() { return this.maxCols; }
   getLastRow() {
     for (let r = this.grid.length; r >= 1; r--) {
       if (this.grid[r - 1].some(c => c.formula || c.v !== '')) return r;
     }
     return 0;
   }
+  getLastColumn() {
+    let last = 0;
+    for (const row of this.grid) row.forEach((c, i) => { if (c.formula || c.v !== '') last = Math.max(last, i + 1); });
+    return last;
+  }
   getRange(row, col, nr = 1, nc = 1) { return new Range(this, row, col, nr, nc); }
+  getDataRange() { return this.getRange(1, 1, Math.max(this.getLastRow(), 1), Math.max(this.getLastColumn(), 1)); }
+  insertColumnsAfter(c, n) { if (c !== this.maxCols) throw new Error('fake: only appends columns'); this.maxCols += n; return this; }
+  hideColumns(c, n = 1) { for (let i = 0; i < n; i++) this.hidden.add(c + i); return this; }
+  isColumnHiddenByUser(c) { return this.hidden.has(c); }
   insertRowAfter(r) { this.cell(r, 1); this.grid.splice(r, 0, []); this.ss.edits++; return this; }
   deleteRow(r) { if (r <= this.grid.length) this.grid.splice(r - 1, 1); this.ss.edits++; return this; }
   setFrozenRows(n) { this.frozen = n; return this; }
@@ -111,21 +130,26 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
   for (const [tab, rows] of Object.entries(tabs)) seedTab(ss, tab, rows, asText);
 
   const store = { ...props };
+  const docStore = {};
   const cache = new Map();
+  const propsOf = s => ({
+    getProperty: k => (k in s ? s[k] : null),
+    setProperty: (k, v) => { s[k] = String(v); },
+    getProperties: () => ({ ...s }),
+  });
   let locked = false;
 
   return {
     ss,
+    now,
+    docProps: docStore,
     setProps(p) { Object.assign(store, p); },
     clearCache() { cache.clear(); },
     services: {
       SpreadsheetApp: { getActiveSpreadsheet: () => ss },
       PropertiesService: {
-        getScriptProperties: () => ({
-          getProperty: k => (k in store ? store[k] : null),
-          setProperty: (k, v) => { store[k] = String(v); },
-          getProperties: () => ({ ...store }),
-        }),
+        getScriptProperties: () => propsOf(store),
+        getDocumentProperties: () => propsOf(docStore),
       },
       CacheService: {
         getScriptCache: () => ({
@@ -166,15 +190,25 @@ export function seedTab(ss, tab, rows, asText = false) {
   return sh;
 }
 
-// Run apps-script/Code.gs against a fake. Returns {doGet, doPost, call(body) -> parsed JSON}.
+// Date for the script, telling the fake's time.
+function clock(now) {
+  return class extends Date {
+    constructor(...a) { if (a.length) super(...a); else super(now()); }
+    static now() { return now(); }
+  };
+}
+
+// Run apps-script/Code.gs against a fake. Returns {doGet, doPost, call(body) -> parsed JSON,
+// onEdit(e)} (onEdit as Sheets runs it after an edit by hand; a no-op for scripts without one).
 // `transform` edits the source first (tests use it to stand in for an older deployment).
 export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.meta.url), transform = s => s) {
-  const ctx = vm.createContext({ ...gas.services, console });
+  const ctx = vm.createContext({ ...gas.services, console, Date: clock(gas.now) });
   vm.runInContext(transform(readFileSync(path, 'utf8')), ctx, { filename: 'Code.gs' });
   const parse = out => JSON.parse(out.getContent());
   return {
     doGet: e => parse(ctx.doGet(e)),
     doPostRaw: contents => parse(ctx.doPost({ postData: { contents, type: 'text/plain' } })),
     call: body => parse(ctx.doPost({ postData: { contents: JSON.stringify(body), type: 'text/plain' } })),
+    onEdit: e => { if (typeof ctx.onEdit === 'function') ctx.onEdit(e); },
   };
 }

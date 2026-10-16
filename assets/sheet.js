@@ -240,7 +240,7 @@ async function createShip() {
   msg.textContent = 'Creating…';
   try {
     const r = await client.request({ op: 'create', tab: 'Ship', rows });
-    store.receive(r.d, r.rows);
+    store.receive(r, r.at);
   } catch (e) { msg.textContent = e.message; }
 }
 

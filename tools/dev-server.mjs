@@ -11,15 +11,15 @@
 //   GAMES=2 LATENCY=300-1500 node tools/dev-server.mjs
 //   RULES_JSON=/path/rules.json node tools/dev-server.mjs   preview with real rules (local only)
 //
-// Test hooks on each API port: POST /__test/set {tab, rows} (replace a tab as if edited by hand;
-// rows: null deletes it),
-// GET /__test/tab?name=X (dump display values), POST /__test/fail {count} (next N echoes 500).
+// Test hooks on each API port: POST /__test/set {tab, rows} (edit a tab by hand to hold these
+// rows; rows: null deletes it), GET /__test/tab?name=X (dump display values),
+// POST /__test/fail {count} (next N echoes 500: the script runs, but its answer is lost).
 
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGas, loadCodeGs, seedTab } from './gas-fake.mjs';
+import { createGas, loadCodeGs } from './gas-fake.mjs';
 import { gameTabs, KEYS, RULES_HEADER } from '../tests/fixtures/game.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -34,13 +34,36 @@ function parseLatency(spec) {
   return () => a + Math.random() * (b - a);
 }
 
-export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codeTransform } = {}) {
+// codePath and codeTransform stand in for an older deployment of Code.gs.
+export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codePath, codeTransform } = {}) {
   if (rulesJson) {
     const recs = JSON.parse(readFileSync(rulesJson, 'utf8'));
     tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew'])] };
   }
   const gas = createGas({ name, tabs, props: keys, asText: true });
-  return { gas, api: loadCodeGs(gas, undefined, codeTransform) };
+  return { gas, api: loadCodeGs(gas, codePath, codeTransform) };
+}
+
+// Edit a tab in Sheets until it holds `rows` (row 1 is the header): type over the cells that
+// differ (into plain-text cells, like the template's), then let the script's onEdit run for
+// each edited row, as Sheets does. Columns past the rows' width (the Version column) are left
+// alone. rows: null deletes the tab.
+function editByHand(game, tab, rows) {
+  const ss = game.gas.ss;
+  const old = ss.getSheets().find(s => s.getName().toLowerCase() === tab.toLowerCase());
+  if (!rows) { if (old) ss.deleteSheet(old); return; }
+  const sh = old || ss.insertSheet(tab);
+  const width = Math.max(1, ...rows.map(r => r.length));
+  const edited = [];
+  for (let i = 0; i < Math.max(rows.length, sh.getLastRow()); i++) {
+    const want = Array.from({ length: width }, (_, c) => String(rows[i]?.[c] ?? ''));
+    const range = sh.getRange(i + 1, 1, 1, width);
+    if (range.getDisplayValues()[0].join('\u0001') === want.join('\u0001')) continue;
+    range.setNumberFormat('@');
+    range.setValues([want]);
+    edited.push(range);
+  }
+  for (const range of edited) game.api.onEdit({ range, source: ss });
 }
 
 function siteHandler(req, res) {
@@ -99,10 +122,7 @@ function apiHandler(game, latency) {
     if (url.pathname === '/__test/set' && req.method === 'POST') {
       body().then(text => {
         const { tab, rows } = JSON.parse(text);
-        const ss = game.gas.ss;
-        const old = ss.getSheets().find(s => s.getName().toLowerCase() === tab.toLowerCase());
-        if (old) ss.deleteSheet(old);
-        if (rows) seedTab(ss, tab, rows, true);
+        editByHand(game, tab, rows);
         json(200, { ok: true });
       });
       return;
