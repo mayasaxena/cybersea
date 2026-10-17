@@ -24,7 +24,7 @@
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 10; // the site turns away a script older than the one it needs (assets/api.js)
+const API_VERSION = 11; // the site turns away a script older than the one it needs (assets/api.js)
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // The game's mechanics (stats, tracks, starting cards, options): read by everyone, edited only in Sheets.
@@ -880,8 +880,9 @@ function addImage_(ss, img) {
 }
 
 /*
- * picture {tab, image}: a character's picture (or the ship's), the Image cell of its tab's
- * info|Name row; the tab gets an Image column if it has none. Anyone who may edit the tab may set it.
+ * picture {tab, image, row}: a character's picture (or the ship's), the Image cell of its tab's
+ * info|Name row, or with row ['crew', name] a crew member's on the Ship tab; the tab gets an Image
+ * column if it has none. Anyone who may edit the tab may set it.
  *   image: '' clears it; {name} names a row of the Images tab; {name, type, data (base64)} adds the
  *     picture to the Images tab under that name (see addImage_) and names that row.
  */
@@ -892,9 +893,12 @@ function picture_(role, req) {
   const kind = tabKind_(sh.getName());
   if (kind !== 'character' && kind !== 'ship') return { ok: false, error: 'Only a character’s tab or the Ship tab has a picture.' };
   if (!canWrite_(role, kind)) return forbidden_();
+  const row = Array.isArray(req.row) ? req.row.map(String) : ['info', 'Name'];
+  if (key_(row[0], row[1]) !== key_('info', 'Name') && !(kind === 'ship' && key_(row[0], '') === key_('crew', '')))
+    return { ok: false, error: 'Only a sheet’s name row or a crew member has a picture.' };
   const grid = sh.getDataRange().getDisplayValues();
-  const n = grid.findIndex((line, i) => i > 0 && key_(line[0], line[1]) === key_('info', 'Name'));
-  if (n < 0) return { ok: false, code: 'missing', error: 'Give the sheet a name first.' };
+  const n = grid.findIndex((line, i) => i > 0 && key_(line[0], line[1]) === key_(row[0], row[1]));
+  if (n < 0) return { ok: false, code: 'missing', error: row[0] === 'info' ? 'Give the sheet a name first.' : 'No crew member called "' + row[1] + '" yet.' };
   let image;
   if (req.image === '' || req.image == null) image = '';
   else if (req.image.data) {
@@ -1088,7 +1092,7 @@ function imageColIn_(header) {
 const RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'oddity', 'kit', 'lastwords', 'question',
   'pmove', 'smove', 'pnote', 'renown', 'rule', 'special', 'tag', 'trouble', 'table', 'fate', 'world', 'faction'];
 const SYSTEM_KINDS = ['stat', 'track', 'section', 'choice'];
-const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'kit', 'item', 'cargo', 'move', 'special', 'advance', 'log', 'state', 'signin'];
+const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'kit', 'item', 'cargo', 'crew', 'move', 'special', 'advance', 'log', 'state', 'signin'];
 const GUARD_NOTE = 'Cybersea: ';
 
 function setUpChecks() {
@@ -1121,9 +1125,10 @@ function guard_(sh) {
     const value = SpreadsheetApp.newDataValidation()
       .requireFormulaSatisfied('=IF($A2="stat",REGEXMATCH(TO_TEXT(C2),"^\\s*[+\\-−–]?\\d+\\s*$"),' +
         'IF($A2="track",REGEXMATCH(TO_TEXT(C2),"^[○●✕xXoO01×*•.\\-_\\s]*$"),' +
-        'IF($A2="bond",REGEXMATCH(TO_TEXT(C2),"^[·●○oO01*•.\\-\\s]*$"),TRUE)))')
+        'IF($A2="crew",REGEXMATCH(TO_TEXT(C2),"^[○●✕xXoO01×*•.\\-_\\s]*$"),' +
+        'IF($A2="bond",REGEXMATCH(TO_TEXT(C2),"^[·●○oO01*•.\\-\\s]*$"),TRUE))))')
       .setAllowInvalid(false)
-      .setHelpText('A stat is a number like +1 or -2. Tracks: ● marked, ○ open, ✕ crossed out. Bonds: ● marked, ○ used, · not marked.')
+      .setHelpText('A stat is a number like +1 or -2. Tracks (and a crew member’s harm): ● marked, ○ open, ✕ crossed out. Bonds: ● marked, ○ used, · not marked.')
       .build();
     sh.getRange(2, 3, rows, 1).setDataValidation(value);
   }

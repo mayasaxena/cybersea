@@ -173,10 +173,11 @@ sheet in edit mode (the **+ Picture** box by the name); it's scaled down, added 
 under the character's name, and named in the **Image** cell of the tab's `info | Name` row. The
 site adds that **Image** column (after Notes) the first time. To set one in the spreadsheet, give
 the tab an **Image** column and put a picture, an `=IMAGE("https://…")` formula or an Images
-tab name in the `info | Name` row.
+tab name in the `info | Name` row. A crew member's picture (on the ship's crew tab) is the
+**Image** cell of their `crew` row on the Ship tab, set the same way.
 
 The Map tab and pictures need script version 5; the Images tab and editing the map on the site,
-version 8; character pictures, version 10.
+version 8; character pictures, version 10; crew members' pictures, version 11.
 Deploying it asks you to authorize again, for "connect to an external service": that's how the
 script reads a picture out of its cell.
 
@@ -255,12 +256,13 @@ it's edited only in the spreadsheet.
   `luck`, `vice`, `xp`, `treasure`, `hoard`), `size=` (pips: `6`, `Steadfast+3`, `level+6`; a
   playbook's `harm=8` overrides it), `start=` (marks it starts with, e.g. `Spitfire`), `refill=`
   (Session Begins marks it back up to this).
-- `section`: a card new sheets start with. Meta: `role=`, `tab=` (sheet, notes or kit),
+- `section`: a card new sheets start with. Meta: `role=`, `tab=` (sheet, notes, kit or crew),
   `fill=` (vices, oddity, kit, specials, questions, lastwords: copied from the playbook). Its Text
   is the card's starting note; `{Fortune+5}` in it is worked out. The `role=kit` and `role=cargo`
   cards list the sheet's `item` and `cargo` rows (`item | Name | how many | Notes`;
   leave how many blank for things that aren't counted); a new sheet's kit becomes `item` rows. The bonds section's `size=` is
-  the pips per bond and `full=xp:1` what filling one gives.
+  the pips per bond and `full=xp:1` what filling one gives. The `role=crew` card is the ship
+  page's crew tab (see [The ship's crew](#the-ships-crew)).
 - `choice`: an option. Group `chapter-end` (`pick` for the two picks; `gain=xp:1`, `heal=harm:2`,
   `refresh=bonds`), `begin-downtime` (`slots=2`), `npc` (NPC sizes: `size=` harm), `clock` (`size=`).
 
@@ -274,6 +276,36 @@ Rules rows say what they do in their own Meta, instead of the site reading their
   `leave-downtime` or `level-up`, with `label="Session Begins"`, on the procedure (and downtime
   move) rows whose text the action shows. Chapter's End takes `picks=2`.
 - House rules: `floor=luck:1`. The trait advance: `cap=3` (traits stop at +3).
+
+### The ship's crew
+
+The Ship tab's `crew` rows are its crew members, one row each, and the ship page shows a
+little sheet for each on its crew tab:
+
+| Kind | Name | Value | Notes |
+|---|---|---|---|
+| crew | Bo Brine | ○○ | Type: Deckhand<br>Serves: Testa<br>Tags: 1-harm, good at knots, jumpy<br><br>Found asleep in the hold. |
+
+- **Value**: their harm pips.
+- **Notes**: `Type:` (a kind of crew member), `Serves:` (the tab name of the character whose
+  they are), `Tags:` (comma-separated), each line left out when blank; anything after a blank
+  line is notes.
+
+The crew section's System row says the rest, e.g.
+`section | ship | Crew | ({Fortune+5} crew space) | role=crew tab=crew type=npc table=Hands serves="Hand of"`:
+
+- `type=`: the playbook type crew members are: its `track` rows (`role=harm`) and its `tag` rows
+  (the Rules tab's `tag | npc | …`), which explain each tag on the sheet. "Good at [something]"
+  explains "good at knots"; "Armor-x" explains "armor-2".
+- `table=`: the Rules `table` group whose rows are the kinds of crew member, each with `tags=` and
+  its track sizes (`harm=2`). Its Text lists sample members, "Name, what they look like; …": a
+  new crew member of that kind takes the first name not on the crew yet.
+- `serves=`: what to call whose they are ("Hand of Testa").
+
+A character's bond links to who it names: a character (by tab name or full name), the ship ("Ship"
+or its name) or a crew member ("Bo" finds Bo Brine when no one else is called Bo). To link
+it to someone else, put their name in the bond row's Notes (`-` links it to no one), or pick them
+in edit mode. A crew member's sheet shows the bonds the characters have with them.
 
 `tools/xlsx/mechanics.py` adds a game's System tab and Rules Meta to a workbook. The System tab
 needs script version 6.

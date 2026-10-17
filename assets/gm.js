@@ -9,6 +9,7 @@ import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
 import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
+import { tagDef, splitTags } from './crew.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
 const app = document.getElementById('app');
@@ -62,9 +63,8 @@ function crewHTML() {
 
 // NPC tags link to their definitions in the Rules tab.
 function tagChips(tags) {
-  return tags.split(',').map(t => t.trim()).filter(Boolean).map(t => {
-    const base = t.replace(/[-\s]?\d+$/, '').toLowerCase();
-    const def = R.recs.find(r => r.kind === 'tag' && r.name.toLowerCase().replace(/[-\s]?x$/, '') === base);
+  return splitTags(tags).map(t => {
+    const def = tagDef(R, t);
     return `<span class="tagchip"${def ? ` title="${esc(def.text)}"` : ''}>${escTxt(t)}</span>`;
   }).join('');
 }

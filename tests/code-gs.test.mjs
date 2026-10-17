@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 10 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 11 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 10 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 11 });
 });
 
 test('explains missing passphrases', () => {
@@ -665,11 +665,13 @@ test('setUpChecks guards the rules and the sheets against accidental edits, once
   // The formula's patterns, as Sheets (RE2) would read them.
   const res = [...value.formula.matchAll(/\$A2="(\w+)",REGEXMATCH\(TO_TEXT\(C2\),"([^"]+)"\)/g)].map(m => [m[1], new RegExp(m[2])]);
   const ok = (kind, v) => res.find(r => r[0] === kind)[1].test(v);
-  assert.deepEqual(res.map(r => r[0]), ['stat', 'track', 'bond']);
+  assert.deepEqual(res.map(r => r[0]), ['stat', 'track', 'crew', 'bond']);
   for (const v of ['+2', '-1', '0', '−1', ' 3 ']) assert.ok(ok('stat', v), v);
   for (const v of ['two', '+', '1.5']) assert.ok(!ok('stat', v), v);
   for (const v of ['●○✕', '', 'xxo1', '● ○']) assert.ok(ok('track', v), v);
   for (const v of ['3', 'harm', '●a']) assert.ok(!ok('track', v), v);
+  for (const v of ['●○', '']) assert.ok(ok('crew', v), v);
+  assert.ok(!ok('crew', 'loyal'));
   for (const v of ['●○·', 'oo*']) assert.ok(ok('bond', v), v);
   assert.ok(!ok('bond', '✕'));
   const kinds = sheet('Nexa').validations.find(v => v.col === 1).rule;
@@ -895,6 +897,18 @@ test('picture: a character uploads a picture; it goes to the Images tab and thei
   assert.equal(crew(api, { op: 'picture', tab: 'Lore', image: '' }).ok, false, 'only characters and the ship');
   assert.equal(crew(api, { op: 'picture', tab: 'Nope', image: '' }).code, 'missing');
   assert.equal(crew(api, { op: 'picture', tab: 'Nexa', image: { name: 'x', type: 'text/html', data: 'aGk=' } }).ok, false);
+});
+
+test('picture: a crew member on the Ship tab has one too, on their crew row', () => {
+  const { api } = imagesGame();
+  gm(api, { op: 'create', tab: 'Ship', rows: [['info', 'Name', 'The Boat', ''], ['crew', 'Bo Brine', '○○', 'Type: Deckhand']] });
+  gm(api, { op: 'create', tab: 'Nexa', rows: [['info', 'Name', 'Nexa', ''], ['crew', 'Bo Brine', '', '']] });
+  const r = crew(api, { op: 'picture', tab: 'Ship', row: ['crew', 'bo brine'], image: { name: 'cat' } });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.imgs, ['', 'images:5'], 'beside the crew row, not the Name row');
+  assert.equal(crew(api, { op: 'picture', tab: 'Ship', row: ['crew', 'Nobody'], image: '' }).code, 'missing');
+  assert.equal(crew(api, { op: 'picture', tab: 'Ship', row: ['stat', 'Speed'], image: '' }).ok, false, 'only a crew row or the Name row');
+  assert.equal(crew(api, { op: 'picture', tab: 'Nexa', row: ['crew', 'Bo Brine'], image: '' }).ok, false, 'crew live on the Ship tab');
 });
 
 test('picture: a tab with no Name row has nowhere to put one, and the GM tab is the GM\'s', () => {
