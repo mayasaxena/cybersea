@@ -423,12 +423,18 @@ export function openFeedback(client) {
 // Common page start: theme, nav, and (if there's a game) a client that's ready to read.
 export function pageShell(root, client, page) {
   applyTheme();
-  root.insertAdjacentHTML('afterbegin', navHTML(client, page));
+  navNow = navHTML(client, page);
+  root.insertAdjacentHTML('afterbegin', navNow);
   if (client && !document.querySelector('.fb')) { document.body.insertAdjacentHTML('beforeend', feedbackButton()); document.body.classList.add('has-fb'); }
   wireNav(document.body, client);
 }
 
+// Replaced only when it would change, so focus and hover on it survive.
+let navNow = '';
 export function refreshNav(client, page) {
   const old = document.querySelector('.gnav');
-  if (old) old.outerHTML = navHTML(client, page);
+  const html = navHTML(client, page);
+  if (!old || (html === navNow && old.isConnected)) return;
+  navNow = html;
+  old.outerHTML = html;
 }

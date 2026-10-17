@@ -237,6 +237,21 @@ test('map page: pictures are kept between visits, not fetched through the script
   assert.deepEqual(asks, []);
 });
 
+test('polls that change nothing leave the page alone: focus in the search box and the nav stays', async () => {
+  const p = await h.page();
+  await join(p, g1, 'map.html');
+  await p.waitForSelector('.loc h2');
+  await p.click('#q');
+  await p.keyboard.type('reef');
+  await sleep(1500); // several polls
+  assert.equal(await p.evaluate(() => document.activeElement?.id), 'q');
+  assert.equal(await p.inputValue('#q'), 'reef');
+  await p.focus('.gnav .glinks a');
+  const link = await p.evaluate(() => document.activeElement.textContent);
+  await sleep(1500);
+  assert.equal(await p.evaluate(() => document.activeElement.closest('.gnav') && document.activeElement.textContent), link);
+});
+
 test('lore page: a picture placed in the Lore tab\'s Image cell shows with its entry', async () => {
   const p = await h.page();
   await join(p, g1, 'lore.html');
