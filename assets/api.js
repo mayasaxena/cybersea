@@ -297,6 +297,16 @@ export class GameClient extends Emitter {
     if (s.change(s.rows.filter(isSigninRow), [signinRow(on)])) s.schedule(100); // let the crew see it soon
   }
 
+  // The GM plays no character: once the sheet confirms the GM passphrase, the character this
+  // device was signed in as is signed out (on the sheet too, so the crew sees it's free).
+  dropMeForGm() {
+    const as = this.game.as;
+    if (this.role !== 'gm' || !as) return;
+    this.markSignedIn(as, false);
+    this.game = upsertGame({ ...this.game, as: null });
+    this.emit({ me: true });
+  }
+
   // The sheet has the last word on who's signed in: if this device's character was signed out
   // there (from another device, or by clearing the cell), this device is signed out too. Only a
   // read that started after our own sign-in reached the sheet can say so.
@@ -330,6 +340,12 @@ export class GameClient extends Emitter {
     this.emit({ key: true });
   }
 
+  // Play a character instead of being the GM: sign out of GM, then in as them.
+  playAs(name) {
+    if (this.role === 'gm') this.signOutGm();
+    this.setMe(name);
+  }
+
   // Back to crew. Crew need no passphrase, so show that straight away; the caller's next read
   // confirms it, or asks for a passphrase if this game set one for the crew.
   signOutGm() {
@@ -351,13 +367,19 @@ export class GameClient extends Emitter {
     for (const n of names) { const s = this.tab(n); if (s.server.d) have[s.name] = s.server.d; }
     this.reading = true;
     const startedAt = Date.now();
+    const key = this.game.key || '';
+    // Signed in or out of GM while this read was on its way: its answer is for whoever this
+    // device was before, so read again as whoever it is now.
+    const stale = () => (this.game.key || '') !== key;
     try {
       const r = await this.request({ op: 'read', tabs: names, have });
+      if (stale()) { this.reading = false; return this.read(names); }
       this.role = r.role;
       this.list = r.list;
       this.crewKey = r.crewKey || null;
       this.game = upsertGame({ ...this.game, name: r.game || this.game.name, role: r.role });
       ls.set(gkey(this.game, 'list'), r.list);
+      this.dropMeForGm();
       const got = Object.keys(r.tabs).map(k => k.toLowerCase());
       for (const [name, t] of Object.entries(r.tabs)) {
         const s = this.tab(name);
@@ -370,6 +392,7 @@ export class GameClient extends Emitter {
       this.emit({ list: true });
       return r;
     } catch (e) {
+      if (stale()) { this.reading = false; return this.read(names); }
       if (e.code === 'auth' && !this.game.key) e.message = (await outdatedScript(this.game.api)) || e.message;
       this.setStatus('err', e.message);
       if (e.code === 'auth') { this.locked = true; this.emit({ auth: true }); }

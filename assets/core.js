@@ -244,7 +244,8 @@ export function pickerHTML(client, { looking = false } = {}) {
 
 export function pick(client, el) {
   const n = el.dataset.me;
-  client.setMe(n && n === client.me ? '' : n);
+  if (client.role === 'gm') client.playAs(n);
+  else client.setMe(n && n === client.me ? '' : n);
 }
 
 // Shown instead of edit controls when this device can't edit a tab.
@@ -266,7 +267,8 @@ export function openWho(client, { fresh = false } = {}) {
   } else if (client.role === 'gm') {
     title = 'Signed in as the GM';
     body = `<p>You used the GM passphrase, so you can see and change everything, including the GM page.</p>
-      <div class="prow"><a class="pbtn primary" href="${esc(href('gm.html', g))}">GM page</a><span class="grow"></span><button class="pbtn" data-w="gm-out">Sign out of GM</button></div>`;
+      <div class="prow"><a class="pbtn primary" href="${esc(href('gm.html', g))}">GM page</a><span class="grow"></span><button class="pbtn" data-w="gm-out">Sign out of GM</button></div>
+      ${characterNames(client).length ? `<p class="note">Playing a character instead signs you out of GM.</p>${pickerHTML(client)}` : ''}`;
   } else {
     title = me ? `Signed in as ${me}` : 'Sign in as your character';
     body = `<p>Click your character to sign in, and again to sign out. The crew sees who’s signed in. Anyone can still open any sheet.</p>
@@ -277,7 +279,12 @@ export function openWho(client, { fresh = false } = {}) {
     <div class="note">${escTxt(g.name || 'Game')}</div>${body}`, { label: 'Who you are' });
   o.addEventListener('click', e => {
     const p = e.target.closest('[data-me]');
-    if (p) { pick(client, p); openWho(client, { fresh: true }); }
+    if (p) {
+      const wasGm = client.role === 'gm';
+      pick(client, p);
+      if (wasGm && /gm\.html$/.test(location.pathname)) { location.href = href('index.html', g); return; } // only the GM sees that page
+      openWho(client, { fresh: !wasGm }); // from GM, read to fill in who's signed in
+    }
     if (e.target.closest('[data-w="key"]')) askKey(client, client.role === 'crew' ? 'Enter the GM passphrase.' : '');
     if (e.target.closest('[data-w="gm-out"]')) {
       client.signOutGm();
@@ -286,7 +293,7 @@ export function openWho(client, { fresh = false } = {}) {
     }
   });
   // Who's signed in lives on each character's tab: fetch them all (unchanged ones cost little).
-  if (!fresh && client.role === 'crew') {
+  if (!fresh && client.role && !client.locked) {
     client.read([...new Set([...client.watched, ...characterNames(client)])])
       .then(() => { if (document.querySelector('[role="dialog"][aria-label="Who you are"]')) openWho(client, { fresh: true }); })
       .catch(() => {});
