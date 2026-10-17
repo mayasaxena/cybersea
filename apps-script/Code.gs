@@ -13,7 +13,7 @@
  * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis, plus optional Override name|Override text|Override
  * meta columns, found by their headers), System (the game's mechanics), GM, Lore, Ship, Map (the world: see mapRows_),
  * Images (pictures by name: see namedImages_), and one
- * tab per character (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
+ * tab per character (Kind|Name|Value|Notes, plus an optional Image column: see picture_). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
  *
@@ -24,7 +24,7 @@
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 9; // the site turns away a script older than the one it needs (assets/api.js)
+const API_VERSION = 10; // the site turns away a script older than the one it needs (assets/api.js)
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // The game's mechanics (stats, tracks, starting cards, options): read by everyone, edited only in Sheets.
@@ -43,9 +43,12 @@ const KNOWN_KEY_SECONDS = 6 * 60 * 60; // a passphrase that worked skips the wro
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // The Map tab's columns, found by their headers (see mapRows_).
 const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
-// The Images tab: every picture once, by name. A Map or Lore Image cell can name one (see imageTokens_).
+// The Images tab: every picture once, by name. An Image cell (Map, Lore, a character's) can name one (see imageTokens_).
 const IMAGES_TAB = 'Images';
 const IMAGES_HEADER = ['Name', 'Image'];
+// Tabs with an optional Image column after Notes (see imageColIn_). A character's (or the ship's)
+// picture is its info|Name row's Image (see picture_).
+const PICTURE_KINDS = ['lore', 'character', 'ship'];
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // a picture the GM adds from the site
 const UPLOAD_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 // The Feedback tab: anonymous notes about the site, added by the feedback button (see feedback_).
@@ -98,6 +101,7 @@ function handle_(req) {
     case 'show': return role === 'gm' ? withLock_(() => show_(req)) : forbidden_();
     case 'place': return role === 'gm' ? withLock_(() => place_(req)) : forbidden_();
     case 'images': return role === 'gm' ? images_() : forbidden_();
+    case 'picture': return withLock_(() => picture_(role, req));
     case 'selftest': return role === 'gm' ? withLock_(selftest_) : forbidden_();
   }
   return { ok: false, error: 'Unknown op: ' + req.op };
@@ -190,7 +194,7 @@ function table_(sh, kind, role, named) {
   const width = rules ? RULES_HEADER.length : kind === 'system' ? SYSTEM_HEADER.length : HEADER.length;
   const vc = fixed ? 0 : verColIn_(grid[0]);
   const oc = rules ? overrideCols_(grid[0]) : [];
-  const ic = kind === 'lore' ? grid[0].findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image') : -1;
+  const ic = PICTURE_KINDS.indexOf(kind) >= 0 ? imageColIn_(grid[0]) : -1;
   const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1, named) : null;
   const rows = [];
   const vers = [];
@@ -206,7 +210,7 @@ function table_(sh, kind, role, named) {
     if (tokens) imgs.push(tokens[n]);
   });
   if (fixed) return { d: digest_(rows), rows };
-  // Lore's Image column: imgs[i] is rows[i]'s picture, sent beside the rows so that rows stay
+  // An Image column (Lore's, a character's): imgs[i] is rows[i]'s picture, sent beside the rows so that rows stay
   // Kind|Name|Value|Notes for the site to edit (see imageTokens_).
   return tokens && imgs.some(Boolean) ? { d: digest_([rows, vers, imgs]), rows, vers, imgs } : { d: digest_([rows, vers]), rows, vers };
 }
@@ -441,11 +445,11 @@ function digests_(role, names) {
   };
 }
 
-// The tabs named have changed: forget their digests. A change to the Images tab changes what the
-// Map and Lore tabs' Image cells show, so it touches them too.
+// The tabs named have changed: forget their digests. A change to the Images tab changes what
+// every Image cell shows, so it touches the Map tab and the tabs that may have one too.
 function touched_(...names) {
   const ks = names.map(n => String(n).trim().toLowerCase());
-  if (ks.indexOf(IMAGES_TAB.toLowerCase()) >= 0) ks.push('map', 'lore');
+  if (ks.indexOf(IMAGES_TAB.toLowerCase()) >= 0) ks.push('map', ...pictureTabs_(SpreadsheetApp.getActiveSpreadsheet()).map(sh => sh.getName().trim().toLowerCase()));
   const out = {};
   ks.forEach(k => { out['gen:' + k] = stamp_(); });
   CacheService.getScriptCache().putAll(out, 21600);
@@ -614,9 +618,9 @@ function patch_(role, req) {
   if (buried) saveGone_(sh, gone);
   touched_(sh.getName());
   const at = Date.now();
-  // The tab as a read would now send it, from what's in hand. Lore's Image column is read afresh
+  // The tab as a read would now send it, from what's in hand. An Image column is read afresh
   // (see table_), since its pictures moved with their rows.
-  const pictures = kind === 'lore' && header.some((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
+  const pictures = PICTURE_KINDS.indexOf(kind) >= 0 && imageColIn_(header) >= 0;
   const t = pictures ? table_(sh, kind, role) : tableOf_(vals, marks);
   return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, skipped };
 }
@@ -875,6 +879,43 @@ function addImage_(ss, img) {
   return { ok: true, name };
 }
 
+/*
+ * picture {tab, image}: a character's picture (or the ship's), the Image cell of its tab's
+ * info|Name row; the tab gets an Image column if it has none. Anyone who may edit the tab may set it.
+ *   image: '' clears it; {name} names a row of the Images tab; {name, type, data (base64)} adds the
+ *     picture to the Images tab under that name (see addImage_) and names that row.
+ */
+function picture_(role, req) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = findSheet_(ss, req.tab);
+  if (!sh) return { ok: false, code: 'missing', error: 'No tab called "' + req.tab + '".' };
+  const kind = tabKind_(sh.getName());
+  if (kind !== 'character' && kind !== 'ship') return { ok: false, error: 'Only a character’s tab or the Ship tab has a picture.' };
+  if (!canWrite_(role, kind)) return forbidden_();
+  const grid = sh.getDataRange().getDisplayValues();
+  const n = grid.findIndex((line, i) => i > 0 && key_(line[0], line[1]) === key_('info', 'Name'));
+  if (n < 0) return { ok: false, code: 'missing', error: 'Give the sheet a name first.' };
+  let image;
+  if (req.image === '' || req.image == null) image = '';
+  else if (req.image.data) {
+    const added = addImage_(ss, req.image);
+    if (!added.ok) return added;
+    image = added.name;
+  } else image = String(req.image.name == null ? '' : req.image.name).trim();
+  let col = imageColIn_(grid[0]);
+  if (col < 0) {
+    col = Math.max(sh.getLastColumn(), HEADER.length);
+    if (col >= sh.getMaxColumns()) sh.insertColumnsAfter(sh.getMaxColumns(), 1);
+    sh.getRange(1, col + 1).setValues([['Image']]);
+  }
+  const cell = sh.getRange(n + 1, col + 1);
+  cell.setNumberFormat('General'); // a name, or =IMAGE() typed in later, as Sheets reads it
+  cell.setValues([[safe_(image)]]);
+  touched_(sh.getName());
+  const t = table_(sh, kind, role);
+  return { ok: true, tab: sh.getName(), at: Date.now(), d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs };
+}
+
 // Every name in the Images tab, lowercase -> 1, pictures or not.
 function namedImagesAll_(sh, cols) {
   const out = {};
@@ -949,29 +990,30 @@ function isCellImage_(v) {
 }
 
 /*
- * image {tab: 'Map' (the default), 'Lore' or 'Images', row, have} -> {d, type, data (base64)}: the picture
+ * image {tab: 'Map' (the default), 'Images', or Lore, a character's tab or Ship, row, have} -> {d, type, data (base64)}: the picture
  * placed in that row's Image cell, if the caller can see the row. The crew see an Images row only
- * while a Map row they can see, or a Lore row, names it. d is the picture's digest; when it's
+ * while a Map row they can see, or a row of a tab with an Image column, names it. d is the picture's digest; when it's
  * have (the digest of the copy the page kept), the answer is just {d, same: true}.
  */
 function image_(role, req) {
   const tab = String(req.tab || 'Map').trim().toLowerCase();
-  const name = tab === 'lore' ? 'Lore' : tab === 'images' ? IMAGES_TAB : 'Map';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = findSheet_(ss, name);
+  const sh = tab === 'images' || tab === 'map' ? findSheet_(ss, tab) : findSheet_(ss, req.tab);
+  const kind = sh ? tabKind_(sh.getName()) : null;
+  const name = kind === 'images' ? IMAGES_TAB : sh ? sh.getName() : '';
   const row = Number(req.row);
-  if (!sh || !(row >= 2 && row <= sh.getLastRow() && Math.floor(row) === row)) return { ok: false, code: 'missing', error: 'No picture there.' };
+  if (!sh || !(kind === 'images' || kind === 'map' || (PICTURE_KINDS.indexOf(kind) >= 0 && canRead_(role, kind))) || !(row >= 2 && row <= sh.getLastRow() && Math.floor(row) === row)) return { ok: false, code: 'missing', error: 'No picture there.' };
   const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0];
   let col;
-  if (name === IMAGES_TAB) {
+  if (kind === 'images') {
     if (role !== 'gm' && !namedOnSight_(ss, 'images:' + row)) return { ok: false, code: 'missing', error: 'No picture there.' };
     col = imagesCols_(sh)[1];
-  } else if (name === 'Map') {
+  } else if (kind === 'map') {
     const seen = mapRows_(sh, role).find(r => r.n === row);
     if (!seen || seen.cells[3] !== 'row:' + row) return { ok: false, code: 'missing', error: 'No picture there.' };
     col = mapCols_(header)[3];
   } else {
-    col = header.findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
+    col = imageColIn_(header);
   }
   const v = col >= 0 ? sh.getRange(row, col + 1).getValue() : null;
   if (!isCellImage_(v)) return { ok: false, code: 'missing', error: 'No picture there.' };
@@ -991,12 +1033,13 @@ function image_(role, req) {
   return { ok: true, d, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
 }
 
-// Whether a Map row the crew can see, or a Lore row, has the picture token. Remembered for
-// DIGEST_SECONDS under the Map, Lore and Images tabs' generations (see digests_), since a page
-// asks once for each of its pictures.
+// Whether a Map row the crew can see, or a row of Lore, a character's tab or Ship, has the picture
+// token. Remembered for DIGEST_SECONDS under those tabs' and the Images tab's generations (see
+// digests_), since a page asks once for each of its pictures.
 function namedOnSight_(ss, token) {
   const cache = CacheService.getScriptCache();
-  const ks = ['gen:map', 'gen:lore', 'gen:images'];
+  const tabs = pictureTabs_(ss);
+  const ks = ['gen:map', 'gen:images'].concat(tabs.map(sh => 'gen:' + sh.getName().trim().toLowerCase()));
   const gens = cache.getAll(ks);
   const missing = {};
   ks.forEach(k => { if (!gens[k]) gens[k] = missing[k] = stamp_(); });
@@ -1004,20 +1047,30 @@ function namedOnSight_(ss, token) {
   const key = 'sight:' + token + ':' + ks.map(k => gens[k]).join(':');
   const hit = cache.get(key);
   if (hit != null) return hit === '1';
-  const yes = onSight_(ss, token);
+  const yes = onSight_(ss, tabs, token);
   cache.put(key, yes ? '1' : '0', DIGEST_SECONDS);
   return yes;
 }
 
-function onSight_(ss, token) {
+function onSight_(ss, tabs, token) {
   const named = namedImages_();
   const map = findSheet_(ss, 'Map');
   if (map && mapRows_(map, 'crew', named).some(r => r.cells[3] === token)) return true;
-  const lore = findSheet_(ss, 'Lore');
-  if (!lore || lore.getLastRow() < 2) return false;
-  const ic = lore.getRange(1, 1, 1, Math.max(lore.getLastColumn(), 1)).getDisplayValues()[0]
-    .findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
-  return ic >= 0 && imageTokens_(lore, ic, lore.getLastRow() - 1, named).indexOf(token) >= 0;
+  return tabs.some(sh => {
+    if (sh.getLastRow() < 2) return false;
+    const ic = imageColIn_(sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0]);
+    return ic >= 0 && imageTokens_(sh, ic, sh.getLastRow() - 1, named).indexOf(token) >= 0;
+  });
+}
+
+// The tabs that may have an Image column, which the crew can all read.
+function pictureTabs_(ss) {
+  return ss.getSheets().filter(sh => PICTURE_KINDS.indexOf(tabKind_(sh.getName())) >= 0);
+}
+
+// A tab's Image column (0-based), found by its header after Notes, or -1.
+function imageColIn_(header) {
+  return (header || []).findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
 }
 
 /* ---------- checks ---------- */

@@ -19,7 +19,7 @@ import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } fr
 
 // The Code.gs version this site needs (its ping and reads answer {v}). An older deployment is
 // turned away with a note to redeploy: there's nothing to stay compatible with.
-export const API_VERSION = 9;
+export const API_VERSION = 10;
 
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
 const MAX_ALTS = 20;

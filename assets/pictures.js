@@ -1,7 +1,8 @@
-// Pictures from the spreadsheet: the Image column of the Map and Lore tabs. A cell holds a
-// picture placed in it, which the sheet sends as "row:N" (the script then sends its bytes, op
-// "image"), an =IMAGE() formula, sent as its https address, or the name of a row of the Images
-// tab, sent as what that row holds ("images:N" for a placed picture).
+// Pictures from the spreadsheet: the Image column of the Map and Lore tabs, and of a character's
+// tab (or Ship), whose info|Name row's Image is their picture. A cell holds a picture placed in
+// it, which the sheet sends as "row:N" (the script then sends its bytes, op "image"), an =IMAGE()
+// formula, sent as its https address, or the name of a row of the Images tab, sent as what that
+// row holds ("images:N" for a placed picture).
 //
 // Placed pictures come through the script as base64, so they're costly: they load only as they
 // near the screen, a few at a time, and are kept in the browser's Cache Storage between visits.
@@ -22,7 +23,9 @@ export function pictureHTML(tab, image, name, cls) {
   if (m) {
     const from = m[1] === 'images' ? 'Images' : tab;
     const src = placed.get(`${from}:${m[2]}`);
-    return `<span class="${cls}"><img data-tab="${esc(from)}" data-in="${esc(tab)}" data-row="${m[2]}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(name)}"></span>`;
+    const img = `<img data-tab="${esc(from)}" data-in="${esc(tab)}" data-row="${m[2]}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(name)}">`;
+    // loaded already: open it full size, as load does once it has it
+    return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener">${img}</a>` : `<span class="${cls}">${img}</span>`;
   }
   const src = imgSrc(image);
   return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(name)}" loading="lazy"></a>` : '';
@@ -124,4 +127,41 @@ export function showPictures(root, client) {
   });
   new MutationObserver(fill).observe(root, { childList: true, subtree: true });
   fill();
+}
+
+// A picked file as {type, data (base64), url}, to upload. Players download each picture through
+// the script, so a big one is scaled to maxSide on its long side and re-encoded (WebP keeps
+// transparency; JPEG where the browser can't write WebP), keeping whichever is smaller. GIFs go
+// as they are, so they stay animated.
+const MAX_SEND = 3.5 * 1024 * 1024;
+const MAX_SIDE = 2048;
+const SMALL = 1024 * 1024; // a picture this small and no bigger than maxSide goes as it is
+export async function shrink(file, maxSide = MAX_SIDE) {
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('Pick a PNG, JPEG, GIF or WebP picture.');
+  let blob = file;
+  if (file.type === 'image/gif') {
+    if (file.size > MAX_SEND) throw new Error('That GIF is too big (over 3.5 MB).');
+  } else {
+    const img = await createImageBitmap(file);
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    if (scale < 1 || file.size > SMALL) {
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const encode = type => new Promise(res => c.toBlob(res, type, 0.85));
+      let out = await encode('image/webp');
+      if (!out || out.type !== 'image/webp') out = await encode(file.type === 'image/png' ? 'image/png' : 'image/jpeg');
+      if (out && (out.size < file.size || scale < 1)) blob = out;
+    }
+    img.close?.();
+    if (blob.size > MAX_SEND) throw new Error('That picture is too big, even scaled down.');
+  }
+  const data = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] || '');
+    r.onerror = () => rej(new Error('Couldn’t read that file.'));
+    r.readAsDataURL(blob);
+  });
+  return { type: blob.type || file.type, data, url: URL.createObjectURL(blob) };
 }

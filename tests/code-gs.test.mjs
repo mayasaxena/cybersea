@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 9 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 10 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 9 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 10 });
 });
 
 test('explains missing passphrases', () => {
@@ -863,6 +863,44 @@ test('place: an uploaded picture goes to the Images tab under a free name, and t
   assert.equal(r.rows.at(-1)[3], 'images:7');
   assert.deepEqual(Buffer.from(gm(api, { op: 'image', tab: 'Images', row: 7 }).data, 'base64'), bytes);
   assert.equal(gm(api, { op: 'place', row: 0, cells: ['Vega', 'X', '', '', ''], image: { name: 'X', type: 'text/html', data: 'aGk=' } }).ok, false);
+});
+
+test('picture: a character uploads a picture; it goes to the Images tab and their Name row names it', () => {
+  const { api, gas } = imagesGame();
+  gm(api, { op: 'create', tab: 'Nexa', rows: [['info', 'Name', 'Nexa', ''], ['stat', 'Spitfire', '+2', '']] });
+  gm(api, { op: 'create', tab: 'Ship', rows: [['info', 'Name', 'The Boat', '']] });
+  const bytes = Buffer.from([137, 80, 78, 71, 9, 9]);
+  let r = crew(api, { op: 'picture', tab: 'Nexa', image: { name: 'Nexa', type: 'image/png', data: bytes.toString('base64') } });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.imgs, ['images:7', ''], 'beside the info|Name row');
+  const nexa = gas.ss.getSheetByName('Nexa');
+  assert.equal(nexa.getRange(1, 6).getDisplayValue(), 'Image', 'a new column after Version');
+  assert.equal(gas.ss.getSheetByName('Images').getRange(7, 1).getDisplayValue(), 'Nexa');
+  assert.deepEqual(crew(api, { op: 'read', tabs: ['Nexa'] }).tabs.Nexa.imgs, ['images:7', '']);
+  assert.deepEqual(Buffer.from(crew(api, { op: 'image', tab: 'Images', row: 7 }).data, 'base64'), bytes, 'the crew may load it');
+
+  // Edits keep it; a name picks one from the Images tab; '' clears it.
+  r = crew(api, { op: 'patch', tab: 'Nexa', set: [['stat', 'Blood', '+1', '']] });
+  assert.deepEqual(r.imgs, ['images:7', '', '']);
+  r = crew(api, { op: 'picture', tab: 'Ship', image: { name: 'cat' } });
+  assert.deepEqual(r.imgs, ['images:5']);
+  assert.equal(crew(api, { op: 'picture', tab: 'Nexa', image: '' }).imgs, undefined);
+  assert.equal(nexa.getLastColumn(), 6, 'the column is kept, not added again');
+
+  // A picture placed in the cell by hand is sent by the script itself.
+  nexa.getRange(2, 6).setValues([[{ image: { type: 'image/gif', bytes: Buffer.from([7]) } }]]);
+  assert.deepEqual(crew(api, { op: 'read', tabs: ['Nexa'] }).tabs.Nexa.imgs.slice(0, 1), ['row:2']);
+  assert.equal(crew(api, { op: 'image', tab: 'Nexa', row: 2 }).type, 'image/gif');
+
+  assert.equal(crew(api, { op: 'picture', tab: 'Lore', image: '' }).ok, false, 'only characters and the ship');
+  assert.equal(crew(api, { op: 'picture', tab: 'Nope', image: '' }).code, 'missing');
+  assert.equal(crew(api, { op: 'picture', tab: 'Nexa', image: { name: 'x', type: 'text/html', data: 'aGk=' } }).ok, false);
+});
+
+test('picture: a tab with no Name row has nowhere to put one, and the GM tab is the GM\'s', () => {
+  const { api } = setup();
+  assert.equal(crew(api, { op: 'picture', tab: 'Ship', image: { name: 'x' } }).code, 'missing');
+  assert.equal(crew(api, { op: 'picture', tab: 'GM', image: '' }).ok, false);
 });
 
 test('place: makes the Map and Images tabs when the sheet has neither', () => {

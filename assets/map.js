@@ -10,7 +10,7 @@
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
-import { pictureHTML, showPictures } from './pictures.js';
+import { pictureHTML, showPictures, shrink } from './pictures.js';
 import { esc, escTxt, ICON, armed, modal, closeModal, toast, pageShell, refreshNav, debounce, noGame } from './core.js';
 
 const app = document.getElementById('app');
@@ -270,43 +270,6 @@ function openEditor(it, kind, place) {
     say(body.image?.data ? 'Uploading…' : 'Saving…');
     send(body);
   });
-}
-
-// A picked file as {type, data (base64), url}. Players download each picture through the script,
-// so a big one is scaled to MAX_SIDE on its long side and re-encoded (WebP keeps transparency;
-// JPEG where the browser can't write WebP), keeping whichever is smaller. GIFs go as they are,
-// so they stay animated.
-const MAX_SEND = 3.5 * 1024 * 1024;
-const MAX_SIDE = 2048;
-const SMALL = 1024 * 1024; // a picture this small and no bigger than MAX_SIDE goes as it is
-async function shrink(file) {
-  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('Pick a PNG, JPEG, GIF or WebP picture.');
-  let blob = file;
-  if (file.type === 'image/gif') {
-    if (file.size > MAX_SEND) throw new Error('That GIF is too big (over 3.5 MB).');
-  } else {
-    const img = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
-    if (scale < 1 || file.size > SMALL) {
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * scale);
-      c.height = Math.round(img.height * scale);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      const encode = type => new Promise(res => c.toBlob(res, type, 0.85));
-      let out = await encode('image/webp');
-      if (!out || out.type !== 'image/webp') out = await encode(file.type === 'image/png' ? 'image/png' : 'image/jpeg');
-      if (out && (out.size < file.size || scale < 1)) blob = out;
-    }
-    img.close?.();
-    if (blob.size > MAX_SEND) throw new Error('That picture is too big, even scaled down.');
-  }
-  const data = await new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1] || '');
-    r.onerror = () => rej(new Error('Couldn’t read that file.'));
-    r.readAsDataURL(blob);
-  });
-  return { type: blob.type || file.type, data, url: URL.createObjectURL(blob) };
 }
 
 store.on(() => { W = world(store.rows); render(); });

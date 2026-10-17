@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, invite, signIn, until, polls } from './harness.mjs';
 import { KEYS } from '../fixtures/game.mjs';
+import { png } from '../fixtures/png.mjs';
 
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
 
@@ -573,6 +574,38 @@ test('a dialog keeps Tab inside it, scrolls when tall, and gives focus back when
   assert.ok(panel.scroll, 'and scrolls');
   await p.keyboard.press('Escape');
   assert.equal(await p.evaluate(() => document.activeElement.dataset.nav), 'menu');
+});
+
+test('a player uploads a picture for their character in edit mode; everyone sees it beside the name', async () => {
+  const p = await openSheet();
+  assert.equal(await p.$('.portrait'), null, 'no picture, no box outside edit mode');
+  await p.click('[data-act="edit"]');
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-act="pic-add"]')]);
+  await chooser.setFiles({ name: 'me.png', mimeType: 'image/png', buffer: Buffer.from(png(1600, 800, [200, 40, 90])) });
+  await p.waitForSelector('.pwrap .portrait img[src]');
+  const images = await h.tab(api, 'Images');
+  assert.equal(images.at(-1)[0], 'Testa', 'the upload is a new row of the Images tab, under the character’s name');
+  const testa = await h.tab(api, 'Testa');
+  const col = testa[0].indexOf('Image');
+  assert.ok(col > 3, 'the tab got an Image column');
+  assert.equal(row(testa, 'info', 'Name')[col], 'Testa', 'the Name row names the picture');
+
+  // Someone else, not signed in as Testa, sees it too; it was scaled down for the sheet.
+  const q = await openSheet(undefined, { as: null });
+  await q.waitForSelector('a.portrait img[src]');
+  assert.equal(await q.$eval('.portrait img', i => i.naturalWidth), 1024);
+  assert.equal(await q.$('[data-act="pic-add"]'), null);
+
+  // Edits elsewhere keep it; the owner can take it off (a second click confirms).
+  await p.click('[data-act="add-pip"][data-path="t:Experience"]');
+  await until(async () => !(await queued(p)));
+  await p.waitForSelector('.pwrap .portrait img[src]');
+  await p.click('[data-act="pic-rm"]');
+  await p.click('[data-act="pic-rm"]');
+  await p.waitForSelector('button.portrait.none[data-act="pic-add"]');
+  assert.equal(row(await h.tab(api, 'Testa'), 'info', 'Name')[col], '');
+  await q.close();
+  await p.close();
 });
 
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {
