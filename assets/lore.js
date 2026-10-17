@@ -4,7 +4,7 @@ import { bootstrap, href } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML } from './core.js';
+import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -41,14 +41,18 @@ function changed() {
 }
 
 const busy = () => document.activeElement && main.contains(document.activeElement) && document.activeElement.matches('input, textarea');
-store.on(e => {
-  if (e.missing) { render(); return; }
-  if (!e.fromServer || busy()) return;
+// Someone else's change, held while this page is typing (see whenIdle).
+const later = whenIdle(main, busy);
+function adopt() {
   const ne = toEntries(store.rows);
   if (same(toRows(ne), base) && main.dataset.ready) return;
   entries = ne;
   base = toRows(ne);
   render();
+}
+store.on(e => {
+  if (e.missing) { render(); return; }
+  if (e.fromServer) later(adopt);
 });
 // Anyone signed in as a character (or the GM) edits lore.
 const canEdit = () => client.canEdit('Lore');

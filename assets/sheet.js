@@ -7,7 +7,7 @@ import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck } from './markup.js';
 import { gameRules, TABS } from './rules.js';
 import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
@@ -43,7 +43,6 @@ let st = parseSheet(store.rows);
 let base = serializeSheet(st);
 let editing = false;
 let query = '';
-let deferred = false;
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -56,10 +55,9 @@ function changed() {
 
 // While someone is typing or a dialog is open, hold remote updates until they're done.
 const busy = () => !!document.getElementById('overlay') || (document.activeElement && app.contains(document.activeElement) && document.activeElement.matches('input, textarea, select'));
+const later = whenIdle(app, busy);
 let shown = store.loaded; // has the page rendered real sheet data yet?
 function adopt() {
-  if (busy()) { deferred = true; return; }
-  deferred = false;
   const ns = parseSheet(store.rows);
   const nb = serializeSheet(ns);
   if (shown && same(nb, base)) return;
@@ -70,16 +68,14 @@ function adopt() {
 }
 store.on(e => {
   if (e.missing) render();
-  else if (e.fromServer) adopt();
+  else if (e.fromServer) later(adopt);
 });
-for (const t of TABS) client.tab(t).on(() => { R = gameRules(client); render(); });
+for (const t of TABS) client.tab(t).on(() => { R = gameRules(client); later(render); });
 let couldEdit = canEdit();
 client.on(e => {
   if (e.list || e.key) refreshNav(client, PAGE);
   if ((e.me || e.list || e.key || e.auth) && canEdit() !== couldEdit) { couldEdit = canEdit(); render(); }
 });
-app.addEventListener('focusout', () => setTimeout(() => { if (deferred && !busy()) adopt(); }, 0));
-new MutationObserver(() => { if (deferred && !busy()) adopt(); }).observe(document.body, { childList: true }); // a dialog closed
 
 // Changes made outside edit mode offer to go in the log (usage.js).
 const usage = makeUsage({ log: e => { const at = Date.now(); st.log.push({ id: logId(at), at, ...e }); changed(); render(); } });
@@ -532,7 +528,7 @@ app.addEventListener('click', e => {
   const act = b.dataset.act;
   const i = +b.dataset.i;
   switch (act) {
-    case 'edit': editing = !editing && canEdit(); render(); if (!editing && deferred) adopt(); break;
+    case 'edit': editing = !editing && canEdit(); render(); if (!editing) later.run(); break;
     case 'tab': ui.tab = b.dataset.tab; saveUi(); render(); break;
     case 'cat': ui.cat = b.dataset.cat; saveUi(); render(); break;
     case 'sheet-menu': sheetMenu(); break;

@@ -7,7 +7,7 @@ import { gameRules, TABS as RULE_TABS } from './rules.js';
 import { systemOf, characterTypes, sum, circles } from './system.js';
 import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
-import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey } from './core.js';
+import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
@@ -43,14 +43,16 @@ function changed() { const next = toRows(entries); gmStore.change(base, next); b
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const busy = () => document.activeElement && main.contains(document.activeElement) && document.activeElement.matches('input, textarea');
 
-gmStore.on(e => {
-  if (!e.fromServer || busy()) return;
+// Someone else's change, held while this page is typing (see whenIdle).
+const later = whenIdle(main, busy);
+function adopt() {
   const ne = toEntries(gmStore.rows);
   if (same(toRows(ne), base) && main.dataset.ready) return;
   entries = ne;
   base = toRows(ne);
   if (tab === 'npcs' || tab === 'notes') render();
-});
+}
+gmStore.on(e => { if (e.fromServer) later(adopt); });
 for (const t of RULE_TABS) client.tab(t).on(() => { R = gameRules(client); if (tab !== 'notes') render(); });
 // NPC sizes and clocks, from the Rules tab: choice | npc | Mook | | size=1, choice | clock | Clock | | size=6.
 const npcSizes = () => R.by('choice', 'npc').map(c => [c.name, sum(c.meta.size)]);
