@@ -51,8 +51,18 @@ export function indexRules(rows = [], system = []) {
   const recs = all.map((row, i) => overridden(row, i)).filter(r => r.kind && !r.meta.hide);
 
   const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
-  const by = (kind, group) => recs.filter(r => r.kind === kind && (group == null || same(r.group, group)));
+  // Pages ask the same questions many times per redraw, so rows are indexed by kind and answers
+  // remembered (a new Rules or System tab makes a new index). by() hands out copies.
+  const ofKind = new Map();
+  recs.forEach(r => { if (!ofKind.has(r.kind)) ofKind.set(r.kind, []); ofKind.get(r.kind).push(r); });
+  const asked = new Map();
+  const by = (kind, group) => {
+    const k = `${kind}\u0001${group == null ? '\u0002' : String(group).toLowerCase()}`;
+    if (!asked.has(k)) asked.set(k, (ofKind.get(kind) || []).filter(r => group == null || same(r.group, group)));
+    return asked.get(k).slice();
+  };
   const one = (kind, group) => by(kind, group)[0] || null;
+  const playbooks = new Map();
 
   return {
     recs,
@@ -64,16 +74,20 @@ export function indexRules(rows = [], system = []) {
     playbooks: type => by('playbook').filter(p => !type || same(p.meta.type || '', type)),
     // By its group (as the book has it), its name, or the book's name if it has an override name.
     playbook(name) {
+      const key = String(name || '').toLowerCase();
+      if (playbooks.has(key)) return playbooks.get(key);
+      const all = ofKind.get('playbook') || [];
       const is = r => [r.group, r.name, r.orig?.name].some(n => n != null && same(n, name || ''));
-      const p = recs.find(r => r.kind === 'playbook' && same(r.group, name || '')) || recs.find(r => r.kind === 'playbook' && is(r));
-      if (!p) return null;
-      const of = kind => recs.filter(r => r.kind === kind && same(r.group, p.group));
-      return {
+      const p = all.find(r => same(r.group, name || '')) || all.find(is);
+      const of = kind => by(kind, p.group);
+      const out = p ? {
         ...p,
         vices: of('vice'), oddities: of('oddity'), kits: of('kit'), lastwords: of('lastwords')[0] || null,
         questions: of('question'), moves: of('pmove'), smoves: of('smove'), notes: of('pnote'),
         renown: of('renown'), rules: of('rule'),
-      };
+      } : null;
+      playbooks.set(key, out);
+      return out;
     },
     procedure: group => one('procedure', group),
     house: group => by('house', group),

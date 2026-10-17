@@ -55,8 +55,17 @@ export function effects(spec) {
   });
 }
 
+// Remembered per Rules index and type: pages ask for it many times per redraw.
+const systems = new WeakMap();
 export function systemOf(R, type) {
   const t = low(type);
+  let mine = systems.get(R);
+  if (!mine) systems.set(R, mine = new Map());
+  if (!mine.has(t)) mine.set(t, systemFor(R, t));
+  return mine.get(t);
+}
+
+function systemFor(R, t) {
   const tracks = R.by('track', t).map(r => ({ name: r.name, role: low(r.meta.role), size: r.meta.size, start: r.meta.start, refill: r.meta.refill, skulls: r.meta.skulls, text: r.text }));
   const sections = R.by('section', t).map(r => ({
     title: r.name, role: low(r.meta.role), tab: low(r.meta.tab) || 'sheet', fill: low(r.meta.fill), size: r.meta.size, full: r.meta.full, note: r.text,
