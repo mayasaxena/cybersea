@@ -12,6 +12,7 @@ import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from './kit.js';
 import { makeUsage, useItem, useOf, signed } from './usage.js';
+import { pictureHTML, showPictures, shrink } from './pictures.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
 const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
@@ -124,6 +125,7 @@ function headerHTML() {
     : `<button class="stat" data-act="roll-stat" data-i="${i}" title="Roll"><span class="sk">${escTxt(s.k)}</span>${ICON.die}<span class="sv">${fmt(s.v)}</span></button>`).join('');
   return `<header class="top">
     <div class="idrow">
+      ${portraitHTML()}
       <div class="ident">
         ${E ? `<input class="in name" data-bind="info:name" value="${esc(st.info.name || '')}" aria-label="Name">` : `<h1 class="name">${escTxt(st.info.name || tabName)}</h1>`}
         <div class="pb"><span class="lbl">Playbook</span>${E ? `<input class="in" data-bind="info:playbook" value="${esc(st.info.playbook || '')}" aria-label="Playbook">` : `<span>${escTxt(st.info.playbook || '—')}</span>`}</div>
@@ -139,6 +141,52 @@ function headerHTML() {
     <nav class="tabs">${SECTION_TABS.map(([k, l]) => `<button data-act="tab" data-tab="${k}" aria-pressed="${ui.tab === k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
   </header>`;
 }
+
+// The character's picture (the ship's, on the ship page): their info|Name row's Image. In edit
+// mode it can be uploaded, changed or taken off (op "picture"; the picture goes to the Images tab).
+let uploading = false;
+function portraitHTML() {
+  const pic = store.imageOf('info', 'Name');
+  const label = st.info.name || tabName;
+  if (!editing) return pic ? pictureHTML(store.name, pic, label, 'portrait') : '';
+  if (uploading) return '<div class="portrait none" aria-busy="true"><span class="sub">Uploading…</span></div>';
+  return pic
+    ? `<div class="pwrap">${pictureHTML(store.name, pic, label, 'portrait')}<div class="ptools">` +
+      '<button class="mini" data-act="pic-add" title="Change the picture" aria-label="Change the picture">' + ICON.pen + '</button>' +
+      '<button class="mini del" data-act="pic-rm" title="Take the picture off" aria-label="Take the picture off">×</button></div></div>'
+    : '<button class="portrait none" data-act="pic-add" title="Add a picture"><span aria-hidden="true">+</span><span class="sub">Picture</span></button>';
+}
+
+function pickPicture() {
+  const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp' });
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    let up;
+    try {
+      up = await shrink(file, PORTRAIT_SIDE);
+    } catch (err) { toast(err.message, 'lo'); return; }
+    URL.revokeObjectURL(up.url);
+    sendPicture({ name: st.info.name || tabName, type: up.type, data: up.data });
+  });
+  input.click();
+}
+
+async function sendPicture(image) {
+  uploading = true;
+  render();
+  try {
+    const r = await client.request({ op: 'picture', tab: store.name, image }, { timeout: 90000 });
+    store.receive(r, r.at);
+    toast(image ? 'Picture saved to the sheet.' : 'Picture taken off.');
+  } catch (err) {
+    toast(err.message, 'lo');
+  } finally {
+    uploading = false;
+    render();
+  }
+}
+const PORTRAIT_SIDE = 1024;
 
 const VITALS = ['harm', 'luck'];
 // How many of a track's last pips are skulls (its skulls= in the System tab).
@@ -578,6 +626,8 @@ app.addEventListener('click', e => {
     case 'tab': ui.tab = b.dataset.tab; saveUi(); render(); break;
     case 'cat': ui.cat = b.dataset.cat; saveUi(); render(); break;
     case 'sheet-menu': sheetMenu(); break;
+    case 'pic-add': if (editing && !uploading) pickPicture(); break;
+    case 'pic-rm': if (editing && !uploading && armed(b)) sendPicture(''); break;
     case 'roll-stat': { const s = st.stats[i]; doRoll(s.k, s.v, 2); break; }
     case 'roll-move': {
       const m = lastMoves[i];
@@ -723,6 +773,7 @@ function sheetMenu() {
 }
 
 /* ---------- start ---------- */
+showPictures(app, client);
 render();
 client.watch(tabName); // Rules is read once per visit (cached by digest), not polled
 client.read([tabName, ...TABS]).catch(() => render()); // a wrong or missing passphrase opens the prompt (see wireNav)

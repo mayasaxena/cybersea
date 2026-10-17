@@ -166,8 +166,17 @@ they can see, a region's map, or a Lore entry names it. **Replace with an xlsxâ€
 or removes the Images tab (an .xlsx can't carry its pictures); a file's Images tab is only brought
 in when this sheet doesn't have one yet.
 
+### Character pictures
+
+Each character (and the ship) can have a picture beside their name. A player adds it on their
+sheet in edit mode (the **+ Picture** box by the name); it's scaled down, added to the Images tab
+under the character's name, and named in the **Image** cell of the tab's `info | Name` row. The
+site adds that **Image** column (after Notes) the first time. To set one in the spreadsheet, give
+the tab an **Image** column and put a picture, an `=IMAGE("https://â€¦")` formula or an Images
+tab name in the `info | Name` row.
+
 The Map tab and pictures need script version 5; the Images tab and editing the map on the site,
-version 8.
+version 8; character pictures, version 10.
 Deploying it asks you to authorize again, for "connect to an external service": that's how the
 script reads a picture out of its cell.
 
