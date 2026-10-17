@@ -485,6 +485,24 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   assert.equal(row(rows, 'item', 'Medkit')[2], '0');
   assert.equal(rows.find(x => x[0] === 'log' && x[2] === 'Medkit')[3], '- Used 2, 0 left\n\nPatched up');
 
+  // a use can be undone from the toast, or later from its log entry
+  await p.click('.toast .tact');
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'item', 'Medkit')?.[2] === '2' && r; });
+  assert.equal(rows.some(x => x[0] === 'log' && x[2] === 'Medkit'), false, 'its log entry is gone');
+  await p.click('[data-act="use-item"][data-j="0"]');
+  await p.fill('[role="dialog"] [data-n]', '2');
+  await p.fill('[role="dialog"] textarea', 'Patched up');
+  await p.click('[role="dialog"] [data-use]');
+  await p.click('[data-act="tab"][data-tab="log"]');
+  await p.click('[data-act="undo-use"]');
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'item', 'Medkit')?.[2] === '2' && r; });
+  assert.equal(rows.some(x => x[0] === 'log' && x[2] === 'Medkit'), false);
+  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="use-item"][data-j="0"]');
+  await p.fill('[role="dialog"] [data-n]', '2');
+  await p.click('[role="dialog"] [data-use]');
+  await p.waitForSelector('[data-act="use-item"][data-j="0"][disabled]');
+
   // pips changed outside edit mode gather in one panel; clicks that cancel out drop off
   await p.click('[data-act="tab"][data-tab="sheet"]');
   await p.click('.harm .pip[data-j="1"]');

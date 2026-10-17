@@ -12,7 +12,7 @@ import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
 import { plain } from './markup.js';
-import { makeUsage, useItem, signed } from './usage.js';
+import { makeUsage, useItem, useOf, signed } from './usage.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
 const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['inventory', 'Inventory'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
@@ -333,12 +333,26 @@ function useItemAt(j) {
     const { used: k, left } = useItem(cur, n);
     if (left != null) cur.count = left;
     const at = Date.now();
-    st.log.push({ id: logId(at), at, title: cur.name, items: [left != null ? `Used ${k}, ${left} left` : 'Used'], note });
+    const id = logId(at);
+    st.log.push({ id, at, title: cur.name, items: [left != null ? `Used ${k}, ${left} left` : 'Used'], note });
     changed();
     render();
-    toast(left != null ? `Used ${k} ${cur.name} (${left} left)` : `Used ${cur.name}`);
+    toast(left != null ? `Used ${k} ${cur.name} (${left} left)` : `Used ${cur.name}`, '', { label: 'Undo', run: () => undoUse(id) });
   });
 }
+
+// Undoing a use gives back what it took and removes its log entry.
+function undoUse(id) {
+  const i = st.log.findIndex(e => e.id === id);
+  const u = i >= 0 && canEdit() && useOf(st.log[i], st.items);
+  if (!u) return;
+  if (u.n) u.item.count += u.n;
+  st.log.splice(i, 1);
+  changed();
+  render();
+  toast(u.n ? `Gave back ${u.n} ${u.item.name} (${u.item.count} left)` : `Undid using ${u.item.name}`);
+}
+const undoHTML = (e, i) => (!editing && canEdit() && useOf(e, st.items) ? `<button class="chip" data-act="undo-use" data-i="${i}" title="Undo this use">Undo</button>` : '');
 
 // A sheet with no inventory yet: offer to start one from a kit.
 function fillHTML() {
@@ -418,7 +432,7 @@ function render() {
   if (store.missing) main = SHIP ? shipSetupHTML() : `<div class="empty-page"><p>There’s no tab called “${escTxt(tabName)}” in this game’s sheet.</p><p><a href="${esc(href('index.html', client.game))}">Back to the crew</a></p></div>`;
   else if (!store.loaded) main = '<div class="empty">Loading…</div>';
   else if (ui.tab === 'moves') main = movesHTML();
-  else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing, ro);
+  else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing, ro, undoHTML);
   else if (ui.tab === 'inventory' && !SHIP) main = inventoryHTML();
   else main = sectionsHTML(ui.tab);
   const hdr = store.loaded && !store.missing ? headerHTML() : '';
@@ -563,6 +577,7 @@ app.addEventListener('click', e => {
     }
     case 'add-item': addItem(); break;
     case 'use-item': useItemAt(+b.dataset.j); break;
+    case 'undo-use': if (st.log[i]) undoUse(st.log[i].id); break;
     case 'rm-item': if (canEdit() && editing && armed(b)) { st.items.splice(+b.dataset.j, 1); changed(); render(); } break;
     case 'add-tnotes': if (W().title) { st.sections.push({ tab: 'inventory', title: W().title, text: '', note: W().note }); changed(); render(); } break;
     case 'fill-inv': {

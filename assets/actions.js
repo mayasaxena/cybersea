@@ -297,7 +297,8 @@ export function makeActions(ctx) {
     ctx.render();
   }
 
-  function logHTML(editing, readOnly = false) {
+  // tools(entry, i) adds buttons to an entry's header (e.g. Undo for an item use).
+  function logHTML(editing, readOnly = false, tools = () => '') {
     const s = st();
     const dt = s.state.downtime;
     const xp = xpCount();
@@ -316,7 +317,7 @@ export function makeActions(ctx) {
         `<button class="pill" data-act="dt-moves">${escTxt(g)} moves</button></div>`;
     }
     const entries = s.log.map((e, i) =>
-      `<article class="entry"><div class="ehead"><span class="et">${escTxt(e.title)}</span><time>${e.at ? fmtDate(e.at) : ''}</time>` +
+      `<article class="entry"><div class="ehead"><span class="et">${escTxt(e.title)}</span><time>${e.at ? fmtDate(e.at) : ''}</time>` + tools(e, i) +
       (editing ? `<button class="mini del" data-act="rm-log" data-i="${i}" aria-label="Delete">×</button>` : '') + '</div>' +
       (e.items.length ? `<ul class="eitems">${e.items.map(t => `<li>${escTxt(t)}</li>`).join('')}</ul>` : '') +
       (editing ? `<textarea class="in enote" data-log="${i}" aria-label="Note">${escTxt(e.note || '')}</textarea>`

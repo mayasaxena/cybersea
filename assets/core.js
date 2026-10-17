@@ -131,10 +131,12 @@ export function doRoll(label, mod = 0, dice = 2, onRolled, { ask, per, adj } = {
   });
 }
 
-export function toast(message, kind = '') {
+// action = { label, run }: a button on the toast, e.g. Undo.
+export function toast(message, kind = '', action = null) {
   rollSeq++;
   const el = toastEl();
-  el.innerHTML = `<span class="tl msg">${escTxt(message)}</span>`;
+  el.innerHTML = `<span class="tl msg">${escTxt(message)}</span>` + (action ? `<button type="button" class="roll-go tact">${escTxt(action.label)}</button>` : '');
+  el.querySelector('.tact')?.addEventListener('click', e => { e.stopPropagation(); el.classList.remove('show'); action.run(); });
   el.className = 'toast show ' + kind;
   clearTimeout(toastT);
   toastT = setTimeout(() => el.classList.remove('show'), 5000);
