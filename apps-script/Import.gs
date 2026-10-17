@@ -106,7 +106,9 @@ function replaceTabs_(ss, book, remove) {
   const made = [];
   try {
     book.tabs.forEach((t, i) => {
-      const sh = ss.insertSheet('Importing ' + (i + 1) + ' ' + Date.now());
+      // Named with a leading "_", so the site (which ignores such tabs) never shows a half-filled
+      // one, nor one left behind if the run is cut off at Apps Script's time limit.
+      const sh = ss.insertSheet('_importing ' + (i + 1) + ' ' + Date.now());
       made.push(sh);
       try {
         fillSheet_(sh, t, book.skipped);
