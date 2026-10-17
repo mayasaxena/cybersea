@@ -403,9 +403,9 @@ function shipSetupHTML() {
 async function createShip() {
   const msg = document.getElementById('setup-msg');
   const pb = R.playbook(setup.playbook);
-  const rows = shipRows(R, { name: setup.name.trim() || 'The ship', playbook: setup.playbook, kit: setup.kit || pb.kits[0]?.name, oddity: setup.oddity || pb.oddities[0]?.name });
   msg.textContent = 'Creating…';
   try {
+    const rows = shipRows(R, { name: setup.name.trim() || 'The ship', playbook: setup.playbook, kit: setup.kit || pb.kits[0]?.name, oddity: setup.oddity || pb.oddities[0]?.name });
     const r = await client.request({ op: 'create', tab: 'Ship', rows });
     store.receive(r, r.at);
   } catch (e) { msg.textContent = e.message; }

@@ -142,7 +142,7 @@ main.addEventListener('click', e => {
   const t = e.target.closest('[data-place]');
   if (t && isGm()) {
     const p = allPlaces().find(x => String(x.i) === t.dataset.place);
-    if (p) setOn(p, !p.on).catch(err => alert(err.message));
+    if (p) setOn(p, !p.on).catch(err => toast(err.message, 'lo'));
     return;
   }
   const s = e.target.closest('[data-show]');
@@ -222,6 +222,7 @@ function openEditor(it, kind, place) {
   }, err => { o.querySelector('[data-list]').innerHTML = '<option disabled>Couldn’t load</option>'; say(err.message); });
   f('file').addEventListener('change', async () => {
     const file = f('file').files[0];
+    if (upload) URL.revokeObjectURL(upload.url);
     upload = null;
     if (!file) { showChoice(); return; }
     say('Reading the picture…');
@@ -238,6 +239,7 @@ function openEditor(it, kind, place) {
     o.querySelectorAll('button').forEach(b => { b.disabled = true; });
     try {
       await client.request({ op: 'place', ...body }, { timeout: 90000 });
+      if (upload) URL.revokeObjectURL(upload.url);
       closeModal();
       if (body.image?.data) imageList = null; // the upload is in the Images tab now
     } catch (err) {

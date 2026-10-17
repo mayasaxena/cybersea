@@ -80,6 +80,7 @@ test('playbooks with an extra starting move offer the pick', async () => {
   await p.click('[data-act="new"]');
   await p.fill('[data-f="name"]', 'Bruno');
   await p.selectOption('[data-f="playbook"]', 'Brute');
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.f), 'playbook', 'focus stays on the playbook');
   await p.selectOption('[data-f="extraMove"]', 'ROAR');
   await p.click('[data-create]');
   await p.waitForURL(/c=Bruno/);

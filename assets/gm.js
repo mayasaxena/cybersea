@@ -188,7 +188,7 @@ main.addEventListener('click', e => {
   if (act === 'add-npc') {
     const name = unique('npc', 'New NPC');
     entries.push({ kind: 'npc', name, value: '', notes: '' });
-    setHarm(name, p => { p.push(...Array(+b.dataset.harm).fill(0)); }); // harm tally by NPC size (choice rows)
+    setHarm(name, p => { p.push(...Array(Math.max(0, +b.dataset.harm || 0)).fill(0)); }); // harm tally by NPC size (choice rows)
     editing = true;
     changed(); render();
   }
