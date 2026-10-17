@@ -29,7 +29,8 @@ RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'odd
 SYSTEM_KINDS = ['stat', 'track', 'section', 'choice']
 SYSTEM_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta']
 SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin']
-RESERVED = {'rules', 'system', 'gm', 'lore', 'map', 'readme'}
+# As in Code.gs: tabs with these names are that kind; any other is a character (tests/kinds.test.mjs).
+TAB_KINDS = ['rules', 'system', 'gm', 'lore', 'ship', 'map', 'feedback', 'images']
 META_RE = re.compile(r'([^\s=]+)=(?:"([^"]*)"|(\S*))|(\S+)')
 
 
@@ -136,7 +137,7 @@ def main():
 
     for sh in wb.worksheets:
         name = sh.title.strip().lower()
-        if name in RESERVED or name.startswith('_'):
+        if name == 'readme' or name.startswith('_') or (name in TAB_KINDS and name != 'ship'):
             continue
         sh.data_validations.dataValidation = []
         dv = DataValidation(type='list', formula1='"' + ','.join(SHEET_KINDS) + '"', allow_blank=True, showErrorMessage=False)
