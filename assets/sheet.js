@@ -179,8 +179,16 @@ function sectionHTML(s, i) {
   return h + '</section>';
 }
 
+// The scratchpad on the Notes tab, for anything the sheet has no place for. Unlike the cards it
+// needs no edit mode: it saves as you type, here first and then to the sheet, like any change.
+function jotHTML() {
+  if (!canEdit()) return st.jot ? `<section class="card jot"><div class="shead"><h2>Scratchpad</h2></div><div class="rich">${md(st.jot)}</div></section>` : '';
+  return '<section class="card jot"><div class="shead"><h2>Scratchpad</h2></div>' +
+    `<textarea class="in rtext" data-bind="jot" aria-label="Scratchpad" placeholder="Jot down anything the sheet doesn’t have a place for">${escTxt(st.jot || '')}</textarea></section>`;
+}
+
 function sectionsHTML(tab) {
-  const cards = st.sections.map((s, i) => (s.tab === tab ? sectionHTML(s, i) : '')).join('') + (tab === 'notes' && !SHIP ? keptNotesHTML() : '');
+  const cards = (tab === 'notes' ? jotHTML() : '') + st.sections.map((s, i) => (s.tab === tab ? sectionHTML(s, i) : '')).join('') + (tab === 'notes' && !SHIP ? keptNotesHTML() : '');
   return `<div class="cols">${cards}</div>` + (editing ? `<button class="add" data-act="add-section" data-tab="${tab}">+</button>` : '');
 }
 
@@ -576,6 +584,7 @@ function bind(el, final) {
   const a = what === 'move' ? decodeURIComponent(rawA) : rawA;
   const v = el.value;
   if (what === 'info') { st.info[a] = el.type === 'number' ? String(parseInt(v, 10) || 0) : v; }
+  else if (what === 'jot') st.jot = v;
   else if (what === 'stat') { const s = st.stats[+a]; if (b === 'v') s.v = parseInt(v, 10) || 0; else if (final && v.trim()) s.k = v.trim(); else return; }
   else if (what === 'sec') {
     const s = st.sections[+a];

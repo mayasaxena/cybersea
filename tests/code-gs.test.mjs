@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 6 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 7 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 6 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 7 });
 });
 
 test('explains missing passphrases', () => {
@@ -632,4 +632,38 @@ test('the System tab: everyone reads it, nobody writes or makes it through the s
   assert.equal(gm(api, { op: 'patch', tab: 'System', set: [['stat', 'pirate', 'x', '']] }).code, 'forbidden');
   gas.ss.deleteSheet(gas.ss.getSheetByName('System'));
   assert.equal(gm(api, { op: 'create', tab: 'System' }).code, 'name');
+});
+
+test('feedback: anyone signed in adds a line to the Feedback tab, made if missing, with nothing about who sent it', () => {
+  const { gas, api } = setup();
+  assert.equal(crew(api, { op: 'feedback', text: '  The map needs zoom.  ' }).ok, true);
+  assert.equal(gm(api, { op: 'feedback', text: '=HYPERLINK("x")' }).ok, true);
+  const sh = gas.ss.getSheetByName('Feedback');
+  const grid = sh.getDataRange().getDisplayValues();
+  assert.deepEqual(grid[0], ['Date', 'Feedback']);
+  assert.deepEqual(grid.slice(1).map(r => r[1]), ['The map needs zoom.', '=HYPERLINK("x")'], 'kept as text, not run as a formula');
+  assert.ok(grid.slice(1).every(r => /^\d{4}-\d\d-\d\d$/.test(r[0]) && r.length === 2), 'only the day and the text');
+  assert.equal(crew(api, { op: 'feedback', text: '   ' }).ok, false);
+  assert.equal(api.call({ op: 'feedback', key: 'nope', text: 'hi' }).code, 'auth');
+});
+
+test('feedback: the site never reads, lists, patches or makes the Feedback tab', () => {
+  const { api } = setup();
+  crew(api, { op: 'feedback', text: 'Secret-ish' });
+  for (const who of [crew, gm]) {
+    const r = who(api, { op: 'read', tabs: '*' });
+    assert.ok(!r.list.some(t => t.name === 'Feedback'));
+    assert.equal(r.tabs.Feedback, undefined);
+    assert.equal(who(api, { op: 'patch', tab: 'Feedback', set: [['a', 'b', 'c', 'd']] }).code, 'forbidden');
+  }
+  assert.equal(gm(api, { op: 'create', tab: 'feedback', rows: [] }).code, 'name');
+});
+
+test('feedback: a flood is held back for a minute', () => {
+  const { api, tick } = setup();
+  let r;
+  for (let i = 0; i < 31; i++) r = crew(api, { op: 'feedback', text: 'x' + i });
+  assert.equal(r.code, 'busy');
+  tick(61_000);
+  assert.equal(crew(api, { op: 'feedback', text: 'later' }).ok, true);
 });

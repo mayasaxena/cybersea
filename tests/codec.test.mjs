@@ -72,3 +72,13 @@ test('items keep a count (blank when not counted) and notes', () => {
   assert.deepEqual(st.items, [{ name: 'Medkit', count: 3, note: 'From the clinic.' }, { name: 'Rope', count: null, note: '' }, { name: 'Flare', count: null, note: '' }]);
   assert.deepEqual(serializeSheet(st).filter(r => r[0] === 'item'), [['item', 'Medkit', '3', 'From the clinic.'], ['item', 'Rope', '', ''], ['item', 'Flare', '', '']]);
 });
+
+test('the scratchpad is one jot row, there only while it has something in it', () => {
+  const st = parseSheet([['info', 'Name', 'Ann', ''], ['jot', 'Notes', 'ask the GM\nabout the map', '']]);
+  assert.equal(st.jot, 'ask the GM\nabout the map');
+  const rows = serializeSheet(st);
+  assert.deepEqual(rows.find(r => r[0] === 'jot'), ['jot', 'Notes', 'ask the GM\nabout the map', '']);
+  st.jot = '';
+  assert.deepEqual(diffRows(rows, serializeSheet(st)).del, [['jot', 'Notes']]);
+  assert.equal(parseSheet([['info', 'Name', 'Ann', '']]).jot, '');
+});

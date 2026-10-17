@@ -59,7 +59,7 @@ export const signinRow = on => ['signin', 'Signed in', on ? 'yes' : '', ''];
 export function parseSheet(rows) {
   const st = {
     info: {}, stats: [], tracks: {}, bonds: [], sections: [], moves: [], specials: [],
-    advances: {}, log: [], state: {}, items: [],
+    advances: {}, log: [], state: {}, items: [], jot: '',
   };
   for (const [kind, name, value = '', notes = ''] of rows) {
     const k = String(kind).trim().toLowerCase();
@@ -74,6 +74,7 @@ export function parseSheet(rows) {
       case 'move': st.moves.push({ name: n, marked: parseTrack(value)[0] === 1, text: notes }); break;
       case 'special': st.specials.push({ name: n, marked: parseTrack(value)[0] === 1, text: notes }); break;
       case 'item': st.items.push({ name: n, count: parseCount(value), note: notes }); break;
+      case 'jot': st.jot = value; break; // the scratchpad: jot | Notes | whatever was jotted down
       case 'advance': st.advances[n] = parseInt(value, 10) || 0; break;
       case 'log': st.log.push(parseLog(n, value, notes)); break;
       case 'state': try { st.state[n.toLowerCase()] = value ? JSON.parse(value) : null; } catch { st.state[n.toLowerCase()] = null; } break;
@@ -100,6 +101,7 @@ export function serializeSheet(st) {
   for (const t of Object.values(st.tracks)) rows.push(['track', t.name, formatTrack(t.pips), '']);
   for (const b of st.bonds) rows.push(['bond', b.name, formatBond(b.pips), '']);
   for (const s of st.sections) rows.push([SECTION_KINDS.includes(s.tab) ? s.tab : 'sheet', s.title, s.text || '', s.note || '']);
+  if (st.jot) rows.push(['jot', 'Notes', st.jot, '']);
   for (const it of st.items || []) rows.push(['item', it.name, it.count == null ? '' : String(it.count), it.note || '']);
   for (const m of st.moves) rows.push(['move', m.name, m.marked ? '●' : '○', m.text || '']);
   for (const m of st.specials) rows.push(['special', m.name, m.marked ? '●' : '○', m.text || '']);
