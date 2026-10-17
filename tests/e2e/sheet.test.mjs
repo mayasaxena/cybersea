@@ -486,16 +486,40 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'log' && x[2] === 'Harm +2') && r; });
   assert.equal(rows.find(x => x[0] === 'log' && x[2] === 'Harm +2')[3], 'Dock fight');
 
-  // closing the panel keeps the change but leaves it out of the log
+  // the panel's × undoes what it lists instead, even changes that went back and forth
+  const harm = await track(p, 'harm');
+  const sheetHarm = row(rows, 'track', 'Harm')[2];
+  await p.click('.luck .pip[data-j="0"]');
   await p.click('.harm .pip[data-j="2"]');
-  await p.click('.usage [data-skip]');
-  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Harm')[2].startsWith('●●○') && r; });
-  assert.equal(rows.filter(x => x[0] === 'log').length, 2);
+  await p.click('.harm .pip[data-j="4"]');
+  await p.click('.harm .pip[data-j="4"]');
+  assert.deepEqual(await p.$$eval('.usage li', ls => ls.map(l => l.textContent)), ['Luck −1', 'Harm −1']);
+  await until(async () => row(await h.tab(api, 'Testa'), 'track', 'Harm')[2] !== sheetHarm); // the change reached the sheet
+  await p.click('.usage [data-undo]');
+  assert.equal(await p.$('.usage'), null);
+  assert.equal(await track(p, 'harm'), harm);
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Harm')[2] === sheetHarm && r; });
+  assert.equal(rows.filter(x => x[0] === 'log').length, 2, 'nothing logged');
 
   // edit mode changes don't offer to log
   await p.click('[data-act="edit"]');
   await p.click('.luck .pip[data-j="0"]');
   assert.equal(await p.$('.usage'), null);
+  await p.click('[data-act="edit"]');
+});
+
+test('deleting something shows a toast whose Undo puts it back', async () => {
+  const marks = row(await h.tab(api, 'Testa'), 'bond', 'Passenger')[2];
+  const p = await openSheet();
+  await p.click('[data-act="edit"]');
+  await p.click('[data-act="rm-bond"][data-j="1"]');
+  await p.click('[data-act="rm-bond"][data-j="1"]');
+  assert.ok(await until(async () => !row(await h.tab(api, 'Testa'), 'bond', 'Passenger')));
+  assert.match(await p.textContent('.toast.show'), /Deleted Passenger/);
+  await p.click('.toast .tact');
+  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'bond', 'Passenger') && r; });
+  assert.equal(row(rows, 'bond', 'Passenger')[2], marks, 'with its marks');
+  assert.deepEqual(await p.$$eval('[data-bind$=":name"][data-bind^="bond"]', bs => bs.map(b => b.value)), ['Ship', 'Bo', 'Passenger']);
   await p.click('[data-act="edit"]');
 });
 

@@ -7,7 +7,7 @@ import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck, plain, short } from './markup.js';
 import { gameRules, TABS } from './rules.js';
 import { systemOf, typeOf, rollOf, cap, sum, fillIn, SHIP as SHIP_TYPE } from './system.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce, fitText, freeName, noGame } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, deletedToast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce, fitText, freeName, noGame } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from './kit.js';
@@ -84,10 +84,56 @@ client.on(e => {
   if ((e.me || e.list || e.key || e.auth) && canEdit() !== couldEdit) { couldEdit = canEdit(); render(); }
 });
 
-// Changes made outside edit mode offer to go in the log (usage.js).
-const usage = makeUsage({ log: e => { const at = Date.now(); st.log.push({ id: logId(at), at, ...e }); changed(); render(); } });
-const used = (key, n, line) => { if (!editing && n) usage.add(key, n, line); };
-const actions = makeActions({ st: () => st, rules: () => R, changed, render: () => render(), editing: () => editing, used });
+// Changes made outside edit mode offer to go in the log (usage.js), or to be undone.
+const usage = makeUsage({
+  log: e => { const at = Date.now(); st.log.push({ id: logId(at), at, ...e }); changed(); render(); },
+  undone: () => { changed(); render(); },
+});
+const used = (key, n, line, undo) => { if (!editing && n) usage.add(key, n, line, undo); };
+
+// keep.x(name) notes what something is now, and gives back a function that puts it back. Things are
+// found again by name, so it still works after the sheet updates underneath.
+const byName = (list, name) => list.find(x => x.name.toLowerCase() === name.toLowerCase());
+const keep = {
+  tracks: (...names) => {
+    const was = names.map(n => [n.toLowerCase(), track(n) && { name: track(n).name, pips: track(n).pips.slice() }]);
+    return () => { for (const [k, t] of was) { if (t) st.tracks[k] = { name: t.name, pips: t.pips.slice() }; else delete st.tracks[k]; } };
+  },
+  bond: name => { const p = byName(st.bonds, name)?.pips.slice(); return () => { const b = byName(st.bonds, name); if (b && p) b.pips = p.slice(); }; },
+  crew: name => { const p = byName(st.crew, name)?.pips.slice(); return () => { const c = byName(st.crew, name); if (c && p) c.pips = p.slice(); }; },
+  section: title => {
+    const text = st.sections.find(s => same_(s.title, title))?.text;
+    return () => { const s = st.sections.find(x => same_(x.title, title)); if (s && text != null) s.text = text; };
+  },
+  move: name => {
+    const m = charMove(name);
+    const was = m && { marked: m.marked, text: m.text };
+    return () => {
+      const now = charMove(name);
+      if (was && now) Object.assign(now, was);
+      else if (!was && now) st.moves.splice(st.moves.indexOf(now), 1);
+    };
+  },
+};
+const actions = makeActions({ st: () => st, rules: () => R, changed, render: () => render(), editing: () => editing, used, keep });
+
+// Taking something out offers to put it back: list() is the list it was in (looked up again on
+// undo, since the sheet may have updated). It comes back as a new row, so last in its list, as
+// the sheet will have it; log entries go back in time order.
+function removed(what, list, i) {
+  if (i < 0) return;
+  const gone = list().splice(i, 1);
+  changed();
+  render();
+  if (!gone.length) return;
+  deletedToast(what, () => {
+    if (!canEdit()) return;
+    list().push(...gone);
+    st.log.sort((a, b) => a.at - b.at);
+    changed();
+    render();
+  });
+}
 
 /* ---------- helpers ---------- */
 const track = name => (name ? st.tracks[name.toLowerCase()] : undefined);
@@ -697,10 +743,11 @@ function clickPip(btn) {
     const isT = same_(path.slice(2), W_.t);
     const cur = isT ? w.treasure : w.hoard;
     const n = cur === j + 1 ? j : j + 1;
+    const undo = keep.tracks(W_.t, W_.h);
     const r = isT ? setWealth(st, W_, n, w.hoard) : setWealth(st, W_, w.treasure, n);
     if (r.hoard > w.hoard && isT) toast(`${W_.per}-${lw(W_.t)} became 1-${lw(W_.h)}.`);
     const name = track(path.slice(2)).name;
-    used(`t:${name.toLowerCase()}`, n - cur, k => `${name} ${signed(k)}`);
+    used(`t:${name.toLowerCase()}`, n - cur, k => `${name} ${signed(k)}`, undo);
     changed();
     render();
     return;
@@ -712,6 +759,7 @@ function clickPip(btn) {
     else v = v === 1 ? 2 : 1;        // use / restore
   } else v = v ? 0 : 1;
   const was = arr[j] || 0;
+  const undo = bond ? keep.bond(st.bonds[+path.slice(2)].name) : crew ? keep.crew(crew.name) : keep.tracks(path.slice(2));
   arr[j] = v;
   if (bond) btn.className = 'pip' + pipClass(v, bond);
   else btn.classList.toggle('on', v === 1); // keeps skull classes
@@ -720,13 +768,13 @@ function clickPip(btn) {
   if (bond) {
     const b = st.bonds[+path.slice(2)];
     const title = sys().title('bonds');
-    used(`b:${b.name.toLowerCase()}`, v === 2 ? 1 : -1, k => `${title ? `${title}: ` : ''}${b.name} ${k > 0 ? 'used' : 'restored'}${Math.abs(k) > 1 ? ` ×${Math.abs(k)}` : ''}`);
+    used(`b:${b.name.toLowerCase()}`, v === 2 ? 1 : -1, k => `${title ? `${title}: ` : ''}${b.name} ${k > 0 ? 'used' : 'restored'}${Math.abs(k) > 1 ? ` ×${Math.abs(k)}` : ''}`, undo);
   } else if (crew && was !== v) {
     const label = CS()?.harm?.name || 'Harm';
-    used(`c:${crew.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${crew.name}: ${label} ${signed(k)}`);
+    used(`c:${crew.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${crew.name}: ${label} ${signed(k)}`, undo);
   } else if (was !== v) {
     const t = st.tracks[path.slice(2).toLowerCase()];
-    used(`t:${t.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${t.name} ${signed(k)}`);
+    used(`t:${t.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${t.name} ${signed(k)}`, undo);
   }
 }
 
@@ -748,18 +796,24 @@ app.addEventListener('click', e => {
     if (li) {
       const sec = li.closest('[data-sec]');
       const mv = li.closest('[data-move]');
-      const ticked = (where, k) => used(`ck:${where}:${li.dataset.ck}`, k, n => `${n > 0 ? 'Checked' : 'Unchecked'}: ${li.textContent.trim()} (${where})`);
+      const ticked = (where, k, undo) => used(`ck:${where}:${li.dataset.ck}`, k, n => `${n > 0 ? 'Checked' : 'Unchecked'}: ${li.textContent.trim()} (${where})`, undo);
       const on = li.classList.contains('on') ? -1 : 1;
-      if (sec) { const s = st.sections[+sec.dataset.sec]; s.text = toggleCheck(s.text, +li.dataset.ck); changed(); ticked(s.title, on); render(); return; }
+      if (sec) {
+        const s = st.sections[+sec.dataset.sec];
+        const undo = keep.section(s.title);
+        s.text = toggleCheck(s.text, +li.dataset.ck);
+        changed(); ticked(s.title, on, undo); render(); return;
+      }
       if (mv) {
         const m = moveList().find(x => x.own && x.name === mv.dataset.move);
         if (m) {
           const text = toggleCheck(m.text, +li.dataset.ck);
+          const undo = keep.move(m.name);
           const mine = charMove(m.name);
           if (mine) mine.text = text; else st.moves.push({ name: m.name, marked: m.marked, text });
           changed();
           li.classList.toggle('on');
-          ticked(m.name, on);
+          ticked(m.name, on, undo);
         }
         return;
       }
@@ -786,7 +840,7 @@ app.addEventListener('click', e => {
       c.tags = removeTag(c.tags, +b.dataset.k);
       changed(); render(); break;
     }
-    case 'rm-crew': if (canEdit() && editing && armed(b)) { st.crew.splice(+b.dataset.j, 1); changed(); render(); } break;
+    case 'rm-crew': if (canEdit() && editing && armed(b)) removed(st.crew[+b.dataset.j]?.name, () => st.crew, +b.dataset.j); break;
     case 'roll-stat': { const s = st.stats[i]; doRoll(s.k, s.v, 2); break; }
     case 'roll-move': {
       const m = lastMoves[i];
@@ -800,28 +854,29 @@ app.addEventListener('click', e => {
     case 'add-pip': setTrack(b.dataset.path, p => { if (p.length < 20) p.push(0); }); changed(); render(); break;
     case 'rm-pip': setTrack(b.dataset.path, p => p.pop()); changed(); render(); break;
     case 'add-section': st.sections.push({ tab: b.dataset.tab, title: uniqueTitle('New section'), text: '', note: '' }); changed(); render(); break;
-    case 'rm-section': if (armed(b)) { st.sections.splice(i, 1); changed(); render(); } break;
+    case 'rm-section': if (armed(b)) removed(st.sections[i]?.title, () => st.sections, i); break;
     case 'add-bond': st.bonds.push({ name: uniqueBond('Someone'), pips: Array(Math.max(1, sum(sys().section('bonds')?.size))).fill(0) }); changed(); render(); break;
-    case 'rm-bond': if (armed(b)) { st.bonds.splice(+b.dataset.j, 1); changed(); render(); } break;
+    case 'rm-bond': if (armed(b)) removed(st.bonds[+b.dataset.j]?.name, () => st.bonds, +b.dataset.j); break;
     case 'mv-mark': {
       const m = charMove(b.dataset.name);
       if (m) m.marked = !m.marked; else st.moves.push({ name: b.dataset.name, marked: true, text: '' });
       changed(); render(); break;
     }
     case 'add-move': st.moves.push({ name: uniqueMove('NEW MOVE'), marked: true, text: '' }); changed(); render(); break;
-    case 'rm-move': if (armed(b)) { st.moves = st.moves.filter(m => m.name !== b.dataset.name); changed(); render(); } break;
+    case 'rm-move': if (armed(b)) removed(b.dataset.name, () => st.moves, st.moves.findIndex(m => m.name === b.dataset.name)); break;
     case 'run': if (canEdit()) actions.open(b.dataset.kind); break;
     case 'spend': if (canEdit() && lastMoves[i]) actions.spend(lastMoves[i]); break;
-    case 'rm-log': if (armed(b)) { st.log.splice(i, 1); changed(); render(); } break;
+    case 'rm-log': if (armed(b)) removed(`log entry: ${st.log[i]?.title}`, () => st.log, i); break;
     case 'dt-moves': ui.tab = 'moves'; ui.cat = actions.dtGroup() || 'all'; saveUi(); render(); break;
     case 'ship-create': if (canEdit()) createShip(); break;
     case 'treasure': {
       if (!canEdit()) break;
       const w = W();
       const before = wealth(st, w);
+      const undo = keep.tracks(w.t, w.h);
       const r = addTreasure(st, w, +b.dataset.n);
       if (!r) { toast(`No ${lw(w.t)} left to spend.`); break; }
-      used(`t:${lw(w.t)}`, +b.dataset.n, k => `${w.t} ${signed(k)}`);
+      used(`t:${lw(w.t)}`, +b.dataset.n, k => `${w.t} ${signed(k)}`, undo);
       if (r.hoard > before.hoard) toast(`${w.per}-${lw(w.t)} became 1-${lw(w.h)}.`);
       else if (r.hoard < before.hoard) toast(`Broke 1-${lw(w.h)} into ${w.per}-${lw(w.t)}.`);
       changed(); render(); break;
@@ -829,7 +884,7 @@ app.addEventListener('click', e => {
     case 'add-item': addItem(b.dataset.kind); break;
     case 'use-item': useItemAt(b.dataset.kind, +b.dataset.j); break;
     case 'undo-use': if (st.log[i]) undoUse(st.log[i].id); break;
-    case 'rm-item': if (canEdit() && editing && armed(b)) { listOf(b.dataset.kind).splice(+b.dataset.j, 1); changed(); render(); } break;
+    case 'rm-item': if (canEdit() && editing && armed(b)) { const kind = b.dataset.kind; removed(listOf(kind)[+b.dataset.j]?.name, () => listOf(kind), +b.dataset.j); } break;
     case 'add-tnotes': if (W().title) { st.sections.push({ tab: 'kit', title: W().title, text: '', note: W().note }); changed(); render(); } break;
     case 'fill-kit': {
       if (!canEdit()) break;

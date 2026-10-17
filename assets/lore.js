@@ -4,7 +4,7 @@ import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
+import { esc, escTxt, ICON, armed, deletedToast, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -118,7 +118,17 @@ main.addEventListener('click', e => {
     changed();
     render();
   }
-  if (act === 'rm' && canEdit() && armed(b)) { entries.splice(+b.dataset.i, 1); changed(); render(); }
+  if (act === 'rm' && canEdit() && armed(b)) {
+    const i = +b.dataset.i;
+    const [gone] = entries.splice(i, 1);
+    if (!gone) return;
+    changed(); render();
+    deletedToast(gone.name, () => {
+      if (!canEdit()) return;
+      entries.push(gone); // a new row again, so last, as the sheet will have it
+      changed(); render();
+    });
+  }
 });
 
 main.addEventListener('input', e => {
