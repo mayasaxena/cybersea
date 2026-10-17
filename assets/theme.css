@@ -73,9 +73,10 @@ button{font:inherit;color:inherit}
 .editing .pip.nb:hover{box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
 /* a track's skull boxes (its last skulls= pips, as on the book's harm tally): solid skulls in the text
    color, skull and crossbones once marked; the last one drips blood */
-.pip.skull{--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1 -1 18 18'%3E%3Cpath fill-rule='evenodd' d='M8 1C4.1 1 1.5 3.6 1.5 7c0 2 .9 3.4 2.2 4.2V14h2v-1.5h1.3V14h2v-1.5h1.3V14h2v-2.8c1.3-.8 2.2-2.2 2.2-4.2C14.5 3.6 11.9 1 8 1zM5.2 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 9.2l1 1.6H7z'/%3E%3C/svg%3E");width:24px;height:24px;margin:-2px 2.5px;border:0;border-radius:0;background:none}
+.pip.skull{--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1 -1 18 18'%3E%3Cpath fill-rule='evenodd' d='M8 1C4.1 1 1.5 3.6 1.5 7c0 2 .9 3.4 2.2 4.2V14h2v-1.5h1.3V14h2v-1.5h1.3V14h2v-2.8c1.3-.8 2.2-2.2 2.2-4.2C14.5 3.6 11.9 1 8 1zM5.2 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 9.2l1 1.6H7z'/%3E%3C/svg%3E");width:24px;height:24px;margin:-2px;border:0;border-radius:0;background:none}
 .pip.skull.on{--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-5 -5 26 26'%3E%3Cpath stroke='%23000' stroke-width='2' stroke-linecap='round' d='M-1.4 -0.2L18 17.2M18.5 -0.8L-1.7 17.5'/%3E%3Ccircle cx='-0.1' cy='-0.55' r='1.4'/%3E%3Ccircle cx='-1.75' cy='1.1' r='1.4'/%3E%3Ccircle cx='16.7' cy='17.55' r='1.4'/%3E%3Ccircle cx='18.35' cy='15.9' r='1.4'/%3E%3Ccircle cx='17.2' cy='-1.15' r='1.4'/%3E%3Ccircle cx='18.85' cy='0.5' r='1.4'/%3E%3Ccircle cx='-0.4' cy='17.85' r='1.4'/%3E%3Ccircle cx='-2.05' cy='16.2' r='1.4'/%3E%3Cpath fill-rule='evenodd' d='M8 1C4.1 1 1.5 3.6 1.5 7c0 2 .9 3.4 2.2 4.2V14h2v-1.5h1.3V14h2v-1.5h1.3V14h2v-2.8c1.3-.8 2.2-2.2 2.2-4.2C14.5 3.6 11.9 1 8 1zM5.2 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 9.2l1 1.6H7z'/%3E%3C/svg%3E")}
-/* the crossbones overshoot the box, a little crooked; skull boxes sit far enough apart that they never touch */
+/* the crossbones overshoot the skull, a little crooked; a marked skull takes their width so the gaps stay even */
+.pip.skull.on{margin:-2px 4px}
 .pip.skull.on::before{inset:-5.33px}
 .pip.skull:hover,.pip.skull.on{box-shadow:none}
 .pip.skull::before,.pip.skull.bloody::after{content:"";position:absolute;inset:0;background:var(--text);-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat}
@@ -356,7 +357,8 @@ a.crewcard:hover{border-color:var(--cyan)}
 .cc-bond{display:inline-flex;align-items:center;gap:6px}
 .cc-text{font-size:13px}
 span.pip{display:inline-block;width:12px;height:12px;border-width:2px;cursor:default}
-span.pip.skull{width:15px;height:15px;margin:-1.5px 1.5px}
+span.pip.skull{width:15px;height:15px;margin:-1.5px}
+span.pip.skull.on{margin:-1.5px 3px}
 span.pip.skull.on::before{inset:-3.33px}
 .welcome{display:grid;gap:12px}
 .gamelink{display:block;padding:6px 0;color:var(--cyan);font-weight:600;text-decoration:none}
