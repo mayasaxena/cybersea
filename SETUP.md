@@ -129,7 +129,8 @@ several games.
    live, and changes made in Sheets show when a page next opens or comes back into view.
 
 Make sure the script has `Push.gs` (**Cybersea → Update the script** brings it in). Pages pick up
-live updates at their next read. To turn them off, delete `FIREBASE_URL`.
+live updates at their next read. To turn them off, delete `FIREBASE_URL`; the script notices
+within two minutes.
 
 ### Scratchpad and feedback
 

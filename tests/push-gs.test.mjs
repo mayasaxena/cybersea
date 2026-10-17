@@ -49,8 +49,10 @@ test('reads name the place to listen; a change pings it once it’s done, saying
   assert.equal(gm({ op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+3', '']], by: 'page1' }).ok, true);
   assert.equal(pings.length, 1);
   assert.equal(pings[0].url, push + '?auth=s3cret');
-  assert.equal(pings[0].method, 'put');
-  assert.deepEqual(pings[0].body, { at: { '.sv': 'timestamp' }, by: 'page1' });
+  assert.equal(pings[0].method, 'patch');
+  const { at, ...rest } = pings[0].body;
+  assert.deepEqual(rest, { by: 'page1', n: { '.sv': { increment: 1 } } });
+  assert.ok(Math.abs(at - Date.now()) < 5000, 'the time is the script’s clock, as reads’ are');
   assert.ok(flushedFirst, 'the sheet is flushed before the ping');
 
   // A by that isn't a page's id is left out.
@@ -75,6 +77,36 @@ test('pushChange (the "On change" trigger) pings for edits made in Sheets, and t
   assert.equal(pings[0].body.by, '');
   const again = gm({ op: 'read', tabs: ['Nexa'], have: { Nexa: d } });
   assert.ok(again.tabs.Nexa.rows, 'the remembered digest was forgotten, so the rows come back');
+});
+
+test('pushChange stamps rows typed in Sheets before it pings, so pages don’t keep a version onEdit then replaces', () => {
+  const { gas, api, gm, pings } = setup();
+  const range = gas.ss.getSheetByName('Nexa').getRange(3, 1, 1, 4);
+  range.setValues([['stat', 'Spitfire', '+5', '']]);
+  // On change runs before onEdit, and a page reads on its ping.
+  api.ctx.pushChange({ changeType: 'EDIT' });
+  assert.equal(pings.length, 1);
+  const seen = gm({ op: 'read', tabs: ['Nexa'] }).tabs.Nexa;
+  const ver = seen.vers[seen.rows.findIndex(r => r[1] === 'Spitfire')];
+  assert.doesNotMatch(ver, /^~/, 'stamped before the ping');
+  api.onEdit({ range });
+  const after = gm({ op: 'read', tabs: ['Nexa'] }).tabs.Nexa;
+  assert.equal(after.vers[after.rows.findIndex(r => r[1] === 'Spitfire')], ver, 'onEdit finds it stamped and keeps the version');
+  const r = gm({ op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+6', '', { base: [ver], seen: Date.now(), stamp: 'abcdef123' }]] });
+  assert.deepEqual(r.skipped, [], 'a change based on what the page read goes through');
+
+  // A row whose Kind+Name was typed over is remembered as gone, whichever trigger stamps it.
+  range.setValues([['stat', 'Grit', '+5', '']]);
+  api.ctx.pushChange({ changeType: 'EDIT' });
+  const gone = JSON.parse(gas.docProps['gone:nexa'] || '{}');
+  assert.equal(Object.keys(gone).length, 1);
+});
+
+test('the settings are read from the script properties once, then from the cache', () => {
+  const { gas, gm } = setup();
+  gm({ op: 'read', tabs: ['Nexa'] });
+  gas.setProps({ FIREBASE_URL: '' });
+  assert.ok(gm({ op: 'read', tabs: ['Nexa'] }).push, 'still on until the cache lets go');
 });
 
 test('an import pings when it’s done', () => {

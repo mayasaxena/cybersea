@@ -73,24 +73,35 @@ function editByHand(game, tab, rows) {
   if (game.push && edited.length) game.api.ctx.pushChange({ changeType: 'OTHER', source: ss });
 }
 
-// The Realtime Database's REST API, as much as Push.gs and the site use: PUT a value (with the
-// secret), and GET as server-sent events (put events: the value on connecting, then each new one).
+// The Realtime Database's REST API, as much as Push.gs and the site use: PATCH a value (with the
+// secret; a {'.sv': {increment}} adds to what's there), and GET as server-sent events (a put event
+// with the value on connecting, a patch event for each change, keep-alives in between).
 function firebase(game, base) {
   const values = new Map();
   const streams = new Map();
-  const send = (res, data) => res.write(`event: put\ndata: ${JSON.stringify({ path: '/', data: data ?? null })}\n\n`);
+  const send = (res, data, event = 'put') => res.write(`event: ${event}\ndata: ${JSON.stringify({ path: '/', data: data ?? null })}\n\n`);
   game.gas.setProps({ FIREBASE_URL: `${base}/__fb`, FIREBASE_SECRET: 'dev-secret' });
   game.gas.onFetch = (url, opts) => {
     const u = new URL(url);
-    if (!u.pathname.startsWith('/__fb/') || String(opts.method).toLowerCase() !== 'put') return null;
+    if (!u.pathname.startsWith('/__fb/') || String(opts.method).toLowerCase() !== 'patch') return null;
     if (u.searchParams.get('auth') !== 'dev-secret') return { code: 401, text: '{"error":"Permission denied"}' };
+    const was = values.get(u.pathname) || {};
     const body = JSON.parse(opts.payload);
-    const v = JSON.parse(JSON.stringify(body), (k, x) => (x && x['.sv'] === 'timestamp' ? Date.now() : x));
-    values.set(u.pathname, v);
-    for (const res of streams.get(u.pathname) || []) send(res, v);
+    const v = {};
+    for (const [k, x] of Object.entries(body)) {
+      v[k] = x?.['.sv'] === 'timestamp' ? Date.now() : x?.['.sv']?.increment ? (Number(was[k]) || 0) + x['.sv'].increment : x;
+    }
+    values.set(u.pathname, { ...was, ...v });
+    if (game.push.drop > 0) game.push.drop--;
+    else if (!game.push.paused) for (const res of streams.get(u.pathname) || []) send(res, v, 'patch');
     return { code: 200, text: JSON.stringify(v) };
   };
-  game.push = { pings: () => [...values.values()].length };
+  // For tests: paused, open streams hear nothing (a connection gone quiet, keep-alives too); drop:
+  // how many coming changes they don't hear of (the database sent only a later one).
+  game.push = { pings: () => [...values.values()].length, paused: false, drop: 0 };
+  setInterval(() => {
+    if (!game.push.paused) for (const set of streams.values()) for (const res of set) res.write('event: keep-alive\ndata: null\n\n');
+  }, 30000).unref();
   return (req, res, url) => {
     if (req.method !== 'GET') { res.writeHead(405).end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });

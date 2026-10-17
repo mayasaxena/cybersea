@@ -65,3 +65,32 @@ test('a hidden page lets go of the connection, and reads what it missed when sho
   await hide(false);
   assert.equal(await until(async () => (await track(p, 'harm')).startsWith('●○○') && 'ok', 4000), 'ok');
 });
+
+test('a page that missed a ping reads on its own next one, since the count jumped', async () => {
+  const a = await open('Testa');
+  await sleep(300);
+  // Typed in Sheets, but the database sends that ping to nobody (only a later one gets through).
+  api.game.push.drop = 1;
+  const rows = (await h.tab(api, 'Testa')).map(r => r.slice(0, 4));
+  await h.setTab(api, 'Testa', rows.map(r => (r[0] === 'stat' ? [r[0], r[1], '+3', r[3]] : r)));
+  await sleep(500);
+  const reads = a.reads.n;
+  await a.p.click('.harm .pip[data-j="0"]');
+  assert.ok(await until(async () => a.reads.n > reads && 'ok', 4000), 'its own ping still reads, as one went unheard');
+  assert.deepEqual(h.errors, []);
+});
+
+test('a stream gone quiet is reopened, and reads what it missed', async () => {
+  const { p, reads } = await open(null);
+  await sleep(300);
+  api.game.push.paused = true;
+  const rows = (await h.tab(api, 'Testa')).map(r => r.slice(0, 4));
+  await h.setTab(api, 'Testa', rows.map(r => (r[0] === 'track' && r[1] === 'Harm' ? ['track', 'Harm', '●●●●○✕', ''] : r)));
+  await sleep(500);
+  const n = reads.n;
+  assert.ok(!(await track(p, 'harm')).startsWith('●●●●○'), 'the change didn’t come through');
+  api.game.push.paused = false;
+  await p.evaluate(() => window.dispatchEvent(new Event('online')));
+  assert.equal(await until(async () => (await track(p, 'harm')).startsWith('●●●●○') && 'ok', 4000), 'ok');
+  assert.equal(reads.n, n + 1);
+});

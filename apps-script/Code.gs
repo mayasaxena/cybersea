@@ -93,9 +93,11 @@ function handle_(req) {
     }
     noteKnownKey_(req.key);
   }
-  const res = op_(role, req);
-  pushIfDue_(req.by); // live updates (Push.gs), once the change is done
-  return res;
+  try {
+    return op_(role, req);
+  } finally {
+    pushIfDue_(req.by); // live updates (Push.gs), once the change is done
+  }
 }
 
 function op_(role, req) {
@@ -394,26 +396,55 @@ function onEdit(e) {
   const sh = range.getSheet();
   touched_(sh.getName());
   if (range.getColumn() > HEADER.length) return;
-  const kind = tabKind_(sh.getName());
-  if (!kind || sheetsOnly_(kind)) return;
   const top = Math.max(range.getRow(), 2);
-  const n = range.getLastRow() - top + 1;
-  if (n < 1) return;
+  sheetLock_(() => stampRows_(sh, top, range.getLastRow() - top + 1));
+}
+
+/*
+ * Stamps rows top..top+n-1 of a tab the site edits whose stamp doesn't match what they hold (so
+ * a row stamped already, by onEdit or by pushChange in Push.gs, keeps its version), and remembers
+ * rows whose Kind+Name went away as removed.
+ */
+function stampRows_(sh, top, n) {
+  const kind = tabKind_(sh.getName());
+  if (!kind || sheetsOnly_(kind) || n < 1) return;
   const vc = verCol_(sh);
   const stamp = stamp_();
   const removed = [];
+  let changed = false;
   const marks = sh.getRange(top, 1, n, vc).getDisplayValues().map(line => {
     const cells = line.slice(0, HEADER.length);
-    const was = String(line[vc - 1] || '').split(':')[2];
+    const mark = String(line[vc - 1] || '');
+    const m = mark.split(':');
+    const filled = !!cells.join('').trim();
+    if (filled ? m[0] && m[1] === hash_(cells.join('\u0001')) : !mark) return mark;
     const keyed = !!(cells[0].trim() || cells[1].trim());
-    if (was && (!keyed || was !== hash_(key_(cells[0], cells[1])))) removed.push(was);
-    return cells.join('').trim() ? mark_(stamp, cells) : '';
+    if (m[2] && (!keyed || m[2] !== hash_(key_(cells[0], cells[1])))) removed.push(m[2]);
+    changed = true;
+    return filled ? mark_(stamp, cells) : '';
   });
-  putMarks_(sh, top, vc, marks);
+  if (changed) putMarks_(sh, top, vc, marks);
   if (removed.length) {
     const gone = gone_(sh);
     removed.forEach(k => { gone[k] = [Date.now(), stamp]; });
     saveGone_(sh, gone);
+  }
+}
+
+// Runs fn holding the script lock when it can, and without it when it can't: a trigger's stamps
+// matter more than waiting its turn.
+function sheetLock_(fn) {
+  let lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) lock = null;
+  } catch (err) {
+    lock = null;
+  }
+  try {
+    return fn();
+  } finally {
+    if (lock) lock.releaseLock();
   }
 }
 
