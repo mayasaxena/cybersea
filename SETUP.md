@@ -36,7 +36,11 @@ also add `CREW_KEY` with the players' passphrase.
      **Advanced → Go to (project name)** and **Allow**.
    - It asks for access to "the spreadsheet it's attached to" (only this one), to show menus
      and dialogs in it, and to "connect to an external service", which it uses to read the
-     pictures in the Map tab (see [The Map tab](#the-map-tab)).
+     pictures in the Map tab (see [The Map tab](#the-map-tab)) and to fetch new versions of
+     itself from GitHub.
+   - It also asks to manage Apps Script projects and their deployments. That's only for
+     **Cybersea → Update the script**, which updates this script and nothing else (see
+     [Updating from the menu](#updating-from-the-menu)); without that setup it does nothing.
 5. Copy the **Web app URL**. It ends in `/exec`.
 
 ## 4. Check it and open the game
@@ -326,7 +330,9 @@ The site itself never edits the Rules or System tab, and the script isn't held b
 
 ## Updating the script later
 
-When a file in [`apps-script/`](apps-script/) changes in this repository:
+Once the game is set up for it, **Cybersea → Update the script** in the sheet does all of this
+for you (see [Updating from the menu](#updating-from-the-menu)). Otherwise, when a file in
+[`apps-script/`](apps-script/) changes in this repository:
 1. Paste the new version over the file of the same name in the game's Apps Script editor and
    save (**+ → Script** adds a missing `.gs` file, such as `Import.gs`). To see
    `appsscript.json`, turn on **Project Settings → Show "appsscript.json" manifest file in
@@ -345,6 +351,42 @@ there's a newer one.
 
 Whoever owns the template should paste the new files into the template's script too, so new
 games start with the current version.
+
+### Updating from the menu
+
+**Cybersea → Update the script** fetches the latest files in `apps-script/` from GitHub, puts
+them in the script (keeping any files of your own), saves a new version and points the web app's
+deployment at it. The URL and invite links stay the same. If the new version needs new
+permissions, it saves the code, asks you to pick **Update the script** again, and deploys once
+you've allowed them.
+
+It uses the Apps Script API, which Google won't turn on for the hidden project every script
+starts with, so the script needs a Google Cloud project of your own first. It's free and needs no
+billing. You do this once per game (and once for the template, if you want to update it from
+the menu too). A copy of the sheet starts on a hidden project again, so other GMs' games aren't
+affected until they do it too.
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com), create a project (any
+   name), and note its **project number** on its dashboard. A Firebase project is a Google Cloud
+   project too, so you can use one of those.
+2. In that project, open **APIs & Services → Library**, find **Apps Script API** and click
+   **Enable**.
+3. Open **Google Auth Platform** (the OAuth consent screen) and click **Get started**: any app
+   name, your email, audience **External**. Then, under **Audience**, click **Publish app** so
+   it's **In production**. Left in testing, Google makes you approve the script again every 7
+   days. You don't need to submit it for verification: you're its only user.
+4. Turn on **Google Apps Script API** in your own settings at
+   [script.google.com/home/usersettings](https://script.google.com/home/usersettings).
+5. In the game's Apps Script editor, open **Project Settings → Google Cloud Platform (GCP)
+   Project → Change project**, paste the project number and click **Set project**. A script
+   can't go back to its hidden project after this, only move to another of yours.
+6. If the script doesn't have `Update.gs` yet, update it by hand one last time (above).
+7. Reload the sheet and pick **Cybersea → Update the script**. Allow what it asks for (Google
+   warns that it "hasn't verified this app": click **Advanced → Go to (app name)**).
+
+To update from somewhere other than this repository's `main` (a fork, say), set the script
+property `UPDATE_FROM` to `owner/repo` or `owner/repo@branch`. `apps-script/files.txt` lists the
+files it brings in.
 
 ## Handing the game to someone else (e.g. the GM)
 
