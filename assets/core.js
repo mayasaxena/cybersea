@@ -169,12 +169,15 @@ async function copy(text) {
 }
 
 /* ---------- passphrase ---------- */
+// The passphrase is a shared game key, not an account, so keep password managers from offering to
+// save it as a login each time it's entered (1Password, LastPass, Bitwarden, Dashlane).
+const NOT_A_LOGIN = 'autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"';
 export function askKey(client, message = '') {
   const o = modal(`
     <div class="prow"><h2>${escTxt(client.game.name || 'Game')}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
     ${message ? `<div class="status">${escTxt(message)}</div>` : ''}
     <form class="prow" data-keyform>
-      <input class="in tok" type="password" autocomplete="current-password" placeholder="Passphrase" aria-label="Passphrase" required>
+      <input class="in tok" type="password" ${NOT_A_LOGIN} placeholder="Passphrase" aria-label="Passphrase" required>
       <button class="pbtn primary">Open</button>
     </form>`, { label: 'Passphrase' });
   const input = o.querySelector('input');
