@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
-  <!-- A treasure coin, 16x16 pixels: one <rect> per pixel (x = column, y = row, 0-15). opacity is 0-1. -->
+  <!-- A treasure coin, 16x16 pixels: one <rect> per pixel (x = column, y = row, 0-15). -->
   <!-- row 1 -->
   <rect x="5" y="1" width="1" height="1" fill="#f8cb8b"/><rect x="6" y="1" width="1" height="1" fill="#f8cb8b"/><rect x="7" y="1" width="1" height="1" fill="#f8cb8b"/><rect x="8" y="1" width="1" height="1" fill="#fbb954"/><rect x="9" y="1" width="1" height="1" fill="#fbb954"/><rect x="10" y="1" width="1" height="1" fill="#fbb954"/>
   <!-- row 2 -->

@@ -81,10 +81,12 @@ button.portrait.none:hover{color:var(--text);border-color:var(--cyan)}
 .pip.on{background:var(--c);box-shadow:0 0 var(--glow) color-mix(in srgb,var(--c) 60%,transparent)}
 .harm .pip{--c:var(--purple)}
 .luck .pip{--c:var(--green)}
-/* marked treasure pips are pixel-art gold coins (icons/treasure-coin.svg, 16x16, one rect per pixel) */
-.treasure .pip{--c:var(--gold)}
-.treasure .pip.on{border:0;border-radius:0;background:url("icons/treasure-coin.svg") center/100% no-repeat border-box;image-rendering:pixelated;box-shadow:none;filter:drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
-.treasure .pip.on:hover{box-shadow:none;filter:brightness(1.12) drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
+/* marked treasure and hoard pips are pixel art (icons/treasure-coin.svg, icons/hoard-coins.svg: 16x16, one rect per
+   pixel), scaled so the 14-pixel coin is as wide as an empty ring */
+.treasure .pip,.hoard .pip{--c:var(--gold)}
+.treasure .pip.on,.hoard .pip.on{--px:calc(20px / 14);width:calc(var(--px) * 16);height:calc(var(--px) * 16);margin:calc(var(--px) * -1) 0;border:0;border-radius:0;background:url("icons/treasure-coin.svg") center/100% no-repeat;image-rendering:pixelated;box-shadow:none;filter:drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
+.hoard .pip.on{background-image:url("icons/hoard-coins.svg")}
+.treasure .pip.on:hover,.hoard .pip.on:hover{box-shadow:none;filter:brightness(1.12) drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
 .pip.nb{border-style:dotted;opacity:.45;cursor:default}
 .pip.nb:hover{box-shadow:none}
 .editing .pip.nb{cursor:pointer}
