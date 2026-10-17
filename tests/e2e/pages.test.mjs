@@ -1,18 +1,11 @@
 // Browser tests for the crew home, ship, lore and rules pages, and for running two games.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite, signIn } from './harness.mjs';
+import { harness, invite, signIn, until, polls } from './harness.mjs';
 import { KEYS, IMAGES, gameTabs } from '../fixtures/game.mjs';
 import { png } from '../fixtures/png.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
-async function until(fn, ms = 6000) {
-  const end = Date.now() + ms;
-  let last;
-  while (Date.now() < end) { last = await fn(); if (last) return last; await sleep(100); }
-  return last;
-}
 // fn's answer once it equals want (a search redraws once typing pauses), or its last answer.
 async function settled(fn, want) {
   return until(async () => { const v = await fn(); return JSON.stringify(v) === JSON.stringify(want) ? v : null; }) ?? fn();
@@ -154,7 +147,7 @@ test('lore: someone else\'s edit made while you type shows once you stop', async
   await p.click('[data-act="edit"]');
   await p.locator('input[data-f="name"]').first().click();
   await h.setTab(g2, 'Lore', [['Kind', 'Name', 'Value', 'Notes', 'Image'], ['place', 'Gull Harbor', 'A sunny port.', 'Sam', '']]);
-  await sleep(1500); // polls bring it while the field has focus: held
+  await polls(p); // polls bring it while the field has focus: held
   assert.equal(await p.locator('textarea[data-f="value"]').first().inputValue(), 'A rainy port.');
   await p.evaluate(() => document.activeElement.blur());
   assert.ok(await until(async () => (await p.locator('textarea[data-f="value"]').first().inputValue()) === 'A sunny port.'));
@@ -251,7 +244,7 @@ test('map page: pictures are kept between visits, not fetched through the script
   asks.length = 0;
   await p.reload();
   assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'shows from the kept copy');
-  await sleep(500);
+  await polls(p, 1);
   assert.deepEqual(asks, []);
 });
 
@@ -261,12 +254,12 @@ test('polls that change nothing leave the page alone: focus in the search box an
   await p.waitForSelector('.loc h2');
   await p.click('#q');
   await p.keyboard.type('reef');
-  await sleep(1500); // several polls
+  await polls(p);
   assert.equal(await p.evaluate(() => document.activeElement?.id), 'q');
   assert.equal(await p.inputValue('#q'), 'reef');
   await p.focus('.gnav .glinks a');
   const link = await p.evaluate(() => document.activeElement.textContent);
-  await sleep(1500);
+  await polls(p);
   assert.equal(await p.evaluate(() => document.activeElement.closest('.gnav') && document.activeElement.textContent), link);
 });
 

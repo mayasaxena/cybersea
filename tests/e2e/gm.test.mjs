@@ -1,17 +1,10 @@
 // Browser tests for the GM page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite } from './harness.mjs';
+import { harness, invite, until, polls } from './harness.mjs';
 import { KEYS } from '../fixtures/game.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
-async function until(fn, ms = 6000) {
-  const end = Date.now() + ms;
-  let last;
-  while (Date.now() < end) { last = await fn(); if (last) return last; await sleep(100); }
-  return last;
-}
 
 let h;
 let api;
@@ -83,7 +76,7 @@ test('polls don\'t redraw the page under the GM\'s cursor', async () => {
   const field = p.locator('input[data-f="name"]').last();
   await field.click();
   await p.evaluate(() => { window.__field = document.activeElement; });
-  await sleep(1500); // several polls (every 400 ms here)
+  await polls(p);
   assert.equal(await p.evaluate(() => document.activeElement === window.__field && document.contains(window.__field)), true);
   await p.click('[data-act="edit"]');
 });
