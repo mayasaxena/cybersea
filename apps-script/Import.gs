@@ -20,7 +20,10 @@
  * only, script.container.ui (the menu and dialog) and script.external_request (Code.gs's pictures).
  */
 
-const MAX_XLSX_BYTES = 20 * 1024 * 1024;
+// A game's workbook is a few hundred KB; these leave lots of room and keep a run inside Apps
+// Script's time and memory limits.
+const MAX_XLSX_BYTES = 5 * 1024 * 1024;
+const MAX_UNZIPPED_BYTES = 60 * 1024 * 1024; // what the zip says its parts come to, unpacked
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -66,16 +69,41 @@ function replaceWithXlsx(name, data, choice) {
 // The workbook in base64 data, its tabs' cells read only for the tabs named in only (all if null).
 function openXlsx_(name, data, only) {
   name = String(name || '');
+  data = String(data || '');
   if (!/\.xlsx$/i.test(name)) return { ok: false, error: 'Pick an .xlsx file.' };
-  const bytes = Utilities.base64Decode(String(data || ''));
-  if (!bytes.length) return { ok: false, error: 'That file is empty.' };
-  if (bytes.length > MAX_XLSX_BYTES) return { ok: false, error: 'That file is too big.' };
+  const tooBig = { ok: false, error: 'That file is too big (over ' + MAX_XLSX_BYTES / 1024 / 1024 + ' MB).' };
+  if (data.length * 3 / 4 > MAX_XLSX_BYTES) return tooBig; // before decoding it
   try {
+    const bytes = Utilities.base64Decode(data);
+    if (!bytes.length) return { ok: false, error: 'That file is empty.' };
+    if (bytes.length > MAX_XLSX_BYTES) return tooBig;
+    const unpacked = unzippedSize_(bytes);
+    if (unpacked < 0) throw new Error('not a zip');
+    if (unpacked > MAX_UNZIPPED_BYTES) return { ok: false, error: 'That file unpacks to far more than a game’s workbook. Nothing was changed.' };
     // An .xlsx is a zip, and Utilities.unzip only takes a blob typed as one.
     return { ok: true, book: readXlsx_(Utilities.unzip(Utilities.newBlob(bytes, 'application/zip', name)), only) };
   } catch (err) {
     return { ok: false, error: 'That doesn’t look like an .xlsx file (' + (err.message || err) + '). Nothing was changed.' };
   }
+}
+
+// What a zip's parts add up to unpacked, from its central directory (-1 if it has none), so a
+// small file that unpacks to gigabytes is turned down before Utilities.unzip tries.
+function unzippedSize_(bytes) {
+  const u8 = i => bytes[i] & 255;
+  const u16 = i => u8(i) | (u8(i + 1) << 8);
+  const u32 = i => (u16(i) + u16(i + 2) * 65536);
+  let end = bytes.length - 22;
+  while (end >= 0 && u32(end) !== 0x06054b50) end--;
+  if (end < 0) return -1;
+  let p = u32(end + 16);
+  let total = 0;
+  for (let n = u16(end + 10); n > 0; n--) {
+    if (p + 46 > bytes.length || u32(p) !== 0x02014b50) return -1;
+    total += u32(p + 24);
+    p += 46 + u16(p + 28) + u16(p + 30) + u16(p + 32);
+  }
+  return total;
 }
 
 function tabKey_(name) {
@@ -227,14 +255,20 @@ function readXlsx_(blobs, only) {
   if (!parts['xl/workbook.xml']) throw new Error('no xl/workbook.xml');
   const rels = {};
   all_(xml_(text('xl/_rels/workbook.xml.rels')), 'Relationship').forEach(r => { rels[r.a.Id] = r.a.Target; });
-  const shared = all_(xml_(text('xl/sharedStrings.xml')), 'si').map(textOf_);
-  const styles = readStyles_(xml_(text('xl/styles.xml')));
+  // Listing a file's tabs needs neither, so they're read only for a tab whose cells are.
+  let shared = null;
+  let styles = null;
+  const sheetOf = (path, name, skipped) => {
+    if (!shared) shared = all_(xml_(text('xl/sharedStrings.xml')), 'si').map(textOf_);
+    if (!styles) styles = readStyles_(xml_(text('xl/styles.xml')));
+    return readSheet_(xml_(text(path)), shared, styles, skipped, name);
+  };
   const skipped = {};
   const tabs = all_(xml_(text('xl/workbook.xml')), 'sheet').map(s => {
     const target = String(rels[s.a['r:id']] || '');
     const path = target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
     if (!parts[path]) throw new Error('no ' + path + ' for tab ' + s.a.name);
-    const tab = only && only.indexOf(s.a.name) < 0 ? {} : readSheet_(xml_(text(path)), shared, styles, skipped, s.a.name);
+    const tab = only && only.indexOf(s.a.name) < 0 ? {} : sheetOf(path, s.a.name, skipped);
     tab.name = s.a.name;
     tab.hidden = !!s.a.state && s.a.state !== 'visible';
     return tab;
@@ -445,6 +479,7 @@ spreadsheet, its script and the site's link stay the same. <b>File → Version h
     ready();
     const f = file.files[0];
     if (!f) return;
+    if (f.size > ${MAX_XLSX_BYTES}) return fail('That file is too big (over ' + ${MAX_XLSX_BYTES / 1024 / 1024} + ' MB).');
     say('Reading the file…');
     const reader = new FileReader();
     reader.onerror = () => fail('Couldn’t read that file.');
