@@ -175,8 +175,10 @@ function findSheet_(ss, name) {
  * A tab's rows as the site sees them, and a digest of them. Rules rows are as typed; other tabs'
  * rows each come with their version (vers[i] is rows[i]'s), and the digest covers both.
  */
-function table_(sh, kind, role) {
-  if (kind === 'map') return mapTable_(sh, role);
+// named: the Images tab's names (see namedImages_), or a function that gives them, so one read
+// of several tabs looks them up once.
+function table_(sh, kind, role, named) {
+  if (kind === 'map') return mapTable_(sh, role, named);
   const grid = sh.getDataRange().getDisplayValues();
   const fixed = kind === 'rules' || kind === 'system'; // edited only in Sheets: no versions
   const rules = kind === 'rules';
@@ -184,7 +186,7 @@ function table_(sh, kind, role) {
   const vc = fixed ? 0 : verColIn_(grid[0]);
   const oc = rules ? overrideCols_(grid[0]) : [];
   const ic = kind === 'lore' ? grid[0].findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image') : -1;
-  const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1) : null;
+  const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1, named) : null;
   const rows = [];
   const vers = [];
   const imgs = [];
@@ -454,10 +456,12 @@ function read_(role, req) {
   const tabs = {};
   const known = digests_(role, read.map(r => r.name));
   const fresh = {};
+  let names = null;
+  const named = () => names || (names = namedImages_());
   read.forEach(({ sh, name, kind }) => {
     const k = name.trim().toLowerCase();
     if (have[name] && known.digest[k] === have[name]) { tabs[name] = { d: have[name] }; return; }
-    const t = table_(sh, kind, role);
+    const t = table_(sh, kind, role, named);
     fresh[k] = t.d;
     tabs[name] = have[name] === t.d ? { d: t.d } : t;
   });
@@ -677,8 +681,8 @@ function mapRows_(sh, role, named) {
 }
 
 // The GM also gets each row's place in the sheet (ns), to edit it by (see place_).
-function mapTable_(sh, role) {
-  const seen = mapRows_(sh, role);
+function mapTable_(sh, role, named) {
+  const seen = mapRows_(sh, role, named);
   const rows = seen.map(r => r.cells);
   if (role !== 'gm') return { d: digest_(rows), rows };
   const ns = seen.map(r => r.n);
@@ -875,7 +879,8 @@ function imageTokens_(sh, col, n, named) {
     if (m) return m[1];
     const name = forms[i][0] ? '' : String(v[0] == null ? '' : v[0]).trim().toLowerCase();
     if (!name) return '';
-    if (!named) named = namedImages_();
+    if (typeof named === 'function') named = named();
+    else if (!named) named = namedImages_();
     return named[name] || '';
   });
 }
