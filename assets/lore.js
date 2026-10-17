@@ -4,7 +4,7 @@ import { bootstrap, href } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce } from './core.js';
+import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce, fitText } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -69,7 +69,7 @@ const search = debounce(() => {
   const box = document.getElementById('results');
   if (!box) return;
   box.innerHTML = resultsHTML();
-  box.querySelectorAll('textarea').forEach(t => { t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; });
+  fitText(box.querySelectorAll('textarea'), 70);
 });
 function render() {
   search.cancel();
@@ -86,7 +86,7 @@ function render() {
     ${canEdit() ? '' : readOnlyHTML(client, 'Lore')}
     <datalist id="lore-cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
     <div id="results">${resultsHTML(cats)}</div>`;
-  main.querySelectorAll('textarea').forEach(t => { t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; });
+  fitText(main.querySelectorAll('textarea'), 70);
 }
 
 // The entries that match the search and category: all a search redraws.
@@ -136,7 +136,7 @@ main.addEventListener('input', e => {
   if (t.id === 'q') { query = t.value; search(); return; }
   if (t.dataset.f === 'value' || t.dataset.f === 'notes') {
     entries[+t.dataset.i][t.dataset.f] = t.value;
-    if (t.tagName === 'TEXTAREA') { t.style.height = 'auto'; t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; }
+    if (t.tagName === 'TEXTAREA') fitText([t], 70);
     changed();
   }
 });

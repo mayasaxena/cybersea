@@ -162,6 +162,15 @@ export function whenIdle(root, busy) {
 }
 
 /* ---------- redraws ---------- */
+// Grow textareas to fit their text (at least min px). All heights are reset, then all measured,
+// then all set, so the browser lays the page out once rather than once per textarea.
+export function fitText(els, min = 60) {
+  const list = [...els];
+  list.forEach(t => { t.style.height = 'auto'; });
+  const hs = list.map(t => t.scrollHeight);
+  list.forEach((t, i) => { t.style.height = Math.max(min, hs[i] + 4) + 'px'; });
+}
+
 // fn, run once calls stop coming for ms (a search box redraws after typing pauses, not per key).
 // cancel() drops a pending call (a full redraw has drawn it already).
 export function debounce(fn, ms = 100) {
