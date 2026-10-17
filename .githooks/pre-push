@@ -1,0 +1,21 @@
+#!/bin/sh
+# Local checks before a push (the repo has no CI). Turn on once per clone with
+#   git config core.hooksPath .githooks
+# Skip once with git push --no-verify. The browser tests (npm run e2e) stay a manual step.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+echo 'pre-push: unit tests'
+npm test --silent
+
+if [ -d tests/py ]; then
+  echo 'pre-push: workbook tool tests'
+  python3 -I -m unittest discover -s tests/py -t . -q
+fi
+
+if [ -n "$RAPSCALLION_TXT" ]; then
+  echo 'pre-push: book text check'
+  node tools/check-booktext.mjs
+else
+  echo 'pre-push: RAPSCALLION_TXT is unset, so the book text check was skipped (see SETUP.md).' >&2
+fi

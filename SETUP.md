@@ -286,6 +286,11 @@ npm test                             # unit tests
 npm run e2e                          # browser tests (Playwright + Chromium)
 ```
 
+`git config core.hooksPath .githooks` turns on a pre-push hook that runs the unit tests, the
+workbook tool tests and, when `RAPSCALLION_TXT` points at the rulebook text, the book text check.
+The repository has no CI, so this is what stands in for it; run `npm run e2e` yourself before
+pushing a change to the site.
+
 The dev server runs the real `Code.gs` against an in-memory sheet with made-up rules. Nothing in
 this repository contains rulebook text: `tools/check-booktext.mjs` checks for it, and runs as a
 pre-commit hook where the rulebook text file is available. The template sheet was first built
