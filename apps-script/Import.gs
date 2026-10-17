@@ -344,7 +344,7 @@ const REPLACE_DIALOG_HTML = `<!doctype html>
   h4 { margin: 12px 0 6px; font-size: 13px; color: #555; }
   #tabs { max-height: 230px; overflow-y: auto; }
   #tabs label { margin: 0 0 4px; }
-  #sureRow { margin-top: 14px; padding-top: 10px; border-top: 1px solid #ddd; }
+  #tabs label.all { font-weight: bold; }
   .note { color: #777; }
   .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   button { font: inherit; padding: 6px 14px; }
@@ -358,7 +358,6 @@ in cells, or is added. Tabs you don't tick stay as they are. The spreadsheet, it
 site's link stay the same. <b>File → Version history</b> can undo it.</p>
 <label><input type="file" id="file" accept=".xlsx"></label>
 <div id="tabs"></div>
-<label id="sureRow" hidden><input type="checkbox" id="sure"> Replace the ticked tabs</label>
 <p id="msg"></p>
 <div class="row">
   <button id="cancel" onclick="google.script.host.close()">Cancel</button>
@@ -367,12 +366,19 @@ site's link stay the same. <b>File → Version history</b> can undo it.</p>
 <script>
   const file = document.getElementById('file');
   const tabs = document.getElementById('tabs');
-  const sure = document.getElementById('sure');
   const go = document.getElementById('go');
   const msg = document.getElementById('msg');
   let data = null;
   const ticked = kind => [...tabs.querySelectorAll('input[data-kind="' + kind + '"]:checked')].map(i => i.value);
-  const ready = () => { go.disabled = !(data && sure.checked && ticked('file').length); };
+  const ready = () => {
+    const all = tabs.querySelector('#all');
+    const boxes = [...tabs.querySelectorAll('input[data-kind="file"]')];
+    if (all) {
+      all.checked = boxes.every(b => b.checked);
+      all.indeterminate = !all.checked && boxes.some(b => b.checked);
+    }
+    go.disabled = !(data && ticked('file').length);
+  };
   const say = (text, err) => { msg.className = err ? 'err' : ''; msg.textContent = text; };
   const fail = text => { say(text, true); ready(); };
   const box = (kind, name, text, on) => {
@@ -390,11 +396,9 @@ site's link stay the same. <b>File → Version history</b> can undo it.</p>
     return label;
   };
   const heading = text => { const h = document.createElement('h4'); h.textContent = text; return h; };
-  sure.onchange = ready;
   file.onchange = () => {
     data = null;
     tabs.replaceChildren();
-    document.getElementById('sureRow').hidden = true;
     ready();
     const f = file.files[0];
     if (!f) return;
@@ -408,12 +412,19 @@ site's link stay the same. <b>File → Version history</b> can undo it.</p>
           if (!res || !res.ok) return fail((res && res.error) || 'Something went wrong.');
           data = b64;
           tabs.append(heading('Tabs in the file'));
+          const all = box('all', 'Replace all', '', true);
+          all.className = 'all';
+          all.querySelector('input').id = 'all';
+          all.querySelector('input').onchange = e => {
+            tabs.querySelectorAll('input[data-kind="file"]').forEach(b => { b.checked = e.target.checked; });
+            ready();
+          };
+          tabs.append(all);
           res.file.forEach(t => tabs.append(box('file', t.name, t.exists ? '(replaces this sheet’s)' : '(new tab)', true)));
           if (res.sheetOnly.length) {
             tabs.append(heading('Tabs only in this sheet: tick to remove'));
             res.sheetOnly.forEach(n => tabs.append(box('remove', n, '', false)));
           }
-          document.getElementById('sureRow').hidden = false;
           say('');
           ready();
         })
