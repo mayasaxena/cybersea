@@ -233,7 +233,7 @@ function moveListHTML() {
       (editing && c === 'playbook' ? '<button class="add sm" data-act="add-move">+</button>' : '') + '</div>';
   }
   if (R.empty && !out) return '<div class="empty">The Rules tab hasn’t loaded yet.</div>';
-  return out || '<div class="empty">—</div>';
+  return out || '<div class="empty">No moves match.</div>';
 }
 
 function movesHTML() {
