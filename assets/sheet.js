@@ -319,7 +319,7 @@ function kitHTML() {
   const ts = st.sections[ti];
   const row = name => {
     const t = track(name) || { name, pips: [] };
-    return `<div class="wrow"><span class="lbl">${escTxt(name)}</span><span class="pips">${pips(`t:${t.name}`, t.pips, name)}</span>` +
+    return `<div class="wrow"><span class="lbl">${escTxt(name)}</span><span class="pips${name === w.t ? ' treasure' : name === w.h ? ' hoard' : ''}">${pips(`t:${t.name}`, t.pips, name)}</span>` +
       (can && name === w.t ? `<span class="pm"><button class="mini" data-act="treasure" data-n="-1" aria-label="${esc(`Spend 1-${lw(w.t)}`)}">−</button><button class="mini" data-act="treasure" data-n="1" aria-label="${esc(`Gain 1-${lw(w.t)}`)}">+</button></span>` : '') + '</div>';
   };
   let h = '';
