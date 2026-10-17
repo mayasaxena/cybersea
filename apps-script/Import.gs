@@ -150,6 +150,7 @@ function replaceTabs_(ss, book, remove) {
   // Rows remembered as removed (see gone_) were the old tabs' rows.
   const props = PropertiesService.getDocumentProperties();
   Object.keys(incoming).concat(Object.keys(gone)).forEach(k => props.deleteProperty('gone:' + k));
+  touched_(...Object.keys(incoming).concat(Object.keys(gone)));
   const skipped = Object.keys(book.skipped);
   return { ok: true, tabs: made.map(sh => sh.getName()), removed: Object.keys(gone).map(k => gone[k]), skipped };
 }
