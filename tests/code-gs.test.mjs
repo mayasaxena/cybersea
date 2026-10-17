@@ -777,6 +777,33 @@ test('image: an Images row reaches the crew only while something they can see na
   assert.equal(gm(api, { op: 'image', tab: 'Images', row: 4 }).code, 'missing', 'a formula is fetched by the browser itself');
 });
 
+test('image: whether the crew may see an Images row is remembered until the Map changes', () => {
+  const { api, gas } = imagesGame();
+  gm(api, { op: 'read', tabs: ['Map', 'Lore'] }); // the tabs have generations once read
+  const map = gas.ss.getSheetByName('Map');
+  const real = map.getDataRange.bind(map);
+  let reads = 0;
+  map.getDataRange = () => { reads++; return real(); };
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 2 }).ok, true);
+  const first = reads;
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 2 }).ok, true);
+  assert.equal(reads, first, 'the second ask reads no Map');
+  assert.equal(gm(api, { op: 'show', location: 'Haven', on: false }).ok, true);
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 2 }).code, 'missing', 'hidden again: gone');
+});
+
+test('place: a row goes in with one write when the Map tab has its usual columns', () => {
+  const { api, gas } = imagesGame();
+  const map = gas.ss.getSheetByName('Map');
+  const real = map.getRange.bind(map);
+  let writes = 0;
+  map.getRange = (...a) => { const r = real(...a); const sv = r.setValues.bind(r); r.setValues = v => { writes++; return sv(v); }; return r; };
+  const r = gm(api, { op: 'place', row: 0, cells: ['Vega', 'Dock', '', 'A dock.', 'Notes.'], image: { name: 'Cat' } });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.rows.at(-1), ['Vega', 'Dock', '', 'images:5', 'A dock.', 'Notes.', '']);
+  assert.equal(writes, 1);
+});
+
 test('images: the GM lists the Images tab to pick a picture', () => {
   const { api } = imagesGame();
   assert.equal(crew(api, { op: 'images' }).code, 'forbidden');
