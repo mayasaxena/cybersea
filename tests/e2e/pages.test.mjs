@@ -142,6 +142,19 @@ test('lore: read, search, add, edit and delete entries', async () => {
   assert.ok(await until(async () => !row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')));
 });
 
+test('lore: someone else\'s edit made while you type shows once you stop', async () => {
+  const p = await h.page();
+  await join(p, g2, 'lore.html');
+  await signIn(p, 'Testa');
+  await p.click('[data-act="edit"]');
+  await p.locator('input[data-f="name"]').first().click();
+  await h.setTab(g2, 'Lore', [['Kind', 'Name', 'Value', 'Notes', 'Image'], ['place', 'Gull Harbor', 'A sunny port.', 'Sam', '']]);
+  await sleep(1500); // polls bring it while the field has focus: held
+  assert.equal(await p.locator('textarea[data-f="value"]').first().inputValue(), 'A rainy port.');
+  await p.evaluate(() => document.activeElement.blur());
+  assert.ok(await until(async () => (await p.locator('textarea[data-f="value"]').first().inputValue()) === 'A sunny port.'));
+});
+
 test('rules page: sections, search, and no GM-only rules for the crew', async () => {
   const p = await h.page();
   await join(p, g1, 'rules.html');

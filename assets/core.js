@@ -142,6 +142,25 @@ export function toast(message, kind = '', action = null) {
   toastT = setTimeout(() => el.classList.remove('show'), 5000);
 }
 
+/* ---------- holding updates while someone types ---------- */
+// whenIdle(root, busy) gives later(fn): fn runs now, or, while busy() (typing in a field under
+// root, a dialog open), once focus leaves the field or the dialog closes. Each fn runs once however
+// many times it was asked for meanwhile, so a page can hold the sheet's updates without losing them.
+export function whenIdle(root, busy) {
+  const queued = new Set();
+  const run = () => {
+    if (!queued.size || busy()) return;
+    const fns = [...queued];
+    queued.clear();
+    fns.forEach(fn => fn());
+  };
+  root.addEventListener('focusout', () => setTimeout(run, 0));
+  new MutationObserver(run).observe(document.body, { childList: true }); // a dialog closed
+  const later = fn => { queued.add(fn); run(); };
+  later.run = run; // run what's held now, if no longer busy
+  return later;
+}
+
 /* ---------- dialogs ---------- */
 export function closeModal() { document.getElementById('overlay')?.remove(); }
 
