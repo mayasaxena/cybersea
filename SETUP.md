@@ -117,12 +117,14 @@ several games.
    ```
 3. Copy the database's URL from the top of its **Data** tab (like
    `https://your-project-default-rtdb.firebaseio.com`).
-4. Open **Project settings** (the gear) **→ Service accounts → Database secrets**, and **Show**
-   and copy the secret. Google calls these secrets legacy, but they still work and need no
-   extra permissions in the script.
-5. In the game's Apps Script **Project Settings → Script properties**, add `FIREBASE_URL` (the
-   URL) and `FIREBASE_SECRET` (the secret). Set these on your game's copy only, never on the
-   template: script properties are copied with the sheet, and the secret lets the script write.
+4. In the game's Apps Script **Project Settings → Script properties**, add `FIREBASE_URL` (the
+   URL). There's no secret to copy: the script writes as the Google account it runs as (yours,
+   the one that deployed it), which can write because the project is yours. Leave it off the
+   template: copies couldn't write to your database anyway, so their pages would only go back to
+   polling after their first change.
+5. The script needs your permission to write to the database: pick **onOpen** in the editor's
+   function list, click **Run** and allow it ("View and administer all your Firebase data" and
+   "See your primary Google Account email address", which Firebase uses to check who's writing).
 6. For edits made in Google Sheets: in Apps Script, open **Triggers** (the alarm clock) **→ Add
    Trigger**, choose the function **pushChange**, event source **From spreadsheet**, event type
    **On change**, and **Save** (allow it if asked). Without it, the site's own changes are still
@@ -130,7 +132,9 @@ several games.
 
 Make sure the script has `Push.gs` (**Cybersea → Update the script** brings it in). Pages pick up
 live updates at their next read. To turn them off, delete `FIREBASE_URL`; the script notices
-within two minutes.
+within two minutes. If the database turns a ping away (the permission isn't allowed yet, say),
+pages go back to checking every 15 seconds for ten minutes, then try again; the script's
+**Executions** log says why.
 
 ### Scratchpad and feedback
 

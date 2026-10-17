@@ -8,11 +8,15 @@
  * after missing one (the database may send only the latest of two quick changes) reads anyway.
  * Its time ("at") is the script's clock, the one reads' times are on.
  *
- * Off unless the script properties have FIREBASE_URL (the database's URL) and FIREBASE_SECRET
- * (a database secret, which lets the script write; see SETUP.md, "Live updates"). Pages hear about
- * the place to listen in their reads: games/<topic>, where the topic is made from the secret, so
- * nobody finds it without being able to read the game. The database's rules let anyone read
- * games/<topic> but nobody list games/ or write.
+ * Off unless the script properties have FIREBASE_URL (the database's URL; see SETUP.md, "Live
+ * updates"). The script writes as the Google account it runs as (the web app's and the trigger's
+ * owner), with that account's sign-in: no secret is kept, so a copy of the sheet carries nothing
+ * that can write, and a copy run by someone without access to the database is turned away. If a
+ * ping is turned away, reads stop naming the place to listen for a while, so pages go back to
+ * polling instead of waiting on pings that don't come. Pages hear about the place to listen in
+ * their reads: games/<topic>, where the topic is made from the spreadsheet's id, so nobody finds
+ * it without being able to read the game, and a copy gets its own. The database's rules let
+ * anyone read games/<topic> but nobody list games/ or write.
  *
  * The site's own changes ping when their request is done (handle_ in Code.gs); an import pings
  * when it's done (replaceWithXlsx in Import.gs). Sheets runs no simple trigger that may reach the
@@ -22,9 +26,12 @@
 
 let pushDue_ = false; // something changed in this run (touched_ sets it)
 
-// Where pages listen for pings, or '' when live updates are off.
+const PUSH_OFF_SECONDS = 600; // how long reads don't name the place to listen after a failed ping
+
+// Where pages listen for pings, or '' when live updates are off (or a ping was just turned away).
 function pushUrl_() {
   const p = pushConfig_();
+  if (p && CacheService.getScriptCache().get('push-off')) return '';
   return p ? p.base + '/games/' + p.topic + '.json' : '';
 }
 
@@ -33,14 +40,13 @@ function pushConfig_() {
   const cache = CacheService.getScriptCache();
   const hit = cache.get('push');
   if (hit) return JSON.parse(hit);
-  const props = PropertiesService.getScriptProperties().getProperties();
-  const base = String(props.FIREBASE_URL || '').trim().replace(/\/+$/, '');
-  const secret = String(props.FIREBASE_SECRET || '').trim();
+  const base = String(PropertiesService.getScriptProperties().getProperty('FIREBASE_URL') || '').trim().replace(/\/+$/, '');
   let p = null;
-  if (/^https?:\/\/[^?#\s]+$/.test(base) && secret) {
-    const topic = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'cybersea-push:' + secret, Utilities.Charset.UTF_8)
+  if (/^https?:\/\/[^?#\s]+$/.test(base)) {
+    const id = SpreadsheetApp.getActiveSpreadsheet().getId();
+    const topic = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'cybersea-push:' + id, Utilities.Charset.UTF_8)
       .map(b => ('0' + (b & 255).toString(16)).slice(-2)).join('').slice(0, 32);
-    p = { base, secret, topic };
+    p = { base, topic };
   }
   cache.put('push', JSON.stringify(p), KEY_CACHE_SECONDS);
   return p;
@@ -56,9 +62,14 @@ function pushIfDue_(by) {
     if (!p) return;
     SpreadsheetApp.flush(); // so a page reading on the ping sees the change
     const ping = { at: Date.now(), by: /^[a-z0-9]{1,40}$/i.test(String(by || '')) ? String(by) : '', n: { '.sv': { increment: 1 } } };
-    UrlFetchApp.fetch(p.base + '/games/' + p.topic + '.json?auth=' + encodeURIComponent(p.secret), {
+    const res = UrlFetchApp.fetch(p.base + '/games/' + p.topic + '.json?access_token=' + encodeURIComponent(ScriptApp.getOAuthToken()), {
       method: 'patch', contentType: 'application/json', payload: JSON.stringify(ping), muteHttpExceptions: true,
     });
+    const code = res.getResponseCode();
+    if (code < 200 || code > 299) {
+      CacheService.getScriptCache().put('push-off', String(code), PUSH_OFF_SECONDS);
+      console.warn('Live update ping turned away (' + code + '): ' + res.getContentText());
+    }
   } catch (err) {
     console.warn('Live update ping failed: ' + ((err && err.message) || err));
   }

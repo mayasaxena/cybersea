@@ -222,8 +222,10 @@ class Sheet {
   protect() { return this.getProtections('SHEET')[0] || new Protection(this, 'SHEET'); }
 }
 
+let spreadsheets = 0;
 class Spreadsheet {
-  constructor(name) { this.name = name; this.sheets = []; this.edits = 0; this.calls = 0; }
+  constructor(name) { this.name = name; this.sheets = []; this.edits = 0; this.calls = 0; this.id = 'ss' + (++spreadsheets); }
+  getId() { return this.id; }
   getName() { return this.name; }
   getSheets() { return this.sheets.slice(); }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
@@ -270,6 +272,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     now,
     flushes: 0,
     onFetch: null,
+    oauthToken: 'owner-token',
     onFlush: null,
     docProps: docStore,
     setProps(p) { Object.assign(store, p); },
@@ -309,6 +312,8 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
           return b;
         },
       },
+      // The token of whoever the script runs as (gas.oauthToken), as Push.gs sends to Firebase.
+      ScriptApp: { getOAuthToken: () => gas.oauthToken, getScriptId: () => 'S1' },
       UrlFetchApp: {
         // gas.onFetch(url, opts) may answer first: {code, text} (a live update ping, say).
         fetch: (url, opts = {}) => {

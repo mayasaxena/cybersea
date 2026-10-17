@@ -5,7 +5,7 @@
  *   Project Settings > Script properties: GM_KEY (the GM's passphrase). Optional: CREW_KEY, if
  *   players should need a passphrase too; without it, anyone with the web app URL (the invite
  *   link) is crew.
- *   Optional: FIREBASE_URL and FIREBASE_SECRET, for live updates (Push.gs).
+ *   Optional: FIREBASE_URL, for live updates (Push.gs).
  *   Deploy > New deployment > Web app; Execute as: Me; Who has access: Anyone.
  *
  * Every request is a POST whose body is JSON sent as text/plain (no CORS preflight),
