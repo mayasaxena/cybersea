@@ -38,6 +38,7 @@ const MAX_TAB_NAME = 40;
 const MAX_GONE = 150;          // removed rows remembered per tab (see gone_)
 const BAD_KEY_LIMIT = 10;      // wrong passphrases per minute before pausing
 const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this long
+const DIGEST_SECONDS = 60;    // a tab's remembered digest; bounds how stale an edit Sheets runs no onEdit for can be
 const KNOWN_KEY_SECONDS = 6 * 60 * 60; // a passphrase that worked skips the wrong-guess pause this long (CacheService's most)
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // The Map tab's columns, found by their headers (see mapRows_).
@@ -358,8 +359,10 @@ function when_(x) {
  */
 function onEdit(e) {
   const range = e && e.range;
-  if (!range || range.getColumn() > HEADER.length) return;
+  if (!range) return;
   const sh = range.getSheet();
+  touched_(sh.getName());
+  if (range.getColumn() > HEADER.length) return;
   const kind = tabKind_(sh.getName());
   if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images') return;
   const top = Math.max(range.getRow(), 2);
@@ -383,6 +386,51 @@ function onEdit(e) {
   }
 }
 
+/* ---------- remembered digests ----------
+ * A poll mostly finds its tabs unchanged, so a tab's digest is remembered (per role) and a read
+ * whose copy matches it is answered without reading the tab. Each tab has a generation, a random
+ * stamp that every write to it replaces (patch, create, show, place, onEdit, an import); a
+ * remembered digest counts only under the generation it was read in, so a read that overlaps a
+ * write never vouches for rows from before it. Sheets runs no onEdit for some edits by hand
+ * (deleting whole rows, say, or a formula's result changing), so a digest is only trusted for
+ * DIGEST_SECONDS.
+ */
+
+// The remembered digests of these tabs for role: {digest: {tab key: digest}, save({tab key: digest})}.
+function digests_(role, names) {
+  const cache = CacheService.getScriptCache();
+  const ks = names.map(n => String(n).trim().toLowerCase());
+  const got = ks.length ? cache.getAll(ks.map(k => 'gen:' + k).concat(ks.map(k => 'dig:' + role + ':' + k))) : {};
+  const gens = {};
+  const newGens = {};
+  const digest = {};
+  ks.forEach(k => {
+    gens[k] = got['gen:' + k] || (newGens['gen:' + k] = stamp_());
+    const hit = String(got['dig:' + role + ':' + k] || '').split('|');
+    if (hit[0] === gens[k]) digest[k] = hit[1];
+  });
+  // Before reading: a write from here on replaces the generation, which voids what's saved below.
+  if (Object.keys(newGens).length) cache.putAll(newGens, 21600);
+  return {
+    digest,
+    save(fresh) {
+      const out = {};
+      Object.keys(fresh).forEach(k => { out['dig:' + role + ':' + k] = gens[k] + '|' + fresh[k]; });
+      if (Object.keys(out).length) cache.putAll(out, DIGEST_SECONDS);
+    },
+  };
+}
+
+// The tabs named have changed: forget their digests. A change to the Images tab changes what the
+// Map and Lore tabs' Image cells show, so it touches them too.
+function touched_(...names) {
+  const ks = names.map(n => String(n).trim().toLowerCase());
+  if (ks.indexOf(IMAGES_TAB.toLowerCase()) >= 0) ks.push('map', 'lore');
+  const out = {};
+  ks.forEach(k => { out['gen:' + k] = stamp_(); });
+  CacheService.getScriptCache().putAll(out, 21600);
+}
+
 /* ---------- ops ---------- */
 
 /*
@@ -395,16 +443,25 @@ function read_(role, req) {
   const want = Array.isArray(req.tabs) ? req.tabs.map(t => String(t).trim().toLowerCase()) : null;
   const have = req.have || {};
   const list = [];
-  const tabs = {};
+  const read = [];
   ss.getSheets().forEach(sh => {
     const name = sh.getName();
     const kind = tabKind_(name);
     if (!canRead_(role, kind)) return;
     list.push({ name, kind });
-    if (want && want.indexOf(name.trim().toLowerCase()) < 0) return;
+    if (!want || want.indexOf(name.trim().toLowerCase()) >= 0) read.push({ sh, name, kind });
+  });
+  const tabs = {};
+  const known = digests_(role, read.map(r => r.name));
+  const fresh = {};
+  read.forEach(({ sh, name, kind }) => {
+    const k = name.trim().toLowerCase();
+    if (have[name] && known.digest[k] === have[name]) { tabs[name] = { d: have[name] }; return; }
     const t = table_(sh, kind, role);
+    fresh[k] = t.d;
     tabs[name] = have[name] === t.d ? { d: t.d } : t;
   });
+  known.save(fresh);
   const res = { ok: true, v: API_VERSION, role, game: ss.getName(), at, list, tabs };
   if (role === 'gm') res.crewKey = keys_().crew; // lets the GM copy a crew invite link
   return res;
@@ -520,6 +577,7 @@ function patch_(role, req) {
   });
 
   if (buried) saveGone_(sh, gone);
+  touched_(sh.getName());
   const at = Date.now();
   const t = table_(sh, kind, role);
   return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, skipped };
@@ -575,6 +633,7 @@ function create_(role, req) {
     putMarks_(sh, 2, vc, rows.map(c => mark_(stamp, c)));
   }
   guard_(sh);
+  touched_(name);
   const at = Date.now();
   const t = table_(sh, kind, role);
   return { ok: true, tab: name, kind, at, d: t.d, rows: t.rows, vers: t.vers };
@@ -639,6 +698,7 @@ function show_(req) {
   const cell = sh.getRange(i + 1, cols[6] + 1);
   cell.setNumberFormat('@');
   cell.setValues([[req.on ? 'on' : '']]);
+  touched_(sh.getName());
   const t = mapTable_(sh, 'gm');
   return { ok: true, tab: sh.getName(), at: Date.now(), d: t.d, rows: t.rows };
 }
@@ -722,6 +782,7 @@ function place_(req) {
 }
 
 function mapResult_(sh) {
+  touched_(sh.getName());
   const t = mapTable_(sh, 'gm');
   return { ok: true, tab: sh.getName(), at: Date.now(), d: t.d, rows: t.rows, ns: t.ns };
 }
@@ -769,6 +830,7 @@ function addImage_(ss, img) {
   cell.setNumberFormat('@');
   cell.setValues([[safe_(name)]]);
   sh.getRange(n, cols[1] + 1).setValues([[pic]]);
+  touched_(sh.getName());
   return { ok: true, name };
 }
 

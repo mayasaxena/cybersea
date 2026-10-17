@@ -166,10 +166,54 @@ test('digests skip unchanged tabs and notice direct sheet edits', () => {
   const second = crew(api, { op: 'read', tabs: ['Nexa', 'Lore'], have });
   assert.equal(second.tabs.Nexa.rows, undefined);
   assert.equal(second.tabs.Lore.rows, undefined);
-  gas.ss.getSheetByName('Lore').getRange(2, 3).setValues([['A busier port.']]);
+  byHand(gas, api, 'Lore', 2, ['place', 'Hacker’s Haven', 'A busier port.', '']);
   const third = crew(api, { op: 'read', tabs: ['Nexa', 'Lore'], have });
   assert.equal(third.tabs.Nexa.rows, undefined);
   assert.equal(third.tabs.Lore.rows[0][2], 'A busier port.');
+});
+
+test('an unchanged tab is answered from its remembered digest, without reading it', () => {
+  const { api, gas } = setup();
+  const d = crew(api, { op: 'read', tabs: ['Nexa'] }).tabs.Nexa.d;
+  const sh = gas.ss.getSheetByName('Nexa');
+  const real = sh.getDataRange.bind(sh);
+  let reads = 0;
+  sh.getDataRange = () => { reads++; return real(); };
+  for (let i = 0; i < 3; i++) assert.equal(crew(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: d } }).tabs.Nexa.rows, undefined);
+  assert.equal(reads, 0);
+  assert.equal(gm(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: d } }).tabs.Nexa.rows, undefined, 'each role reads once');
+  assert.equal(reads, 1);
+});
+
+test('a write from the site, or by hand, is seen by the next read', () => {
+  const { api, gas, tick } = setup();
+  const d = crew(api, { op: 'read', tabs: ['Nexa'] }).tabs.Nexa.d;
+  gm(api, { op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+3', '']] });
+  const after = crew(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: d } }).tabs.Nexa;
+  assert.equal(row(after.rows, 'stat', 'Spitfire')[2], '+3');
+  // An edit Sheets runs no onEdit for (deleting a row, say) shows within DIGEST_SECONDS.
+  byHand(gas, api, 'Nexa', 3, ['stat', 'Spitfire', '+4', ''], { trigger: false });
+  assert.equal(crew(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: after.d } }).tabs.Nexa.rows, undefined);
+  tick(61_000);
+  assert.equal(row(crew(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: after.d } }).tabs.Nexa.rows, 'stat', 'Spitfire')[2], '+4');
+});
+
+test('a read that overlaps a write never vouches for the rows from before it', () => {
+  const { api, gas } = setup();
+  const d = crew(api, { op: 'read', tabs: ['Nexa'] }).tabs.Nexa.d;
+  gas.clearCache();
+  const sh = gas.ss.getSheetByName('Nexa');
+  const real = sh.getDataRange.bind(sh);
+  let once = true;
+  sh.getDataRange = () => { // the write lands while this read is reading
+    const vals = real().getDisplayValues();
+    if (once) { once = false; gm(api, { op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+5', '']] }); }
+    return { getDisplayValues: () => vals };
+  };
+  crew(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: 'stale' } });
+  sh.getDataRange = real;
+  const r = crew(api, { op: 'read', tabs: ['Nexa'], have: { Nexa: d } }).tabs.Nexa;
+  assert.equal(row(r.rows, 'stat', 'Spitfire')[2], '+5');
 });
 
 test('patch updates, inserts grouped by kind, deletes, and leaves hand-added rows alone', () => {

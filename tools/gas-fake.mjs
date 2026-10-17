@@ -301,6 +301,9 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
           get: k => { const e = cache.get(k); return e && e.until > now() ? e.v : null; },
           put: (k, v, ttl = 600) => { cache.set(k, { v: String(v), until: now() + ttl * 1000 }); },
           remove: k => { cache.delete(k); },
+          getAll: ks => Object.fromEntries(ks.map(k => { const e = cache.get(k); return [k, e && e.until > now() ? e.v : null]; }).filter(([, v]) => v != null)),
+          putAll: (o, ttl = 600) => { for (const [k, v] of Object.entries(o)) cache.set(k, { v: String(v), until: now() + ttl * 1000 }); },
+          removeAll: ks => { ks.forEach(k => cache.delete(k)); },
         }),
       },
       LockService: {
