@@ -7,7 +7,7 @@ import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck } from './markup.js';
 import { gameRules, TABS } from './rules.js';
 import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
@@ -434,7 +434,7 @@ function render() {
   const hdr = store.loaded && !store.missing ? headerHTML() : '';
   let body = document.getElementById('sheet');
   if (!body) { body = document.createElement('div'); body.id = 'sheet'; app.append(body); }
-  body.innerHTML = hdr + `<main>${ro && sheetShown ? readOnlyHTML(client, SHIP ? 'Ship' : tabName, st.info.name || tabName) : ''}${main}</main>`;
+  keepFocus(body, () => { body.innerHTML = hdr + `<main>${ro && sheetShown ? readOnlyHTML(client, SHIP ? 'Ship' : tabName, st.info.name || tabName) : ''}${main}</main>`; });
   document.title = `${st.info.name || tabName} · ${client.game.name || 'Cybersea'}`;
   autoSize();
 }

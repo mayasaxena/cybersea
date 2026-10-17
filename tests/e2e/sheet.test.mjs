@@ -580,3 +580,20 @@ test('phone width has no sideways scrolling, and no page errors anywhere', async
   }
   assert.deepEqual(h.errors, []);
 });
+
+test('a button pressed by keyboard keeps focus through the redraw, so it can be pressed again', async () => {
+  const p = await openSheet({ width: 1100 });
+  await p.click('[data-act="edit"]');
+  const add = '[data-act="add-pip"][data-path="t:Experience"]';
+  await p.waitForSelector(add);
+  const before = await p.$$eval('[data-pip="t:Experience"]', ps => ps.length);
+  await p.focus(add);
+  await p.keyboard.press('Enter');
+  await p.keyboard.press('Enter');
+  assert.equal(await p.$$eval('[data-pip="t:Experience"]', ps => ps.length), before + 2);
+  assert.equal(await p.evaluate(() => document.activeElement.matches('[data-act="add-pip"][data-path="t:Experience"]')), true);
+  await p.keyboard.press('Shift+Tab');
+  await p.keyboard.press('Enter'); // the − next to it
+  assert.equal(await p.$$eval('[data-pip="t:Experience"]', ps => ps.length), before + 1);
+  await p.click('[data-act="edit"]');
+});

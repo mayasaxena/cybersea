@@ -161,6 +161,22 @@ export function whenIdle(root, busy) {
   return later;
 }
 
+/* ---------- redraws ---------- */
+// keepFocus(root, redraw): redraw replaces root's markup; whatever had focus in it gets focus back
+// (the new element with the same data-* attributes and id), so pressing a button by keyboard
+// twice works, and a screen reader doesn't fall back to the top of the page.
+const FOCUS_KEYS = ['id', 'data-act', 'data-tab', 'data-pip', 'data-j', 'data-i', 'data-k', 'data-path', 'data-cat', 'data-kind', 'data-f', 'data-name', 'data-me', 'data-nav'];
+export function keepFocus(root, redraw) {
+  const el = document.activeElement;
+  const sel = el && el !== document.body && root.contains(el)
+    ? FOCUS_KEYS.filter(a => el.hasAttribute(a)).map(a => `[${a}="${CSS.escape(el.getAttribute(a))}"]`).join('')
+    : '';
+  redraw();
+  if (!sel || root.contains(el)) return;
+  const next = root.querySelector(el.tagName.toLowerCase() + sel);
+  if (next) next.focus({ preventScroll: true });
+}
+
 /* ---------- dialogs ---------- */
 export function closeModal() { document.getElementById('overlay')?.remove(); }
 
