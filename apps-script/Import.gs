@@ -13,7 +13,7 @@
  * The script reads the .xlsx itself (it's a zip of XML files), so it needs no access beyond this
  * spreadsheet. It carries over what the game's workbooks use: values and formulas, plain-text
  * and number formats (dates, say), bold, fill and wrap formatting, column widths, hidden columns and tabs, frozen rows and
- * columns, list data validation, and sheet protection (Excel's "allow edit" ranges stay
+ * columns, list data validation, and sheet protection (as a warning; Excel's "allow edit" ranges stay
  * editable). Anything else is left out and listed in the result.
  *
  * appsscript.json lists the scopes itself (as Code.gs's @OnlyCurrentDoc would): this spreadsheet
@@ -228,12 +228,12 @@ function fillSheet_(sh, t, skipped) {
       v.sqref.split(/\s+/).filter(Boolean).forEach(a1 => sh.getRange(a1).setDataValidation(rule));
     });
   });
+  // A protected tab warns before an edit, as setUpChecks's protections do. Locking it to its
+  // editors would lock out the web app too when it runs as someone else (the deployer).
   if (t.protect) {
     extra_(skipped, 'protection' + tab, () => {
-      const p = sh.protect();
+      const p = sh.protect().setDescription(GUARD_NOTE + 'protected in the imported file').setWarningOnly(true);
       p.setUnprotectedRanges(t.protect.open.map(a1 => sh.getRange(a1)));
-      p.removeEditors(p.getEditors());
-      if (p.canDomainEdit()) p.setDomainEdit(false);
     });
   }
 }
