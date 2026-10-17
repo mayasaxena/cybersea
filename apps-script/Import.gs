@@ -11,8 +11,8 @@
  * Images tab only comes in when the sheet has none yet.
  *
  * The script reads the .xlsx itself (it's a zip of XML files), so it needs no access beyond this
- * spreadsheet. It carries over what the game's workbooks use: values and formulas, plain-text,
- * bold, fill and wrap formatting, column widths, hidden columns and tabs, frozen rows and
+ * spreadsheet. It carries over what the game's workbooks use: values and formulas, plain-text
+ * and number formats (dates, say), bold, fill and wrap formatting, column widths, hidden columns and tabs, frozen rows and
  * columns, list data validation, and sheet protection (Excel's "allow edit" ranges stay
  * editable). Anything else is left out and listed in the result.
  *
@@ -199,7 +199,7 @@ function fillSheet_(sh, t, skipped) {
   if (sh.getMaxColumns() < nc) sh.insertColumnsAfter(sh.getMaxColumns(), nc - sh.getMaxColumns());
   const grid = f => t.values.length ? t.cells.map(line => line.map(f)) : [[f({})]];
   const range = sh.getRange(1, 1, nr, nc);
-  range.setNumberFormats(grid(c => (c.text ? '@' : 'General')));
+  range.setNumberFormats(grid(c => (c.text ? '@' : c.fmt || 'General')));
   range.setValues(t.values.length ? t.values : [['']]);
   // The rest is how the tab looks and what it checks: one that can't be set is listed in the
   // result instead of stopping the import.
@@ -271,7 +271,7 @@ function readXlsx_(blobs, only) {
   let styles = null;
   const sheetOf = (path, name, skipped) => {
     if (!shared) shared = all_(xml_(text('xl/sharedStrings.xml')), 'si').map(textOf_);
-    if (!styles) styles = readStyles_(xml_(text('xl/styles.xml')));
+    if (!styles) styles = readStyles_(xml_(text('xl/styles.xml')), skipped);
     return readSheet_(xml_(text(path)), shared, styles, skipped, name);
   };
   const skipped = {};
@@ -288,7 +288,16 @@ function readXlsx_(blobs, only) {
   return { tabs, skipped };
 }
 
-function readStyles_(doc) {
+// Excel's built-in number formats a game's workbook might use (ids it doesn't write out).
+const BUILTIN_FORMATS = {
+  1: '0', 2: '0.00', 3: '#,##0', 4: '#,##0.00', 9: '0%', 10: '0.00%', 11: '0.00E+00', 14: 'm/d/yyyy', 15: 'd-mmm-yy',
+  16: 'd-mmm', 17: 'mmm-yy', 18: 'h:mm AM/PM', 19: 'h:mm:ss AM/PM', 20: 'h:mm', 21: 'h:mm:ss', 22: 'm/d/yyyy h:mm',
+  45: 'mm:ss', 46: '[h]:mm:ss', 47: 'mm:ss.0',
+};
+
+// Each cell style as {text, fmt (a number format other than General, or ''), bold, fill, wrap}.
+// A fill given as a theme or palette color (not as RGB) is left out and listed in skipped.
+function readStyles_(doc, skipped) {
   const fmts = {};
   all_(doc, 'numFmt').forEach(f => { fmts[f.a.numFmtId] = f.a.formatCode; });
   const fonts = kids_(first_(doc, 'fonts'), 'font').map(f => {
@@ -298,14 +307,20 @@ function readStyles_(doc) {
   const fills = kids_(first_(doc, 'fills'), 'fill').map(f => {
     const p = first_(f, 'patternFill');
     const fg = p && p.a.patternType === 'solid' && first_(p, 'fgColor');
+    if (fg && !fg.a.rgb && (fg.a.theme != null || fg.a.indexed != null)) return 'theme';
     return fg && /^[0-9a-f]{8}$/i.test(fg.a.rgb || '') ? '#' + fg.a.rgb.slice(2) : null;
   });
   return kids_(first_(doc, 'cellXfs'), 'xf').map(x => {
     const al = first_(x, 'alignment');
+    const text = x.a.numFmtId === '49' || fmts[x.a.numFmtId] === '@';
+    const fmt = text ? '' : fmts[x.a.numFmtId] || BUILTIN_FORMATS[x.a.numFmtId] || '';
+    let fill = fills[Number(x.a.fillId) || 0] || null;
+    if (fill === 'theme') { skipped['fill colors given as theme colors'] = 1; fill = null; }
     return {
-      text: x.a.numFmtId === '49' || fmts[x.a.numFmtId] === '@',
+      text,
+      fmt: /^general$/i.test(fmt) ? '' : fmt,
       bold: !!fonts[Number(x.a.fontId) || 0],
-      fill: fills[Number(x.a.fillId) || 0] || null,
+      fill,
       wrap: !!al && (al.a.wrapText === '1' || al.a.wrapText === 'true'),
     };
   });
@@ -330,7 +345,9 @@ function readSheet_(doc, shared, styles, skipped, name) {
       const f = kids_(cell, 'f')[0];
       const v = kids_(cell, 'v')[0];
       let value;
-      if (f && f.t) value = '=' + f.t;
+      if (f && !f.t && f.a.t === 'shared') skipped['formulas filled down in Excel, kept as their values (' + name + ')'] = 1;
+      if (f && f.t) value = '=' + f.t.replace(/_xl(fn|ws)\./g, ''); // Excel's marks on newer functions
+      else if (cell.a.t === 'd') value = v ? v.t : ''; // an ISO date, kept as text
       else if (cell.a.t === 's') value = shared[Number(v && v.t)] || '';
       else if (cell.a.t === 'inlineStr') value = textOf_(kids_(cell, 'is')[0] || { c: [] });
       else if (cell.a.t === 'b') value = !!v && v.t === '1';

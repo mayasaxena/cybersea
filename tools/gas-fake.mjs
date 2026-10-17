@@ -114,7 +114,7 @@ class Range {
   }
   setNumberFormat(fmt) { this.cells(c => { c.fmt = fmt; }); return this; }
   setFontWeight() { return this; }
-  setNumberFormats(fmts) { this.cells((c, r, col) => { c.fmt = fmts[r][col] === '@' ? '@' : null; }); return this; }
+  setNumberFormats(fmts) { this.cells((c, r, col) => { c.fmt = fmts[r][col] && fmts[r][col] !== 'General' ? fmts[r][col] : null; }); return this; }
   setFontWeights(w) { this.cells((c, r, col) => { c.bold = w[r][col] === 'bold'; }); return this; }
   setBackgrounds(b) { this.cells((c, r, col) => { c.bg = b[r][col] || null; }); return this; }
   setWraps(w) { this.cells((c, r, col) => { c.wrap = !!w[r][col]; }); return this; }
