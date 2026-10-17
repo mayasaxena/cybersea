@@ -256,6 +256,7 @@ export class GameClient extends Emitter {
     this.reading = false;
     this.locked = false;   // the sheet turned our passphrase (or lack of one) away
     this.checking = false; // a new passphrase is on its way to the sheet
+    this.listSig = null;   // what the last list event was about (see read)
   }
 
   tab(name) {
@@ -389,7 +390,10 @@ export class GameClient extends Emitter {
       for (const n of names) if (!got.includes(n.toLowerCase())) this.tab(n).markMissing();
       this.reconcileMe(names, startedAt);
       if (!this.anyPending()) this.setStatus('ok');
-      this.emit({ list: true });
+      // Pages redraw their nav (and more) on a list event, so send one only when the tab list,
+      // our role or the game's name changed: most polls change none of them.
+      const sig = JSON.stringify([r.role, r.list, this.game.name]);
+      if (sig !== this.listSig) { this.listSig = sig; this.emit({ list: true }); }
       return r;
     } catch (e) {
       if (stale()) { this.reading = false; return this.read(names); }
