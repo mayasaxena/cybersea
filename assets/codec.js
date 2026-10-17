@@ -6,13 +6,12 @@
 export const rowKey = (kind, name) => `${String(kind ?? '').trim().toLowerCase()}|${String(name ?? '').trim().toLowerCase()}`;
 
 /* ---------- pips ---------- */
-// Tracks: ○ open, ● marked, ✕ crossed out. Bonds: · not marked, ● marked, ○ marked but used.
-// Hand-typed variants are accepted: x X × for crossed out; * • 1 for marked; o O 0 - . _ for open.
+// Tracks: ○ open, ● marked. Bonds: · not marked, ● marked, ○ marked but used.
+// Hand-typed variants are accepted: * • 1 for marked; anything else (o O 0 - . _) is open.
 export function parseTrack(s) {
-  return [...String(s ?? '').replace(/\s+/g, '')].map(ch =>
-    /[●•*1■◉⬤]/.test(ch) ? 1 : /[✕✗✘xX×☒]/.test(ch) ? 2 : 0);
+  return [...String(s ?? '').replace(/\s+/g, '')].map(ch => (/[●•*1■◉⬤]/.test(ch) ? 1 : 0));
 }
-export const formatTrack = pips => pips.map(v => (v === 1 ? '●' : v === 2 ? '✕' : '○')).join('');
+export const formatTrack = pips => pips.map(v => (v === 1 ? '●' : '○')).join('');
 
 export function parseBond(s) {
   return [...String(s ?? '').replace(/\s+/g, '')].map(ch =>

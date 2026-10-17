@@ -26,10 +26,12 @@ export function armed(b) {
 }
 
 /* ---------- pips ---------- */
-// Tracks: 0 open, 1 marked, 2 crossed out. Bonds: 0 unmarked, 1 marked, 2 marked but used.
-export const pipClass = (v, bond) => (bond ? (v === 1 ? ' on' : v === 2 ? '' : ' nb') : (v === 1 ? ' on' : v === 2 ? ' x' : ''));
-export const pips = (path, arr, label, bond = false) => arr.map((v, j) =>
-  `<button class="pip${pipClass(v, bond)}" data-pip="${esc(path)}" data-j="${j}"${bond ? ' data-bond' : ''} aria-label="${esc(label)} ${j + 1}" aria-pressed="${v === 1}"></button>`).join('');
+// Tracks: 0 open, 1 marked. Bonds: 0 unmarked, 1 marked, 2 marked but used.
+export const pipClass = (v, bond) => (bond ? (v === 1 ? ' on' : v === 2 ? '' : ' nb') : (v === 1 ? ' on' : ''));
+// A track's last `skulls` pips are skulls (a track's skulls= in the System tab); the very last bleeds.
+export const skullClass = (j, n, skulls) => (j >= n - (skulls || 0) ? (j === n - 1 ? ' skull bloody' : ' skull') : '');
+export const pips = (path, arr, label, bond = false, skulls = 0) => arr.map((v, j) =>
+  `<button class="pip${pipClass(v, bond)}${skullClass(j, arr.length, skulls)}" data-pip="${esc(path)}" data-j="${j}"${bond ? ' data-bond' : ''} aria-label="${esc(label)} ${j + 1}" aria-pressed="${v === 1}"></button>`).join('');
 
 /* ---------- theme ---------- */
 export function applyTheme() {

@@ -2,10 +2,10 @@
 import { parseSheet, isSignedIn } from './codec.js';
 import { href } from './games.js';
 import { plain } from './markup.js';
-import { esc, escTxt, fmt, pipClass } from './core.js';
+import { esc, escTxt, fmt, pipClass, skullClass } from './core.js';
 import { wealth, wealthOf } from './inventory.js';
 import { gameRules } from './rules.js';
-import { systemOf, typeOf, SHIP } from './system.js';
+import { systemOf, typeOf, sum, SHIP } from './system.js';
 
 // The game's Rules and System tabs, indexed once per change.
 let seen = null;
@@ -19,10 +19,10 @@ function rulesOf(client) {
 const roleRow = (st, sys, role, cls) => {
   const name = sys.name(role);
   const t = name && st.tracks[name.toLowerCase()];
-  return t ? `<div class="cc-row"><span class="lbl">${escTxt(t.name)}</span><span class="pips ${cls}">${staticPips(t.pips)}</span></div>` : '';
+  return t ? `<div class="cc-row"><span class="lbl">${escTxt(t.name)}</span><span class="pips ${cls}">${staticPips(t.pips, false, Math.max(0, sum(sys.track(role)?.skulls)))}</span></div>` : '';
 };
 
-export const staticPips = (arr, bond = false) => arr.map(v => `<span class="pip${pipClass(v, bond)}" aria-hidden="true"></span>`).join('');
+export const staticPips = (arr, bond = false, skulls = 0) => arr.map((v, j) => `<span class="pip${pipClass(v, bond)}${skullClass(j, arr.length, skulls)}" aria-hidden="true"></span>`).join('');
 
 // The GM's at-a-glance lines: the name a section starts with in bold, and a list's first-level lines.
 const section = (st, title) => (title ? st.sections.find(x => x.title.toLowerCase() === title.toLowerCase())?.text || '' : '');
