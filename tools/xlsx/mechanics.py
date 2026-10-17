@@ -3,7 +3,7 @@
 
 The site has no stats, tracks or numbers of its own: they are rows in the System tab, and what a
 Rules row rolls or does is in its Meta (see assets/system.js and SETUP.md). This lays them into an
-existing workbook, so it can be imported over a game's sheet (File > Import > Replace spreadsheet):
+existing workbook, to bring into a game's sheet with Cybersea > Replace with an xlsx…:
 
   python3 -I tools/xlsx/mechanics.py --mechanics mechanics.json in.xlsx --out out.xlsx
 
@@ -11,8 +11,8 @@ mechanics.json: {rows, meta}
   rows: the System tab's rows, as {kind, group, name, text, meta}. The tab is made anew.
   meta: [{kind, group, name, meta}]: keys added to that Rules row's Meta, key by key (roll=…, action=…).
 
-It also adds the dropdowns Code.gs's setUpChecks makes on the Kind columns (and Rules' Vis);
-Google Sheets keeps them on import. Run setUpChecks once after importing for the rest: the Value
+It also adds the dropdowns Code.gs's setUpChecks makes on the Kind columns (and Rules' Vis), so
+the workbook has them in Excel too. Replace with an xlsx… adds the rest as it imports: the Value
 checks and the warning-only protection on Rules, System and README.
 """
 import argparse
