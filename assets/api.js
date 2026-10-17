@@ -17,13 +17,9 @@ import { CONFIG } from '../config.js';
 import { ls, gkey, upsertGame } from './games.js';
 import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } from './codec.js';
 
-// The latest Code.gs version (its ping answers {v}). Older deployments still work: before 2, only
-// with a passphrase (crew without one are turned away); before 3, without row versions, so
-// changes always go ahead; before 4, without the Rules tab's override columns; before 5, without
-// the Map tab (places, levels and pictures); before 6, without the System tab (the game's mechanics);
-// before 7, without feedback; before 8, without the Images tab or the GM's map editing.
-export const API_VERSION = 8;
-const CREW_SIGNIN_VERSION = 2;
+// The Code.gs version this site needs (its ping and reads answer {v}). An older deployment is
+// turned away with a note to redeploy: there's nothing to stay compatible with.
+export const API_VERSION = 9;
 
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
 const MAX_ALTS = 20;
@@ -58,16 +54,6 @@ export async function ping(api) {
   return JSON.parse(await res.text());
 }
 
-// An old script answers "wrong passphrase" when none was sent, which is baffling; say what's wrong.
-async function outdatedScript(api) {
-  try {
-    if (((await ping(api)).v || 0) < CREW_SIGNIN_VERSION) {
-      return 'This game’s script is out of date, so it still wants a passphrase from everyone. The GM needs to paste the latest Code.gs into it and deploy a new version (SETUP.md, “Updating the script”). The GM passphrase still works.';
-    }
-  } catch { /* unreachable: keep the original message */ }
-  return '';
-}
-
 class Emitter {
   constructor() { this.fns = new Set(); }
   on(fn) { this.fns.add(fn); return () => this.fns.delete(fn); }
@@ -94,11 +80,11 @@ export class TabStore extends Emitter {
 
   get rows() { return applyPending(this.server.rows, [...this.pending.values()]); }
 
-  // The version the sheet last sent for a row ('' when it had none), or null if it sent none
-  // (nothing read yet, or a script older than version 3): a change made then goes ahead anyway.
+  // The version the sheet last sent for a row ('' when it had none), or null before the tab is
+  // read: a change made then goes ahead anyway.
   version(key) {
     const { rows, vers } = this.server;
-    if (!this.loaded || !Array.isArray(vers)) return null;
+    if (!this.loaded) return null;
     const i = rows.findIndex(r => rowKey(r[0], r[1]) === key);
     return i < 0 ? '' : vers[i] ?? null;
   }
@@ -181,7 +167,7 @@ export class TabStore extends Emitter {
     if (!this.pending.size) return;
     const sent = [...this.pending.entries()];
     const ordered = sent.map(([, p]) => p).sort((x, y) => x.seq - y.seq);
-    // Each change ends with what it's based on; scripts older than version 3 ignore it.
+    // Each change ends with what it's based on (none if made before the tab was read).
     const when = p => ({ base: p.base == null ? undefined : [p.base, ...(p.alts || [])], seen: p.seen, stamp: p.st });
     const body = {
       op: 'patch',
@@ -231,14 +217,14 @@ export class TabStore extends Emitter {
   settle(sent, r) {
     const skipped = new Set((r.skipped || []).map(x => rowKey(x[0], x[1])));
     const vers = new Map();
-    if (Array.isArray(r.vers)) r.rows.forEach((row, i) => { const k = rowKey(row[0], row[1]); if (!vers.has(k)) vers.set(k, r.vers[i]); });
+    r.rows.forEach((row, i) => { const k = rowKey(row[0], row[1]); if (!vers.has(k)) vers.set(k, r.vers[i]); });
     for (const [id, p] of sent) {
       const cur = this.pending.get(id);
       if (!cur) continue;
       if (cur.seq === p.seq) { this.pending.delete(id); continue; }
       const key = rowKey(cur.row[0], cur.row[1]);
       if (skipped.has(key)) this.pending.delete(id);
-      else Object.assign(cur, { base: Array.isArray(r.vers) ? vers.get(key) ?? '' : null, seen: r.at, alts: [] });
+      else Object.assign(cur, { base: vers.get(key) ?? '', seen: r.at, alts: [] });
     }
   }
 }
@@ -375,6 +361,7 @@ export class GameClient extends Emitter {
     try {
       const r = await this.request({ op: 'read', tabs: names, have });
       if (stale()) { this.reading = false; return this.read(names); }
+      if ((Number(r.v) || 0) < API_VERSION) throw new ApiError('This game’s script is out of date. The GM needs to paste the latest Code.gs into it and deploy a new version (SETUP.md, “Updating the script”).', 'outdated');
       this.role = r.role;
       this.list = r.list;
       this.crewKey = r.crewKey || null;
@@ -397,7 +384,6 @@ export class GameClient extends Emitter {
       return r;
     } catch (e) {
       if (stale()) { this.reading = false; return this.read(names); }
-      if (e.code === 'auth' && !this.game.key) e.message = (await outdatedScript(this.game.api)) || e.message;
       this.setStatus('err', e.message);
       if (e.code === 'auth') { this.locked = true; this.emit({ auth: true }); }
       throw e;

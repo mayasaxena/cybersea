@@ -53,8 +53,6 @@ async function keep(url, blob, d, seen) {
   } catch { /* no Cache Storage: fine */ }
 }
 
-const why = (tab, msg) => new Error(/unknown op/i.test(msg || '') ? `Update the game’s script to show pictures from the ${tab} tab.` : msg || 'Couldn’t load the picture.');
-
 // seen: the digest of the tab the picture shows on, as this page has it.
 function picture(client, tab, row, seen) {
   const k = `${tab}:${row}`;
@@ -69,7 +67,7 @@ function picture(client, tab, row, seen) {
         r = await limited(() => client.request({ op: 'image', tab, row, have: h?.get('x-d') || undefined }));
       } catch (err) {
         if (old) return old.blob(); // offline, say: the kept copy will do
-        throw why(tab, err.message);
+        throw new Error(err.message || 'Couldn’t load the picture.');
       }
       if (r.same && old) {
         const blob = await old.blob();

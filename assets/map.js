@@ -171,7 +171,7 @@ async function loadImages() {
     imageList = (await client.request({ op: 'images' })).images;
   } catch (e) {
     imageList = [];
-    throw new Error(/unknown op/i.test(e.message) ? 'Update the game’s script to edit the map here.' : e.message);
+    throw e;
   }
   return imageList;
 }
@@ -242,7 +242,7 @@ function openEditor(it, kind, place) {
       if (body.image?.data) imageList = null; // the upload is in the Images tab now
     } catch (err) {
       o.querySelectorAll('button').forEach(b => { b.disabled = false; });
-      say(/unknown op/i.test(err.message) ? 'Update the game’s script to edit the map here.' : err.message);
+      say(err.message);
       return;
     } finally {
       await client.read(['Map']).catch(() => {});
