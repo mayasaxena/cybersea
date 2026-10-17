@@ -284,6 +284,7 @@ games start with the current version.
 node tools/dev-server.mjs            # site on :8080, a test game on :8081
 npm test                             # unit tests
 npm run lint                         # eslint, if installed (no packages needed)
+npm run test:py                      # workbook tool tests (needs openpyxl)
 npm run e2e                          # browser tests (Playwright + Chromium)
 ```
 

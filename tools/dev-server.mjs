@@ -42,7 +42,7 @@ export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS
     tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew', r.override_name || '', r.override_text || '', r.override_meta || ''])] };
   }
   const gas = createGas({ name, tabs, props: keys, asText: true });
-  return { gas, api: loadCodeGs(gas, undefined, codeTransform) };
+  return { gas, api: loadCodeGs(gas, codeTransform) };
 }
 
 // Edit a tab in Sheets until it holds `rows` (row 1 is the header): type over the cells that
