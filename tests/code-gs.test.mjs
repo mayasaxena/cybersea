@@ -98,9 +98,25 @@ test('a crew passphrase is optional', () => {
 test('wrong passphrases are refused, then throttled for a minute', () => {
   const { api, tick } = setup();
   for (let i = 0; i < 10; i++) assert.equal(api.call({ op: 'read', key: 'guess' + i }).code, 'auth');
-  assert.equal(crew(api, { op: 'read' }).code, 'throttled');
+  assert.equal(api.call({ op: 'read', key: 'guess10' }).code, 'throttled');
   tick(61_000);
-  assert.equal(crew(api, { op: 'read' }).ok, true);
+  assert.equal(api.call({ op: 'read', key: 'guess11' }).code, 'auth');
+});
+
+test('wrong guesses never lock out the crew, or a GM who was already signed in', () => {
+  const { api } = setup();
+  assert.equal(gm(api, { op: 'read' }).role, 'gm');
+  for (let i = 0; i < 12; i++) api.call({ op: 'read', key: 'guess' + i });
+  assert.equal(crew(api, { op: 'read' }).role, 'crew', 'no passphrase, no guess');
+  assert.equal(gm(api, { op: 'read' }).role, 'gm', 'the GM passphrase worked a moment ago');
+});
+
+test('while paused, even the right passphrase waits if it hasn’t worked lately', () => {
+  const { api, gas } = setup();
+  for (let i = 0; i < 10; i++) api.call({ op: 'read', key: 'guess' + i });
+  assert.equal(gm(api, { op: 'read' }).code, 'throttled');
+  gas.clearCache();
+  assert.equal(gm(api, { op: 'read' }).role, 'gm');
 });
 
 test('crew reads everything except the GM tab and GM-only rules', () => {
