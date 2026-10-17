@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 8 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 9 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 8 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 9 });
 });
 
 test('explains missing passphrases', () => {

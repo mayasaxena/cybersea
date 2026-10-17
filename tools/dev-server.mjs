@@ -35,14 +35,14 @@ function parseLatency(spec) {
   return () => a + Math.random() * (b - a);
 }
 
-// codePath and codeTransform stand in for an older deployment of Code.gs.
-export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codePath, codeTransform } = {}) {
+// codeTransform stands in for an older deployment of Code.gs.
+export function makeGame({ name = 'Fixture Game', tabs = gameTabs(), keys = KEYS, rulesJson, codeTransform } = {}) {
   if (rulesJson) {
     const recs = JSON.parse(readFileSync(rulesJson, 'utf8'));
     tabs = { ...tabs, Rules: [RULES_HEADER, ...recs.map(r => [r.kind, r.group, r.name, r.text, r.meta || '', r.vis || 'crew', r.override_name || '', r.override_text || '', r.override_meta || ''])] };
   }
   const gas = createGas({ name, tabs, props: keys, asText: true });
-  return { gas, api: loadCodeGs(gas, codePath, codeTransform) };
+  return { gas, api: loadCodeGs(gas, undefined, codeTransform) };
 }
 
 // Edit a tab in Sheets until it holds `rows` (row 1 is the header): type over the cells that

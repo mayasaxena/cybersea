@@ -468,7 +468,7 @@ export function openFeedback(client) {
       toast('Thanks! Your feedback is in the sheet.');
     } catch (e) {
       send.disabled = false;
-      say(/unknown op/i.test(e.message) ? 'This game’s script is out of date, so it can’t take feedback yet. Your note is kept here; ask the GM to update the script.' : `${e.message} Your note is kept here.`);
+      say(`${e.message} Your note is kept here.`);
     }
   });
 }

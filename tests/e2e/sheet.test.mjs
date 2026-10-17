@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, invite, signIn } from './harness.mjs';
-import { KEYS, CODE_V2 } from '../fixtures/game.mjs';
+import { KEYS } from '../fixtures/game.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
@@ -21,8 +21,7 @@ async function until(fn, ms = 6000) {
 
 let h;
 let api;
-let v2; // a game whose script predates row versions
-test.before(async () => { h = await harness({ games: 2, gameOptions: [{}, { codePath: CODE_V2 }] }); [api, v2] = h.srv.apis; });
+test.before(async () => { h = await harness(); [api] = h.srv.apis; });
 test.after(async () => { await h.close(); });
 
 // Opens Testa's sheet signed in as Testa (pass as: null to stay signed out).
@@ -252,24 +251,6 @@ test('an edit made on top of one the sheet never answered still saves', async ()
   const second = await track(p, 'luck');
   assert.ok(await until(async () => (await luck()) === second && !(await queued(p)), 30000));
   assert.doesNotMatch(await p.textContent('body'), /Not saved/);
-});
-
-test('a game whose script predates row versions saves edits as before', async () => {
-  const p = await openSheet(undefined, { game: v2 });
-  assert.ok(await until(async () => row(await h.tab(v2, 'Testa'), 'signin', 'Signed in')?.[2] === 'yes'));
-  // Experience: a script this old sends the System tab without its Meta, so harm and luck aren't known.
-  const xp = async () => row(await h.tab(v2, 'Testa'), 'track', 'Experience')[2];
-  await p.click('[data-pip="t:Experience"][data-j="2"]');
-  assert.ok(await until(async () => (await xp()) === '●●●○○○'));
-  assert.equal((await h.tab(v2, 'Testa'))[0][4], '', 'no Version column');
-  // offline edits survive, and are sent as they are
-  await fail(50, v2);
-  await p.click('[data-pip="t:Experience"][data-j="3"]');
-  await sleep(300);
-  await p.reload();
-  await p.waitForSelector('h1.name');
-  await fail(0, v2);
-  assert.ok(await until(async () => (await xp()) === '●●●●○○' && !(await queued(p)), 30000));
 });
 
 test('actions: session, chapter’s end, downtime with a rolled move, level up', async () => {
@@ -564,12 +545,6 @@ test('feedback: the button sends a note to the Feedback tab without who sent it,
   await p.click('.fb');
   assert.equal(await p.inputValue('.fbtext'), '', 'draft cleared once sent');
   await p.keyboard.press('Escape');
-  // an old script can't take it: the draft stays
-  const q = await openSheet(undefined, { game: v2, as: null });
-  await q.click('.fb');
-  await q.fill('.fbtext', 'hello');
-  await q.click('[data-send]');
-  await q.waitForFunction(() => /out of date/.test(document.querySelector('[data-msg]')?.textContent || ''));
 });
 
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {

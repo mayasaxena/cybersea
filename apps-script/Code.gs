@@ -24,7 +24,7 @@
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 8; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures. 6: the System tab, and checks on the tabs (setUpChecks). 7: feedback. 8: the Images tab, and the GM edits the Map tab (place, images)
+const API_VERSION = 9; // the site turns away a script older than the one it needs (assets/api.js)
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // The game's mechanics (stats, tracks, starting cards, options): read by everyone, edited only in Sheets.
@@ -359,7 +359,7 @@ function saveGone_(sh, gone) {
  *   last saw, then any its own unconfirmed changes would have left.
  * seen: when the page last heard from the sheet (the "at" of a read or patch).
  * stamp: the row's new version.
- * Pages from before version 3 send none of this; their changes go ahead regardless.
+ * A change made before the page read the tab has no base, and goes ahead regardless.
  */
 function when_(x) {
   const w = x && typeof x === 'object' && !Array.isArray(x) ? x : {};
