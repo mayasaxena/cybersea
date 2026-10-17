@@ -3,6 +3,7 @@ import { parseSheet, isSignedIn } from './codec.js';
 import { href } from './games.js';
 import { plain } from './markup.js';
 import { esc, escTxt, fmt, pipClass, skullClass } from './core.js';
+import { pictureHTML } from './pictures.js';
 import { wealth, wealthOf } from './kit.js';
 import { gameRules } from './rules.js';
 import { systemOf, typeOf, sum, SHIP } from './system.js';
@@ -29,6 +30,9 @@ const section = (st, title) => (title ? st.sections.find(x => x.title.toLowerCas
 const boldName = t => (String(t).match(/^\*\*(.+?)\*\*/)?.[1] || '').replace(/[.:]$/, '').trim();
 const line = (label, text) => (text ? `<div class="cc-row"><span class="lbl">${label}</span> <span class="cc-text">${escTxt(text)}</span></div>` : '');
 
+// A sheet's picture (its info|Name row's: see pictures.js), small, beside the name.
+const portrait = (client, tab, label) => pictureHTML(tab, client.tab(tab).imageOf('info', 'Name'), label, 'portrait sm', { still: true });
+
 const roleLine = (st, sys, role) => line(escTxt(sys.title(role)), boldName(section(st, sys.title(role))));
 
 function gmLinesHTML(st, sys) {
@@ -51,7 +55,7 @@ export function crewCardHTML(client, name, { gm = false, me = false } = {}) {
   const vice = pipsOf('vice');
   const troubles = section(st, sys.title('troubles'));
   return `<a class="card crewcard" href="${esc(href('sheet.html', client.game, { c: name }))}">
-    <div class="shead"><h2>${escTxt(st.info.name || name)}</h2>${me ? '<span class="pill me">You</span>' : isSignedIn(rows) ? '<span class="pill in">Signed in</span>' : ''}${st.state.downtime ? '<span class="pill">Downtime</span>' : ''}${gm && vice.includes(1) ? `<span class="pill vice">${escTxt(sys.name('vice'))}</span>` : ''}</div>
+    <div class="shead">${portrait(client, name, st.info.name || name)}<h2>${escTxt(st.info.name || name)}</h2>${me ? '<span class="pill me">You</span>' : isSignedIn(rows) ? '<span class="pill in">Signed in</span>' : ''}${st.state.downtime ? '<span class="pill">Downtime</span>' : ''}${gm && vice.includes(1) ? `<span class="pill vice">${escTxt(sys.name('vice'))}</span>` : ''}</div>
     <div class="note">${escTxt([st.info.playbook, st.info.player].filter(Boolean).join(' · '))}</div>
     ${roleRow(st, sys, 'harm', 'harm')}${roleRow(st, sys, 'luck', 'luck')}
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
@@ -68,7 +72,7 @@ export function shipCardHTML(client, { gm = false } = {}) {
   const st = parseSheet(s.rows);
   const sys = systemOf(rulesOf(client), SHIP);
   return `<a class="card crewcard" href="${esc(href('ship.html', client.game))}">
-    <div class="shead"><h2>${escTxt(st.info.name || 'Ship')}</h2></div>
+    <div class="shead">${portrait(client, 'Ship', st.info.name || 'Ship')}<h2>${escTxt(st.info.name || 'Ship')}</h2></div>
     <div class="note">${escTxt(st.info.playbook || '')}</div>
     ${roleRow(st, sys, 'harm', 'harm')}${roleRow(st, sys, 'luck', 'luck')}
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>

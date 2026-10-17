@@ -919,6 +919,8 @@ test('picture: a crew member with no picture of their own has the Images tab\'s 
   assert.equal(crew(api, { op: 'image', tab: 'Images', row: 3 }).type, 'image/jpeg', 'the crew may load it');
   const r = crew(api, { op: 'picture', tab: 'Ship', row: ['crew', 'Lair'], image: { name: 'cat' } });
   assert.deepEqual(r.imgs, ['', 'images:5', 'images:5', ''], 'their own picture comes first');
+  assert.deepEqual(crew(api, { op: 'picture', tab: 'Ship', row: ['crew', 'cat'], image: '' }).imgs, ['', '', 'images:5', ''], 'taken off stays off');
+  assert.deepEqual(crew(api, { op: 'picture', tab: 'Ship', row: ['crew', 'cat'], image: { name: 'lair' } }).imgs, ['', 'images:3', 'images:5', '']);
 });
 
 test('picture: a tab with no Name row has nowhere to put one, and the GM tab is the GM\'s', () => {

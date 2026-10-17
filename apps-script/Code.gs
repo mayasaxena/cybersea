@@ -940,7 +940,9 @@ function picture_(role, req) {
   const n = grid.findIndex((line, i) => i > 0 && key_(line[0], line[1]) === key_(row[0], row[1]));
   if (n < 0) return { ok: false, code: 'missing', error: row[0] === 'info' ? 'Give the sheet a name first.' : 'No crew member called "' + row[1] + '" yet.' };
   let image;
-  if (req.image === '' || req.image == null) image = '';
+  // A crew member's picture taken off leaves "-", so the Images tab's under their name (see
+  // pictureTokens_), which is where an upload goes, doesn't show instead.
+  if (req.image === '' || req.image == null) image = row[0].trim().toLowerCase() === 'crew' ? '-' : '';
   else if (req.image.data) {
     const added = addImage_(ss, req.image);
     if (!added.ok) return added;
@@ -1030,13 +1032,13 @@ function imagesCols_(sh) {
 }
 
 // A tab's pictures, one per row from row 2 (see imageTokens_), or null when it has none: its Image
-// column's, and for a crew row without one, the Images tab's picture under the crew member's name.
-// grid: the tab's display values, header first.
+// column's, and for a crew row whose Image cell is empty (not "-": taken off), the Images tab's
+// picture under the crew member's name. grid: the tab's display values, header first.
 function pictureTokens_(sh, kind, grid, named) {
   if (PICTURE_KINDS.indexOf(kind) < 0 || grid.length < 2) return null;
   const ic = imageColIn_(grid[0]);
   const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1, named) : null;
-  const crew = line => String(line[0]).trim().toLowerCase() === 'crew' && String(line[1]).trim();
+  const crew = line => String(line[0]).trim().toLowerCase() === 'crew' && String(line[1]).trim() && !(ic >= 0 && String(line[ic]).trim());
   if (kind !== 'ship' || !grid.slice(1).some(crew)) return tokens;
   if (typeof named === 'function') named = named();
   else if (!named) named = namedImages_();
