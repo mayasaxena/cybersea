@@ -2,22 +2,10 @@
 // Run: NODE_PATH=$(npm root -g) node --test tests/e2e/
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite, signIn } from './harness.mjs';
+import { harness, invite, signIn, until, polls } from './harness.mjs';
 import { KEYS } from '../fixtures/game.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
-
-async function until(fn, ms = 6000) {
-  const end = Date.now() + ms;
-  let last;
-  while (Date.now() < end) {
-    last = await fn();
-    if (last) return last;
-    await sleep(100);
-  }
-  return last;
-}
 
 let h;
 let api;
@@ -53,7 +41,7 @@ test('editing needs you signed in as that character', async () => {
   await p.waitForSelector('.robar');
   assert.equal(await p.$('[data-act="edit"]'), null, 'no edit button');
   await p.click('.harm .pip[data-j="1"]');
-  await sleep(1500);
+  await polls(p);
   assert.equal(row(await h.tab(api, 'Testa'), 'track', 'Harm')[2], before, 'pips do nothing');
   await p.click('[data-act="tab"][data-tab="log"]');
   assert.equal(await p.$('.actions'), null, 'no chapter/downtime/level-up buttons');
@@ -211,7 +199,7 @@ test('edits made while the sheet is unreachable survive a reload', async () => {
   await fetch(`${api.base}/__test/fail`, { method: 'POST', body: JSON.stringify({ count: 50 }) });
   await p.click('.harm .pip[data-j="0"]'); // toggles whatever it is
   const want = await p.$eval('.harm .pip[data-j="0"]', el => (el.classList.contains('on') ? '●' : '○'));
-  await sleep(300);
+  assert.ok(await until(() => queued(p)), 'kept in localStorage');
   await p.reload();
   await p.waitForSelector('h1.name');
   assert.equal(await p.$eval('.harm .pip[data-j="0"]', el => (el.classList.contains('on') ? '●' : '○')), want, 'shown from the saved pending edit');
@@ -226,7 +214,7 @@ test('a change sent as the page closed doesn’t undo a newer edit when the page
   await fail(50);
   await p.click('.harm .pip[data-j="0"]');
   const mine = await track(p, 'harm');
-  await sleep(300);
+  assert.ok(await until(() => queued(p)), 'kept in localStorage');
   await p.reload(); // the beacon sent on the way out lands, but nothing tells the page
   await p.waitForSelector('h1.name');
   assert.ok(await until(async () => (await harm()) === mine), 'the beacon landed');

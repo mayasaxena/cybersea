@@ -5,6 +5,45 @@ import { start } from '../../tools/dev-server.mjs';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright'); // run with NODE_PATH=$(npm root -g)
 
+export const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// fn's first truthy answer, polled every 100 ms for up to ms (then its last answer).
+export async function until(fn, ms = 6000) {
+  const end = Date.now() + ms;
+  let last;
+  while (Date.now() < end) {
+    last = await fn();
+    if (last) return last;
+    await sleep(100);
+  }
+  return last;
+}
+
+const isRead = r => r.method() === 'POST' && /"op":"read"/.test(r.postData() || '');
+
+// Resolves once the page has made n more reads of the sheet and handled their answers: "several
+// polls went by" without guessing how long that takes.
+export function polls(p, n = 3) {
+  return new Promise(resolve => {
+    let k = 0;
+    const on = r => {
+      if (!isRead(r) || ++k < n) return;
+      p.off('requestfinished', on);
+      p.evaluate(() => new Promise(requestAnimationFrame)).then(resolve, resolve);
+    };
+    p.on('requestfinished', on);
+  });
+}
+
+// From now on, how many requests made after this call the sheet has answered.
+export function answersFrom(p) {
+  const mine = new Set();
+  let done = 0;
+  p.on('request', r => { if (r.method() === 'POST') mine.add(r); });
+  p.on('requestfinished', r => { if (mine.has(r)) done++; });
+  return () => done;
+}
+
 // No key: a crew invite.
 export const invite = (api, key = '', name = 'Fixture Game') =>
   Buffer.from(JSON.stringify({ api, ...(key ? { key } : {}), name })).toString('base64url');
