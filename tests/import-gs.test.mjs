@@ -197,6 +197,19 @@ test('if a tab can’t be filled in, the old tabs stay as they were', () => {
   assert.deepEqual(names(), before);
 });
 
+test('the site never sees the tabs an import is still filling in', () => {
+  const { api, ctx, replace } = setup();
+  const fill = ctx.fillSheet_;
+  const seen = [];
+  ctx.fillSheet_ = (sh, t, skipped) => {
+    fill(sh, t, skipped);
+    seen.push(...api.call({ op: 'read', tabs: [] }).list.map(x => x.name));
+  };
+  replace(FRESH);
+  assert.ok(seen.length);
+  assert.deepEqual(seen.filter(n => /import/i.test(n)), []);
+});
+
 test('a check or format Sheets turns down is listed, not fatal; a value it turns down names the tab', () => {
   const { ctx, replace, names, sheet } = setup();
   ctx.guard_ = () => { throw new Error('Invalid argument'); };
