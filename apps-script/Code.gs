@@ -206,6 +206,18 @@ function table_(sh, kind, role, named) {
   return tokens && imgs.some(Boolean) ? { d: digest_([rows, vers, imgs]), rows, vers, imgs } : { d: digest_([rows, vers]), rows, vers };
 }
 
+// A tab the site edits as table_ sends it, from its rows (Kind|Name|Value|Notes) and their marks.
+function tableOf_(vals, marks) {
+  const rows = [];
+  const vers = [];
+  vals.forEach((r, i) => {
+    if (r.join('').trim() === '') return;
+    rows.push(r.slice());
+    vers.push(version_(marks[i], r));
+  });
+  return { d: digest_([rows, vers]), rows, vers };
+}
+
 // Where the Rules tab's override columns are (-1 for one it doesn't have).
 function overrideCols_(header) {
   const hs = (header || []).map(h => String(h).trim().toLowerCase());
@@ -241,10 +253,11 @@ function cells_(row, width) {
 
 // A row's cells, as plain text, and its mark in the Version column (column vc).
 function writeRow_(sh, rowNum, cells, vc, mark) {
-  const range = sh.getRange(rowNum, 1, 1, cells.length);
+  const next = vc === cells.length + 1; // the usual layout: one write for both
+  const range = sh.getRange(rowNum, 1, 1, next ? vc : cells.length);
   range.setNumberFormat('@');
-  range.setValues([cells.map(safe_)]);
-  putMarks_(sh, rowNum, vc, [mark]);
+  range.setValues([cells.map(safe_).concat(next ? [mark] : [])]);
+  if (!next) putMarks_(sh, rowNum, vc, [mark]);
 }
 
 function withLock_(fn) {
@@ -488,11 +501,21 @@ function patch_(role, req) {
 
   const sets = (req.set || []).map(r => ({ cells: cells_(r, 4), w: when_(r[4]) }));
   const vc = verCol_(sh);
-  const last = sh.getLastRow();
-  const grid = last >= 2 ? sh.getRange(2, 1, last - 1, vc).getDisplayValues() : [];
+  const all = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), Math.max(vc, sh.getLastColumn())).getDisplayValues();
+  const header = all[0];
+  const grid = all.slice(1);
   const vals = grid.map(r => r.slice(0, 4));
   const marks = grid.map(r => r[vc - 1]);
-  const find = k => vals.findIndex(r => key_(r[0], r[1]) === k);
+  // Row index by Kind+Name (the first match wins), rebuilt after rows move or change name.
+  let index = null;
+  const moved = () => { index = null; };
+  const find = k => {
+    if (!index) {
+      index = {};
+      vals.forEach((r, i) => { const rk = key_(r[0], r[1]); if (!(rk in index)) index[rk] = i; });
+    }
+    return k in index ? index[k] : -1;
+  };
   let gone = null;
   const goneNow = () => gone || (gone = gone_(sh));
   let buried = false;
@@ -531,6 +554,7 @@ function patch_(role, req) {
     cell.setNumberFormat('@');
     cell.setValues([[safe_(to)]]);
     vals[from][1] = to;
+    moved();
     marks[from] = mark_(w.stamp, vals[from]);
     putMarks_(sh, from + 2, vc, [marks[from]]);
     bury(k, w);
@@ -548,6 +572,7 @@ function patch_(role, req) {
     bury(k, w);
   });
   doomed.sort((a, b) => b - a).forEach(i => { sh.deleteRow(i + 2); vals.splice(i, 1); marks.splice(i, 1); });
+  if (doomed.length) moved();
 
   sets.forEach(({ cells, w }) => {
     if (!cells[0].trim() && !cells[1].trim()) return;
@@ -578,12 +603,16 @@ function patch_(role, req) {
       vals.push(cells);
       marks.push(mark);
     }
+    moved();
   });
 
   if (buried) saveGone_(sh, gone);
   touched_(sh.getName());
   const at = Date.now();
-  const t = table_(sh, kind, role);
+  // The tab as a read would now send it, from what's in hand. Lore's Image column is read afresh
+  // (see table_), since its pictures moved with their rows.
+  const pictures = kind === 'lore' && header.some((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
+  const t = pictures ? table_(sh, kind, role) : tableOf_(vals, marks);
   return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, skipped };
 }
 
