@@ -7,6 +7,7 @@ import { SHIP } from './system.js';
 import { md, short } from './markup.js';
 import { esc, escTxt, pageShell, refreshNav, modal, closeModal, pickerHTML, pick } from './core.js';
 import { crewCardHTML } from './cards.js';
+import { showPictures } from './pictures.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -37,6 +38,7 @@ if (!game) {
   pageShell(app, client, 'home');
   const main = document.createElement('main');
   app.append(main);
+  showPictures(main, client);
   let R = gameRules(client);
   for (const t of TABS) client.tab(t).on(() => { R = gameRules(client); render(); }); // crew cards name tracks as the System tab does
 

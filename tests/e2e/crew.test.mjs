@@ -126,3 +126,16 @@ test('in edit mode a bond can link to someone its name doesn’t match, or to no
   assert.deepEqual(bonds, [['Ship', 'SPAN'], ['Passenger', 'A'], ['Bo', 'A']]);
   await p.close();
 });
+
+test('a character’s picture shows on their card on the crew home, without opening it full size', async () => {
+  const p = await open('sheet.html?c=Testa');
+  await p.click('[data-act="edit"]');
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-act="pic-add"]')]);
+  await chooser.setFiles({ name: 'testa.png', mimeType: 'image/png', buffer: Buffer.from(png(40, 40, [200, 60, 60])) });
+  await until(async () => (await h.tab(api, 'Images')).at(-1)[0] === 'Testa');
+  await p.goto(p.url().replace(/sheet\.html\?[^#]*/, 'index.html'));
+  await p.waitForSelector('.crewcard');
+  assert.ok(await until(() => p.$eval('.crewcard:has(h2:text("Testa")) .portrait img', i => i.complete && i.naturalWidth === 40)));
+  assert.equal(await p.$eval('.crewcard:has(h2:text("Testa")) .portrait', e => e.tagName), 'SPAN', 'the card itself is the link');
+  await p.close();
+});

@@ -18,17 +18,19 @@ const MAX_PARALLEL = 3;
 const KEEP_MS = 60 * 60 * 1000;
 const CACHE = 'cybersea-pictures';
 
-export function pictureHTML(tab, image, name, cls) {
+// still: just the picture, for one inside a link (a summary card), so it doesn't open full size.
+export function pictureHTML(tab, image, name, cls, { still = false } = {}) {
   const m = String(image || '').match(/^(row|images):(\d+)$/);
+  const box = (src, img) => (src && !still ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener">${img}</a>`
+    : `<span class="${cls}"${still ? ' data-still' : ''}>${img}</span>`);
   if (m) {
     const from = m[1] === 'images' ? 'Images' : tab;
     const src = placed.get(`${from}:${m[2]}`);
-    const img = `<img data-tab="${esc(from)}" data-in="${esc(tab)}" data-row="${m[2]}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(name)}">`;
     // loaded already: open it full size, as load does once it has it
-    return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener">${img}</a>` : `<span class="${cls}">${img}</span>`;
+    return box(src, `<img data-tab="${esc(from)}" data-in="${esc(tab)}" data-row="${m[2]}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(name)}">`);
   }
   const src = imgSrc(image);
-  return src ? `<a class="${cls}" href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(name)}" loading="lazy"></a>` : '';
+  return src ? box(src, `<img src="${esc(src)}" alt="${esc(name)}" loading="lazy">`) : '';
 }
 
 // At most MAX_PARALLEL script calls for pictures at once.
@@ -98,7 +100,7 @@ function load(client, img) {
   picture(client, img.dataset.tab, +img.dataset.row, seen).then(url => {
     img.src = url;
     const box = img.parentElement;
-    if (box?.tagName !== 'SPAN') return;
+    if (box?.tagName !== 'SPAN' || 'still' in box.dataset) return;
     const a = document.createElement('a'); // opens the picture full size
     Object.assign(a, { className: box.className, href: url, target: '_blank', rel: 'noopener' });
     box.replaceWith(a);

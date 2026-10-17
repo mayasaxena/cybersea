@@ -9,6 +9,7 @@ import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
 import { esc, escTxt, ICON, armed, deletedToast, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
+import { showPictures } from './pictures.js';
 import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
 import { splitTags } from './crew.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
@@ -22,6 +23,7 @@ pageShell(app, client, 'gm');
 const gmStore = client.tab('GM');
 const main = document.createElement('main');
 app.append(main);
+showPictures(main, client);
 
 const TABS = [['crew', 'Crew'], ['npcs', 'NPCs'], ['notes', 'Notes'], ['ref', 'Reference']];
 const REF_KEYS = ['fates', 'tags', 'moves', 'playbooks', 'reference', 'world', 'other'];
