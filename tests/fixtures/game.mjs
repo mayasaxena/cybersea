@@ -13,7 +13,11 @@ export const IMAGES = {
   map: { type: 'image/png', bytes: png(64, 40, [20, 60, 120]) },
   level1: { type: 'image/png', bytes: png(32, 32, [120, 40, 20]) },
   level2: { type: 'image/png', bytes: png(32, 32, [20, 120, 40]) },
+  dock: { type: 'image/png', bytes: png(48, 30, [90, 90, 160]) },
 };
+
+// The Images tab: pictures kept once, named from Image cells.
+export const imagesRows = () => [['Name', 'Image'], ['Dock picture', pic(IMAGES.dock)]];
 
 export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'];
 export const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
@@ -25,7 +29,7 @@ export const mapRows = () => [
   ['The Test Server', 'Scrap Town', '', '', 'A town of scrap.', '', ''],
   ['', 'Scrap Town', 'Level 1', pic(IMAGES.level1), 'The docks.', '', ''],
   ['', 'Scrap Town', 'Level 2', pic(IMAGES.level2), 'The market.', '', ''],
-  ['Far Away', 'Hidden Dock', '', '', 'Only the GM knows.', '', ''],
+  ['Far Away', 'Hidden Dock', '', 'Dock picture', 'Only the GM knows.', '', ''],
 ];
 export const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 
@@ -179,6 +183,7 @@ export function gameTabs({ withCharacter = true } = {}) {
     GM: [HEADER, ['npc', 'Captain Vex', 'jumpy, loud', 'Owes the crew money.'], ['secret', 'Twist', 'The map is fake.', '']],
     Ship: [HEADER, ...sampleShip],
     Map: [MAP_HEADER, ...mapRows()],
+    Images: imagesRows(),
     ...(withCharacter ? { Testa: [HEADER, ...sampleCharacter] } : {}),
   };
 }

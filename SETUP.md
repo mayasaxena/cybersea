@@ -119,7 +119,7 @@ The **Map** page, open to everyone, shows the **Map** tab. Its columns (found by
 | Region | Location | Level | Image | Text | GM notes | Shown |
 |---|---|---|---|---|---|---|
 | Vega Server | | | *(picture)* | The server's sea. | | |
-| Vega Server | Hacker's Haven | | | A city of scrap. | Who really runs it. | on |
+| Vega Server | Hacker's Haven | | Hackers Haven | A city of scrap. | Who really runs it. | on |
 | | Hacker's Haven | Level 1 | *(picture)* | The docks. | | |
 | | Hacker's Haven | Level 2 | *(picture)* | The market. | | |
 | Vega Server | DeepPort | | *(picture)* | A pool of links. | | |
@@ -128,8 +128,9 @@ The **Map** page, open to everyone, shows the **Map** tab. Its columns (found by
 - A row with a **Location** and no **Level** is a place, listed under its region.
 - A row with a **Location** and a **Level** is a floor or level of that place, in order. The page
   shows a tab for each level. A place with no level rows is a single picture (DeepPort above).
-- **Image**: click the cell and use **Insert → Image → Insert image in cell**, or type
-  `=IMAGE("https://…")` for a picture that's already online. To change a picture, replace the
+- **Image**: click the cell and use **Insert → Image → Insert image in cell**, type
+  `=IMAGE("https://…")` for a picture that's already online, or type the name of a picture in
+  the **Images** tab (below), like `Hackers Haven` above. To change a picture, replace the
   one in the cell. Pictures floating over the grid (**Insert image over cells**) belong to no
   row and aren't read.
   Keep this column's format **Automatic**, not plain text, or Sheets shows a formula as typed.
@@ -138,12 +139,35 @@ The **Map** page, open to everyone, shows the **Map** tab. Its columns (found by
   button on each place (only the GM sees it), which writes `on` here; or type it. Every place
   starts hidden. The script never sends the crew a hidden place, its levels or its pictures.
 
-Everything else on the tab is edited in the spreadsheet.
+The GM can also add, change and remove regions' maps, places and levels on the Map page: the pencil
+on each one, **+ Place**, **+ Region map**, and **+ Level** on a place. A picture is picked from the
+Images tab or uploaded there from the computer (big ones are scaled down). Renaming a place
+renames its levels too, and deleting it deletes them. A place added this way starts hidden.
 
 The **Lore** tab can have an **Image** column too, after Notes: a picture for each entry, added
 the same way. Players edit lore on the site, but pictures are added in the spreadsheet.
 
-The Map tab and pictures need script version 5.
+### The Images tab
+
+An **Images** tab keeps every picture once, so you never upload one twice:
+
+| Name | Image |
+|---|---|
+| Hackers Haven | *(picture)* |
+| Vega Server | *(picture)* |
+
+Put each picture in its **Image** cell (**Insert → Image → Insert image in cell**, or
+`=IMAGE("https://…")`), then type its **Name** into any Map or Lore Image cell to show it there.
+Names ignore capitals and spaces at the ends; the first row with a name wins. Pictures the GM
+uploads on the Map page land here too.
+
+The site never reads the Images tab itself. The crew get a picture from it only while a place
+they can see, a region's map, or a Lore entry names it. **Replace with an xlsx…** never replaces
+or removes the Images tab (an .xlsx can't carry its pictures); a file's Images tab is only brought
+in when this sheet doesn't have one yet.
+
+The Map tab and pictures need script version 5; the Images tab and editing the map on the site,
+version 8.
 Deploying it asks you to authorize again, for "connect to an external service": that's how the
 script reads a picture out of its cell.
 
@@ -165,7 +189,8 @@ workbook, and lists its tabs, all ticked, and this sheet's tabs the file doesn't
 - The spreadsheet, its script, the GM passphrase and the deployment stay as they are, so the
   site's URL and everyone's invite links keep working.
 - Everything on a replaced tab goes, including pictures placed in cells. **File → Version
-  history** brings the old tabs back if you need them.
+  history** brings the old tabs back if you need them. Keep pictures in the **Images** tab,
+  which is never replaced, and name them from Map and Lore.
 - The sheet must end up with a **Rules** tab; otherwise nothing changes.
 - It keeps the file's values and formulas, plain-text, bold, fill and wrap formatting, column
   widths, hidden tabs and columns, frozen rows and columns, and drop-down (list) data

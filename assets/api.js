@@ -21,8 +21,8 @@ import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } fr
 // with a passphrase (crew without one are turned away); before 3, without row versions, so
 // changes always go ahead; before 4, without the Rules tab's override columns; before 5, without
 // the Map tab (places, levels and pictures); before 6, without the System tab (the game's mechanics);
-// before 7, without feedback.
-export const API_VERSION = 7;
+// before 7, without feedback; before 8, without the Images tab or the GM's map editing.
+export const API_VERSION = 8;
 const CREW_SIGNIN_VERSION = 2;
 
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
@@ -111,12 +111,12 @@ export class TabStore extends Emitter {
     return i < 0 ? '' : imgs[i] || '';
   }
 
-  // A tab from the sheet ({d, rows, vers, imgs}), read at `at` (the sheet's clock). Rows read before
+  // A tab from the sheet ({d, rows, vers, imgs, ns}), read at `at` (the sheet's clock). Rows read before
   // the copy we have (by a read that started before our last patch, say) are older, so they're
   // dropped.
   receive(t, at) {
     if (!(at && this.server.at > at)) {
-      this.server = { d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, at };
+      this.server = { d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, ns: t.ns, at };
       ls.set(this.cacheKey, this.server);
     }
     this.loaded = true;
@@ -341,8 +341,8 @@ export class GameClient extends Emitter {
     this.emit({ key: true, list: true, me: true });
   }
 
-  request(body) {
-    return call(this.game.api, { ...body, key: this.game.key || undefined });
+  request(body, opts) {
+    return call(this.game.api, { ...body, key: this.game.key || undefined }, opts);
   }
 
   // Fetch tabs; only tabs that changed since our cached copy come back with rows.

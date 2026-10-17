@@ -11,7 +11,8 @@
  * carrying any passphrase as "key".
  *
  * Tabs: Rules (Kind|Group|Name|Text|Meta|Vis, plus optional Override name|Override text|Override
- * meta columns, found by their headers), System (the game's mechanics), GM, Lore, Ship, Map (the world: see mapRows_), and one
+ * meta columns, found by their headers), System (the game's mechanics), GM, Lore, Ship, Map (the world: see mapRows_),
+ * Images (pictures by name: see namedImages_), and one
  * tab per character (Kind|Name|Value|Notes). Tabs starting with "_" and README are ignored. The tabs the site
  * edits also get a hidden Version column (see "row versions" below).
  *
@@ -23,7 +24,7 @@
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 7; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures. 6: the System tab, and checks on the tabs (setUpChecks). 7: feedback
+const API_VERSION = 8; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures. 6: the System tab, and checks on the tabs (setUpChecks). 7: feedback. 8: the Images tab, and the GM edits the Map tab (place, images)
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // The game's mechanics (stats, tracks, starting cards, options): read by everyone, edited only in Sheets.
@@ -40,6 +41,11 @@ const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this lon
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // The Map tab's columns, found by their headers (see mapRows_).
 const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
+// The Images tab: every picture once, by name. A Map or Lore Image cell can name one (see imageTokens_).
+const IMAGES_TAB = 'Images';
+const IMAGES_HEADER = ['Name', 'Image'];
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // a picture the GM adds from the site
+const UPLOAD_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 // The Feedback tab: anonymous notes about the site, added by the feedback button (see feedback_).
 const FEEDBACK_TAB = 'Feedback';
 const FEEDBACK_HEADER = ['Date', 'Feedback'];
@@ -82,6 +88,8 @@ function handle_(req) {
     case 'image': return image_(role, req);
     case 'feedback': return withLock_(() => feedback_(req));
     case 'show': return role === 'gm' ? withLock_(() => show_(req)) : forbidden_();
+    case 'place': return role === 'gm' ? withLock_(() => place_(req)) : forbidden_();
+    case 'images': return role === 'gm' ? images_() : forbidden_();
     case 'selftest': return role === 'gm' ? withLock_(selftest_) : forbidden_();
   }
   return { ok: false, error: 'Unknown op: ' + req.op };
@@ -127,17 +135,18 @@ function forbidden_() {
 function tabKind_(name) {
   const n = String(name).trim().toLowerCase();
   if (!n || n.charAt(0) === '_' || n === 'readme') return null;
-  if (n === 'rules' || n === 'system' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map' || n === 'feedback') return n;
+  if (n === 'rules' || n === 'system' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map' || n === 'feedback' || n === 'images') return n;
   return 'character';
 }
 
-// Feedback is read in Sheets only, so the site never shows it, even to the GM.
+// Feedback is read in Sheets only, so the site never shows it, even to the GM. Nor Images: its
+// pictures reach the site only through the rows that name them.
 function canRead_(role, kind) {
-  return !!kind && kind !== 'feedback' && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'feedback' && kind !== 'images' && (kind !== 'gm' || role === 'gm');
 }
 
 function canWrite_(role, kind) {
-  return !!kind && kind !== 'rules' && kind !== 'system' && kind !== 'map' && kind !== 'feedback' && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'rules' && kind !== 'system' && kind !== 'map' && kind !== 'feedback' && kind !== 'images' && (kind !== 'gm' || role === 'gm');
 }
 
 function findSheet_(ss, name) {
@@ -336,7 +345,7 @@ function onEdit(e) {
   if (!range || range.getColumn() > HEADER.length) return;
   const sh = range.getSheet();
   const kind = tabKind_(sh.getName());
-  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback') return;
+  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images') return;
   const top = Math.max(range.getRow(), 2);
   const n = range.getLastRow() - top + 1;
   if (n < 1) return;
@@ -398,7 +407,7 @@ function patch_(role, req) {
   const sh = findSheet_(ss, req.tab);
   if (!sh) return { ok: false, code: 'missing', error: 'No tab called "' + req.tab + '".' };
   const kind = tabKind_(sh.getName());
-  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
+  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
 
   const sets = (req.set || []).map(r => ({ cells: cells_(r, 4), w: when_(r[4]) }));
   const vc = verCol_(sh);
@@ -532,7 +541,7 @@ function create_(role, req) {
     return { ok: false, code: 'name', error: 'Pick a different name: up to ' + MAX_TAB_NAME + ' characters, without [ ] * ? / \\ :' };
   }
   const kind = tabKind_(name);
-  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || (kind === 'gm' && role !== 'gm')) {
+  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images' || (kind === 'gm' && role !== 'gm')) {
     return { ok: false, code: 'name', error: '"' + name + '" is a reserved name.' };
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -561,9 +570,9 @@ function create_(role, req) {
  *   a place:              Region, Location, no Level     (shown to the crew once Shown is "on")
  *   a floor of a place:   Location, Level                (in order; shown with its place)
  * A place with no Level rows is one picture. Image is a picture placed in the cell (Insert > Image >
- * Insert image in cell) or an =IMAGE("https://…") formula. GM notes are only sent to the GM.
- * Rows go out as those 7 cells, the Image cell as "row:<the sheet's row>" for a placed picture
- * (op "image" sends its bytes), the formula's address, or ''.
+ * Insert image in cell), an =IMAGE("https://…") formula, or the name of a row of the Images tab.
+ * GM notes are only sent to the GM. Rows go out as those 7 cells, the Image cell as imageTokens_
+ * sends it.
  */
 function mapCols_(header) {
   const hs = (header || []).map(h => String(h).trim().toLowerCase());
@@ -573,10 +582,10 @@ function mapCols_(header) {
 const isOn_ = v => /^(on|yes|y|x|true|●|1)$/i.test(String(v || '').trim());
 
 // The Map tab's rows that role may see: [{n: sheet row, cells}].
-function mapRows_(sh, role) {
+function mapRows_(sh, role, named) {
   const grid = sh.getDataRange().getDisplayValues();
   const cols = mapCols_(grid[0]);
-  const tokens = cols[3] >= 0 ? imageTokens_(sh, cols[3], grid.length - 1) : null;
+  const tokens = cols[3] >= 0 ? imageTokens_(sh, cols[3], grid.length - 1, named) : null;
   const out = [];
   const shown = {};
   grid.slice(1).forEach((line, i) => {
@@ -592,9 +601,13 @@ function mapRows_(sh, role) {
   return role === 'gm' ? out : out.filter(r => !r.loc || shown[r.loc]);
 }
 
+// The GM also gets each row's place in the sheet (ns), to edit it by (see place_).
 function mapTable_(sh, role) {
-  const rows = mapRows_(sh, role).map(r => r.cells);
-  return { d: digest_(rows), rows };
+  const seen = mapRows_(sh, role);
+  const rows = seen.map(r => r.cells);
+  if (role !== 'gm') return { d: digest_(rows), rows };
+  const ns = seen.map(r => r.n);
+  return { d: digest_([rows, ns]), rows, ns };
 }
 
 /* show {location, on} (GM): puts a place on the crew's map, or takes it off */
@@ -615,11 +628,165 @@ function show_(req) {
 }
 
 /*
+ * place {row, was, cells, image} (GM): adds, changes or removes a row of the Map tab.
+ *   row: the sheet row to change, or 0 to add one. was: its 7 cells as the GM last read them; if
+ *     the row has changed in the sheet since, nothing is changed.
+ *   cells: [Region, Location, Level, Text, GM notes]; leave it out to remove the row (a place's
+ *     levels go with it).
+ *   image: left out keeps the picture; '' clears it; {name} names a row of the Images tab;
+ *     {name, type, data (base64)} adds the picture to the Images tab under that name (with a
+ *     number added if the name is taken) and names that row.
+ * Renaming a place renames its levels' Location too. A new level goes after its place's last
+ * row, anything else new at the end. A new place starts hidden.
+ */
+function place_(req) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = findSheet_(ss, 'Map');
+  const row = Number(req.row) || 0;
+  if (!sh) {
+    if (row) return { ok: false, code: 'missing', error: 'No Map tab.' };
+    sh = ss.insertSheet('Map');
+    sh.getRange(1, 1, 1, MAP_HEADER.length).setValues([MAP_HEADER]);
+    sh.setFrozenRows(1);
+  }
+  const cols = mapColsFor_(sh);
+  const all = mapRows_(sh, 'gm');
+  const old = row ? all.find(r => r.n === row) : null;
+  if (row && (!old || JSON.stringify(old.cells) !== JSON.stringify((req.was || []).map(String)))) {
+    return { ok: false, code: 'conflict', error: 'That row of the Map tab has changed since this page read it. Look again and redo your change.' };
+  }
+  const levelsOf = loc => all.filter(r => r.loc === loc && String(r.cells[2]).trim());
+  if (!req.cells) {
+    if (!old) return { ok: false, error: 'Nothing to remove.' };
+    const gone = [old].concat(!String(old.cells[2]).trim() && old.loc ? levelsOf(old.loc) : []);
+    gone.map(r => r.n).sort((a, b) => b - a).forEach(n => sh.deleteRow(n));
+    return mapResult_(sh);
+  }
+  const c = cells_(req.cells, 5).map(v => v.trim());
+  if (!c[0] && !c[1]) return { ok: false, error: 'Give it a region or a place.' };
+  if (c[2] && !c[1]) return { ok: false, error: 'A level needs the place it’s in.' };
+  let image = null; // the Image cell's new text, when it changes
+  if (req.image === '') image = '';
+  else if (req.image && req.image.data) {
+    const added = addImage_(ss, req.image);
+    if (!added.ok) return added;
+    image = added.name;
+  } else if (req.image && req.image.name != null) image = String(req.image.name).trim();
+  let n = row;
+  if (!n) {
+    const loc = c[1].toLowerCase();
+    const after = c[2] ? all.filter(r => r.loc === loc).map(r => r.n).pop() : 0;
+    if (after) {
+      sh.insertRowAfter(after);
+      n = after + 1;
+    } else n = Math.max(sh.getLastRow(), 1) + 1;
+  }
+  const put = (col, v) => {
+    const cell = sh.getRange(n, col + 1);
+    cell.setNumberFormat('@');
+    cell.setValues([[safe_(v)]]);
+  };
+  [0, 1, 2].forEach(i => put(cols[i], c[i]));
+  put(cols[4], c[3]);
+  put(cols[5], c[4]);
+  if (image != null) {
+    const cell = sh.getRange(n, cols[3] + 1);
+    cell.setNumberFormat('General'); // a name, or =IMAGE() typed in later, as Sheets reads it
+    cell.setValues([[safe_(image)]]);
+  }
+  // A renamed place takes its levels along.
+  if (old && !String(old.cells[2]).trim() && old.loc && c[1].toLowerCase() !== old.loc) {
+    levelsOf(old.loc).forEach(r => {
+      const cell = sh.getRange(r.n, cols[1] + 1);
+      cell.setNumberFormat('@');
+      cell.setValues([[safe_(c[1])]]);
+    });
+  }
+  return mapResult_(sh);
+}
+
+function mapResult_(sh) {
+  const t = mapTable_(sh, 'gm');
+  return { ok: true, tab: sh.getName(), at: Date.now(), d: t.d, rows: t.rows, ns: t.ns };
+}
+
+// The Map tab's columns, adding any it lacks after the last.
+function mapColsFor_(sh) {
+  const last = Math.max(sh.getLastColumn(), 1);
+  const cols = mapCols_(sh.getRange(1, 1, 1, last).getDisplayValues()[0]);
+  let next = sh.getLastColumn();
+  MAP_HEADER.forEach((h, i) => {
+    if (cols[i] >= 0) return;
+    if (next >= sh.getMaxColumns()) sh.insertColumnsAfter(sh.getMaxColumns(), 1);
+    sh.getRange(1, next + 1).setValues([[h]]);
+    cols[i] = next++;
+  });
+  return cols;
+}
+
+// Adds {name, type, data (base64)} to the Images tab (made if need be) as a picture placed in a
+// cell. Returns {ok, name} with the name it went under.
+function addImage_(ss, img) {
+  const type = String(img.type || '').toLowerCase();
+  if (UPLOAD_TYPES.indexOf(type) < 0) return { ok: false, error: 'Use a PNG, JPEG, GIF or WebP picture.' };
+  const data = String(img.data || '');
+  if (!data || data.length * 3 / 4 > MAX_UPLOAD_BYTES) return { ok: false, error: 'That picture is too big (over 5 MB).' };
+  let sh = findSheet_(ss, IMAGES_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(IMAGES_TAB);
+    sh.getRange(1, 1, 1, IMAGES_HEADER.length).setValues([IMAGES_HEADER]);
+    sh.setFrozenRows(1);
+  }
+  const cols = imagesCols_(sh);
+  const base = String(img.name || '').trim().slice(0, 200) || 'Picture';
+  const taken = namedImagesAll_(sh, cols);
+  let name = base;
+  for (let k = 2; taken[name.toLowerCase()]; k++) name = base + ' ' + k;
+  let pic;
+  try {
+    pic = SpreadsheetApp.newCellImage().setSourceUrl('data:' + type + ';base64,' + data).setAltTextTitle(name).build();
+  } catch (err) {
+    return { ok: false, error: 'The sheet couldn’t take that picture (' + (err.message || err) + '). Try a smaller one.' };
+  }
+  const n = Math.max(sh.getLastRow(), 1) + 1;
+  const cell = sh.getRange(n, cols[0] + 1);
+  cell.setNumberFormat('@');
+  cell.setValues([[safe_(name)]]);
+  sh.getRange(n, cols[1] + 1).setValues([[pic]]);
+  return { ok: true, name };
+}
+
+// Every name in the Images tab, lowercase -> 1, pictures or not.
+function namedImagesAll_(sh, cols) {
+  const out = {};
+  if (sh.getLastRow() < 2) return out;
+  sh.getRange(2, cols[0] + 1, sh.getLastRow() - 1, 1).getDisplayValues()
+    .forEach(line => { const k = String(line[0]).trim().toLowerCase(); if (k) out[k] = 1; });
+  return out;
+}
+
+/* images (GM): the Images tab's pictures, [[name, token]] in its order, for picking one */
+function images_() {
+  const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), IMAGES_TAB);
+  if (!sh || sh.getLastRow() < 2) return { ok: true, images: [] };
+  const cols = imagesCols_(sh);
+  const names = sh.getRange(2, cols[0] + 1, sh.getLastRow() - 1, 1).getDisplayValues();
+  const tokens = imageTokens_(sh, cols[1], names.length, {});
+  const images = [];
+  names.forEach((line, i) => {
+    const name = String(line[0]).trim();
+    if (name && tokens[i]) images.push([name, tokens[i].replace(/^row:/, 'images:')]);
+  });
+  return { ok: true, images };
+}
+
+/*
  * What n rows (from row 2) have in an Image column (0-based col): "row:<the sheet's row>" for a
  * picture placed in the cell (op "image" sends its bytes; its own URL is short-lived), the
- * address of an =IMAGE("https://…") formula, or ''.
+ * address of an =IMAGE("https://…") formula, what the Images tab has for a name typed in the
+ * cell ("images:<its row>" for a placed picture), or ''.
  */
-function imageTokens_(sh, col, n) {
+function imageTokens_(sh, col, n, named) {
   if (n < 1) return [];
   const range = sh.getRange(2, col + 1, n, 1);
   const vals = range.getValues();
@@ -627,23 +794,58 @@ function imageTokens_(sh, col, n) {
   return vals.map((v, i) => {
     if (isCellImage_(v[0])) return 'row:' + (i + 2);
     const m = String(forms[i][0] || '').match(/^=\s*IMAGE\s*\(\s*"(https:\/\/[^"\s]+)"/i);
-    return m ? m[1] : '';
+    if (m) return m[1];
+    const name = forms[i][0] ? '' : String(v[0] == null ? '' : v[0]).trim().toLowerCase();
+    if (!name) return '';
+    if (!named) named = namedImages_();
+    return named[name] || '';
   });
+}
+
+// The Images tab's pictures by name (lowercase): "images:<row>" for one placed in its Image cell,
+// or an =IMAGE() formula's address. The first row with a name wins.
+function namedImages_() {
+  const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), IMAGES_TAB);
+  const out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  const cols = imagesCols_(sh);
+  const names = sh.getRange(2, cols[0] + 1, sh.getLastRow() - 1, 1).getDisplayValues();
+  const tokens = imageTokens_(sh, cols[1], names.length, out); // a name there never points back
+  names.forEach((line, i) => {
+    const name = String(line[0]).trim().toLowerCase();
+    if (name && !(name in out) && tokens[i]) out[name] = tokens[i].replace(/^row:/, 'images:');
+  });
+  return out;
+}
+
+// The Images tab's Name and Image columns (0-based), by header, else the first two.
+function imagesCols_(sh) {
+  const hs = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0].map(h => String(h).trim().toLowerCase());
+  return IMAGES_HEADER.map((h, i) => (hs.indexOf(h.toLowerCase()) >= 0 ? hs.indexOf(h.toLowerCase()) : i));
 }
 
 function isCellImage_(v) {
   return !!v && typeof v === 'object' && typeof v.getContentUrl === 'function';
 }
 
-/* image {tab: 'Map' (the default) or 'Lore', row} -> {type, data (base64)}: the picture placed in that row's Image cell, if the caller can see the row */
+/*
+ * image {tab: 'Map' (the default), 'Lore' or 'Images', row} -> {type, data (base64)}: the picture
+ * placed in that row's Image cell, if the caller can see the row. The crew see an Images row only
+ * while a Map row they can see, or a Lore row, names it.
+ */
 function image_(role, req) {
-  const name = String(req.tab || 'Map').trim().toLowerCase() === 'lore' ? 'Lore' : 'Map';
-  const sh = findSheet_(SpreadsheetApp.getActiveSpreadsheet(), name);
+  const tab = String(req.tab || 'Map').trim().toLowerCase();
+  const name = tab === 'lore' ? 'Lore' : tab === 'images' ? IMAGES_TAB : 'Map';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = findSheet_(ss, name);
   const row = Number(req.row);
   if (!sh || !(row >= 2 && row <= sh.getLastRow() && Math.floor(row) === row)) return { ok: false, code: 'missing', error: 'No picture there.' };
   const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0];
   let col;
-  if (name === 'Map') {
+  if (name === IMAGES_TAB) {
+    if (role !== 'gm' && !namedOnSight_(ss, 'images:' + row)) return { ok: false, code: 'missing', error: 'No picture there.' };
+    col = imagesCols_(sh)[1];
+  } else if (name === 'Map') {
     const seen = mapRows_(sh, role).find(r => r.n === row);
     if (!seen || seen.cells[3] !== 'row:' + row) return { ok: false, code: 'missing', error: 'No picture there.' };
     col = mapCols_(header)[3];
@@ -663,6 +865,18 @@ function image_(role, req) {
   const bytes = blob.getBytes();
   if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'That picture is too big (over 20 MB).' };
   return { ok: true, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
+}
+
+// Whether a Map row the crew can see, or a Lore row, has the picture token.
+function namedOnSight_(ss, token) {
+  const named = namedImages_();
+  const map = findSheet_(ss, 'Map');
+  if (map && mapRows_(map, 'crew', named).some(r => r.cells[3] === token)) return true;
+  const lore = findSheet_(ss, 'Lore');
+  if (!lore || lore.getLastRow() < 2) return false;
+  const ic = lore.getRange(1, 1, 1, Math.max(lore.getLastColumn(), 1)).getDisplayValues()[0]
+    .findIndex((h, i) => i >= HEADER.length && String(h).trim().toLowerCase() === 'image');
+  return ic >= 0 && imageTokens_(lore, ic, lore.getLastRow() - 1, named).indexOf(token) >= 0;
 }
 
 /* ---------- checks ---------- */
@@ -695,7 +909,7 @@ function guard_(sh) {
   const name = sh.getName().trim().toLowerCase();
   const kind = tabKind_(sh.getName());
   if (name === 'readme') { protectTab_(sh, 'how the sheet works'); return true; }
-  if (!kind || kind === 'feedback') return false;
+  if (!kind || kind === 'feedback' || kind === 'images') return false;
   const rows = Math.max(sh.getMaxRows() - 1, 1);
   const list = (values, strict, help) => SpreadsheetApp.newDataValidation().requireValueInList(values, true)
     .setAllowInvalid(!strict).setHelpText(help).build();

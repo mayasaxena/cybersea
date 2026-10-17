@@ -235,3 +235,26 @@ test('the new tabs get the checks setUpChecks makes', () => {
   assert.ok(sheet('Nexa').getRange('C2').getDataValidation()?.formula, 'Value checks on a character tab');
   assert.equal(sheet('_Overrides').validations.length, 0);
 });
+
+test('never replaces or removes the Images tab; a file’s Images tab comes in only when the sheet has none', () => {
+  const { replace, list, names, sheet, gas } = setup();
+  const IMAGES = { name: 'Images', rows: [['Name', 'Image'], ['From the file', '']] };
+  // The first import makes it.
+  let res = replace([...FRESH, IMAGES]);
+  assert.equal(res.ok, true, res.error);
+  assert.ok(names().includes('Images'));
+  // Then a picture is added in Sheets, and later imports leave the tab alone.
+  sheet('Images').getRange(3, 1, 1, 2).setValues([['Haven', { image: { type: 'image/png', bytes: Buffer.from([1, 2]) } }]]);
+  const listed = list([...FRESH, IMAGES]);
+  assert.ok(!listed.file.some(t => t.name === 'Images'), 'not offered from the file');
+  assert.ok(!listed.sheetOnly.includes('Images'), 'nor offered for removal');
+  res = replace([...FRESH, IMAGES]);
+  assert.equal(res.ok, true, res.error);
+  assert.ok(![...res.tabs].includes('Images'));
+  res = replace(FRESH); // a whole-sheet replace by a file without one
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual([...res.removed], []);
+  assert.equal(sheet('Images').getRange(3, 1).getDisplayValue(), 'Haven');
+  assert.equal(replace(FRESH, {}, { tabs: ['Rules'], remove: ['Images'] }).removed.length, 0);
+  assert.ok(gas.ss.getSheetByName('Images'));
+});
