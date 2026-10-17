@@ -2,16 +2,12 @@
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { gameRules, TABS } from './rules.js';
-import { esc, pageShell, refreshNav, debounce } from './core.js';
+import { esc, pageShell, refreshNav, debounce, noGame } from './core.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
-if (!game) {
-  pageShell(app, null, 'rules');
-  app.insertAdjacentHTML('beforeend', '<main class="empty-page"><p>Open this page from an invite link first.</p><p><a href="index.html">Go to the start page</a></p></main>');
-  throw new Error('no game');
-}
+if (!game) noGame(app, 'rules');
 const client = new GameClient(game);
 pageShell(app, client, 'rules');
 const store = client.tab('Rules');

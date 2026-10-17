@@ -5,7 +5,7 @@
 // ctx = {st(), rules(), changed(), render(), editing(), used(key, n, line)}; used offers a change
 // for the log (usage.js).
 
-import { esc, escTxt, fmt, fmtDate, armed, modal, closeModal, toast } from './core.js';
+import { esc, escTxt, fmt, fmtDate, modal, closeModal, toast } from './core.js';
 import { md } from './markup.js';
 import { logId } from './codec.js';
 import { systemOf, typeOf, floorOf, trackSize, sum, effects, atSession, rollOf, cap } from './system.js';
@@ -379,5 +379,5 @@ export function makeActions(ctx) {
     return true;
   }
 
-  return { open, logHTML, noteRoll, forMove, cost, spend, armed, xpCount, xpNeeded, label, dtGroup };
+  return { open, logHTML, noteRoll, forMove, cost, spend, dtGroup };
 }

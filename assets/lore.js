@@ -1,18 +1,14 @@
 // Shared lore: lore.html?g=<game>. The Lore tab's rows are entries:
 // Kind = category, Name = title, Value = text (markup), Notes = who added it.
-import { bootstrap, href } from './games.js';
+import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce, fitText } from './core.js';
+import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
-if (!game) {
-  pageShell(app, null, 'lore');
-  app.insertAdjacentHTML('beforeend', `<main class="empty-page"><p>Open this page from an invite link first.</p><p><a href="index.html">Go to the start page</a></p></main>`);
-  throw new Error('no game');
-}
+if (!game) noGame(app, 'lore');
 
 const client = new GameClient(game);
 pageShell(app, client, 'lore');
@@ -27,12 +23,6 @@ let editing = false;
 let query = '';
 let cat = 'all';
 
-function toEntries(rows) {
-  return rows.filter(r => String(r[0]).trim() && String(r[1]).trim())
-    .map(([kind, name, value = '', notes = '']) => ({ kind: String(kind).trim(), name: String(name).trim(), value, notes }));
-}
-function toRows(es) { return es.map(e => [e.kind, e.name, e.value, e.notes]); }
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 function changed() {
   const next = toRows(entries);
@@ -40,12 +30,12 @@ function changed() {
   base = next;
 }
 
-const busy = () => document.activeElement && main.contains(document.activeElement) && document.activeElement.matches('input, textarea');
+const busy = () => typingIn(main);
 // Someone else's change, held while this page is typing (see whenIdle).
 const later = whenIdle(main, busy);
 function adopt() {
   const ne = toEntries(store.rows);
-  if (same(toRows(ne), base) && main.dataset.ready) return;
+  if (sameRows(toRows(ne), base) && main.dataset.ready) return;
   entries = ne;
   base = toRows(ne);
   render();
@@ -63,7 +53,7 @@ client.on(e => {
 });
 
 const categories = () => [...new Set(entries.map(e => e.kind))];
-const unique = (kind, name) => { let n = name, k = 2; while (entries.some(e => e.kind.toLowerCase() === kind.toLowerCase() && e.name.toLowerCase() === n.toLowerCase())) n = `${name} ${k++}`; return n; };
+const unique = (kind, name) => freeName(name, n => entries.some(e => e.kind.toLowerCase() === kind.toLowerCase() && e.name.toLowerCase() === n));
 
 const search = debounce(() => {
   const box = document.getElementById('results');

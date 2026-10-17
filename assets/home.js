@@ -4,7 +4,7 @@ import { GameClient } from './api.js';
 import { gameRules, TABS } from './rules.js';
 import { characterRows } from './build.js';
 import { SHIP } from './system.js';
-import { md, plain } from './markup.js';
+import { md, short } from './markup.js';
 import { esc, escTxt, pageShell, refreshNav, modal, closeModal, pickerHTML, pick } from './core.js';
 import { crewCardHTML } from './cards.js';
 
@@ -65,7 +65,6 @@ if (!game) {
     if (!pbs.length) { modal('<p>The Rules tab has no playbooks yet.</p><div class="prow"><span class="grow"></span><button class="pbtn" data-close>OK</button></div>'); return; }
     const form = { name: '', player: '', playbook: pbs[0].name, oddity: '', kit: '', extraMove: '' };
     const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${escTxt(label)}</option>`;
-    const short = t => { const p = plain(t); return p.length > 70 ? p.slice(0, 69) + '…' : p; };
     const draw = (focus = 'name') => {
       const pb = R.playbook(form.playbook);
       const o = modal(`

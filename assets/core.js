@@ -161,6 +161,22 @@ export function whenIdle(root, busy) {
   return later;
 }
 
+/* ---------- small shared helpers ---------- */
+// name, or "name 2", "name 3"… : the first that taken(n) says is free (names compare without case).
+export function freeName(name, taken) {
+  let n = name, k = 2;
+  while (taken(n.toLowerCase())) n = `${name} ${k++}`;
+  return n;
+}
+
+// Kind | Name | Value | Notes rows (the GM and Lore tabs) as entries to edit, and back.
+export const toEntries = (rows, lowerKind = false) => rows.filter(r => String(r[0]).trim() && String(r[1]).trim())
+  .map(([kind, name, value = '', notes = '']) => ({ kind: lowerKind ? String(kind).trim().toLowerCase() : String(kind).trim(), name: String(name).trim(), value, notes }));
+export const toRows = es => es.map(e => [e.kind, e.name, e.value, e.notes]);
+export const sameRows = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Typing in a field under root.
+export const typingIn = root => !!document.activeElement && root.contains(document.activeElement) && document.activeElement.matches('input, textarea');
+
 /* ---------- redraws ---------- */
 // Grow textareas to fit their text (at least min px). All heights are reset, then all measured,
 // then all set, so the browser lays the page out once rather than once per textarea.
@@ -508,6 +524,13 @@ export function openFeedback(client) {
 }
 
 // Common page start: theme, nav, and (if there's a game) a client that's ready to read.
+// A page opened without a game (or, on the sheet, a character): say so and stop the module.
+export function noGame(root, page, { msg = 'Open this page from an invite link first.', to = 'index.html', label = 'Go to the start page' } = {}) {
+  pageShell(root, null, page);
+  root.insertAdjacentHTML('beforeend', `<main class="empty-page"><p>${escTxt(msg)}</p><p><a href="${esc(to)}">${escTxt(label)}</a></p></main>`);
+  throw new Error('no game');
+}
+
 export function pageShell(root, client, page) {
   applyTheme();
   navNow = navHTML(client, page);

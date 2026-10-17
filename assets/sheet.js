@@ -4,14 +4,13 @@
 import { bootstrap, href, ls, gkey, inviteUrl } from './games.js';
 import { GameClient } from './api.js';
 import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
-import { md, toggleCheck } from './markup.js';
+import { md, toggleCheck, plain, short } from './markup.js';
 import { gameRules, TABS } from './rules.js';
 import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce, fitText } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce, fitText, freeName, noGame } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
-import { plain } from './markup.js';
 import { makeUsage, useItem, useOf, signed } from './usage.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
@@ -23,9 +22,7 @@ const game = bootstrap();
 const tabName = document.body.dataset.tab || new URLSearchParams(location.search).get('c') || '';
 
 if (!game || !tabName) {
-  pageShell(app, null, '');
-  app.insertAdjacentHTML('beforeend', `<main class="empty-page"><p>${game ? 'No character picked.' : 'Open this page from an invite link first.'}</p><p><a href="${esc(href('index.html', game))}">Go to the crew page</a></p></main>`);
-  throw new Error('no game/character');
+  noGame(app, '', { ...(game ? { msg: 'No character picked.' } : {}), to: href('index.html', game), label: 'Go to the crew page' });
 }
 
 const client = new GameClient(game);
@@ -382,7 +379,6 @@ function addItem() {
 
 /* ---------- a new game has no Ship tab yet: set one up from a ship playbook ---------- */
 const setup = { name: '', playbook: '', kit: '', oddity: '' };
-const short = (t, n = 70) => { const p = plain(t); return p.length > n ? p.slice(0, n - 1) + '…' : p; };
 function shipSetupHTML() {
   if (!canEdit()) return `<div class="empty-page"><p>This game has no Ship tab yet.</p>${readOnlyHTML(client, 'Ship')}</div>`;
   const ships = R.playbooks('ship');
@@ -586,9 +582,9 @@ app.addEventListener('click', e => {
   }
 });
 
-const uniqueTitle = t => { let n = t, k = 2; while (st.sections.some(s => s.title.toLowerCase() === n.toLowerCase())) n = `${t} ${k++}`; return n; };
-const uniqueBond = t => { let n = t, k = 2; while (st.bonds.some(s => s.name.toLowerCase() === n.toLowerCase())) n = `${t} ${k++}`; return n; };
-const uniqueMove = t => { let n = t, k = 2; while (moveList().some(s => s.name.toLowerCase() === n.toLowerCase())) n = `${t} ${k++}`; return n; };
+const uniqueTitle = t => freeName(t, n => st.sections.some(s => s.title.toLowerCase() === n));
+const uniqueBond = t => freeName(t, n => st.bonds.some(s => s.name.toLowerCase() === n));
+const uniqueMove = t => freeName(t, n => moveList().some(s => s.name.toLowerCase() === n));
 
 // Text inputs: names/titles apply when you leave the field (they're row keys); text applies as you type.
 function bind(el, final) {

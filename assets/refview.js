@@ -1,9 +1,8 @@
 // Searchable views of the Rules tab, shared by rules.html (crew) and gm.html (GM).
 import { md, plain } from './markup.js';
-import { esc, escTxt } from './core.js';
-import { systemOf, typeOf, SHIP } from './system.js';
+import { escTxt } from './core.js';
+import { systemOf, typeOf, cap, SHIP } from './system.js';
 
-const cap = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const PLAYBOOK_KINDS = ['playbook', 'vice', 'kit', 'lastwords', 'question', 'pmove', 'smove', 'pnote', 'renown'];
 // The game's mechanics (see system.js): the site uses them, the Rules page doesn't list them.
 const SYSTEM_KINDS = ['stat', 'track', 'section', 'choice'];
