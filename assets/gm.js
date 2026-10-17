@@ -7,7 +7,7 @@ import { gameRules, TABS as RULE_TABS } from './rules.js';
 import { systemOf, characterTypes, sum, circles } from './system.js';
 import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
-import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce } from './core.js';
+import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
@@ -150,7 +150,7 @@ function render() {
   if (!gmStore.loaded && !gmStore.missing) { main.innerHTML = '<div class="empty">Loading…</div>'; return; }
   const view = tab === 'crew' ? crewHTML() : tab === 'npcs' ? npcHTML() : tab === 'notes' ? notesHTML() : refHTML();
   main.innerHTML = `<nav class="tabs">${TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav><div class="gmview">${view}</div>`;
-  main.querySelectorAll('textarea').forEach(t => { t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; });
+  fitText(main.querySelectorAll('textarea'), 70);
 }
 
 /* ---------- interactions ---------- */
@@ -211,7 +211,7 @@ main.addEventListener('input', e => {
   if (t.id === 'q') { query = t.value; search(); return; }
   if (t.dataset.f === 'value' || t.dataset.f === 'notes') {
     entries[+t.dataset.i][t.dataset.f] = t.value;
-    if (t.tagName === 'TEXTAREA') { t.style.height = 'auto'; t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; }
+    if (t.tagName === 'TEXTAREA') fitText([t], 70);
     changed();
   }
 });

@@ -7,7 +7,7 @@ import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck } from './markup.js';
 import { gameRules, TABS } from './rules.js';
 import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce, fitText } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
@@ -442,7 +442,7 @@ function render() {
 }
 
 function autoSize() {
-  app.querySelectorAll('textarea.rtext, textarea.enote').forEach(t => { t.style.height = 'auto'; t.style.height = Math.max(60, t.scrollHeight + 4) + 'px'; });
+  fitText(app.querySelectorAll('textarea.rtext, textarea.enote'));
 }
 
 /* ---------- interactions ---------- */
@@ -633,7 +633,7 @@ app.addEventListener('input', e => {
   if (t.id === 'q') { query = t.value; searchMoves(); return; }
   if (t.dataset.setup) { setup[t.dataset.setup] = t.value; return; }
   if (t.dataset.log != null) { st.log[+t.dataset.log].note = t.value; changed(); return; }
-  if (t.matches('textarea')) { t.style.height = 'auto'; t.style.height = Math.max(60, t.scrollHeight + 4) + 'px'; }
+  if (t.matches('textarea')) fitText([t]);
   const spec = t.dataset.bind || '';
   if (/:(title|name|k)$/.test(spec) || spec.startsWith('bond:')) return; // applied on change
   bind(t, false);
