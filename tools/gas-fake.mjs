@@ -269,6 +269,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
     ss,
     now,
     flushes: 0,
+    onFetch: null,
     onFlush: null,
     docProps: docStore,
     setProps(p) { Object.assign(store, p); },
@@ -309,7 +310,10 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
         },
       },
       UrlFetchApp: {
-        fetch: url => {
+        // gas.onFetch(url, opts) may answer first: {code, text} (a live update ping, say).
+        fetch: (url, opts = {}) => {
+          const hooked = gas.onFetch && gas.onFetch(url, opts);
+          if (hooked) return { getResponseCode: () => hooked.code, getContentText: () => hooked.text || '' };
           const img = images.get(url);
           if (!img) return { getResponseCode: () => 404, getBlob: () => null };
           return { getResponseCode: () => 200, getBlob: () => ({ getContentType: () => img.type, getBytes: () => [...img.bytes].map(b => (b > 127 ? b - 256 : b)) }) };
@@ -341,7 +345,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
         createTextOutput: s => ({ content: s, mime: 'text/plain', setMimeType(m) { this.mime = m; return this; }, getContent() { return this.content; } }),
       },
       Utilities: {
-        DigestAlgorithm: { MD5: 'md5' },
+        DigestAlgorithm: { MD5: 'md5', SHA_256: 'sha256' },
         Charset: { UTF_8: 'utf8' },
         computeDigest: (alg, v) => [...createHash(alg).update(Array.isArray(v) ? Buffer.from(v.map(b => b & 255)) : Buffer.from(String(v), 'utf8')).digest()].map(b => (b > 127 ? b - 256 : b)),
         base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
