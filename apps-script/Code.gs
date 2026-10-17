@@ -944,9 +944,10 @@ function isCellImage_(v) {
 }
 
 /*
- * image {tab: 'Map' (the default), 'Lore' or 'Images', row} -> {type, data (base64)}: the picture
+ * image {tab: 'Map' (the default), 'Lore' or 'Images', row, have} -> {d, type, data (base64)}: the picture
  * placed in that row's Image cell, if the caller can see the row. The crew see an Images row only
- * while a Map row they can see, or a Lore row, names it.
+ * while a Map row they can see, or a Lore row, names it. d is the picture's digest; when it's
+ * have (the digest of the copy the page kept), the answer is just {d, same: true}.
  */
 function image_(role, req) {
   const tab = String(req.tab || 'Map').trim().toLowerCase();
@@ -979,7 +980,10 @@ function image_(role, req) {
   const blob = res.getBlob();
   const bytes = blob.getBytes();
   if (bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'That picture is too big (over 20 MB).' };
-  return { ok: true, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
+  // The page may have it already: then say so rather than send it again.
+  const d = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, bytes));
+  if (req.have && String(req.have) === d) return { ok: true, d, same: true };
+  return { ok: true, d, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
 }
 
 // Whether a Map row the crew can see, or a Lore row, has the picture token. Remembered for

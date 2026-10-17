@@ -222,6 +222,20 @@ test('map page: a second visit shows the cached Map tab, not an empty map', asyn
   assert.doesNotMatch(await p.textContent('main'), /Nothing on the map yet/);
 });
 
+test('map page: pictures are kept between visits, not fetched through the script again', async () => {
+  const p = await h.page();
+  const asks = [];
+  p.on('request', r => { if (r.method() === 'POST' && /"op":"image"/.test(r.postData() || '')) asks.push(r.postData()); });
+  await join(p, g1, 'map.html');
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)));
+  assert.ok(asks.length >= 1);
+  asks.length = 0;
+  await p.reload();
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'shows from the kept copy');
+  await sleep(500);
+  assert.deepEqual(asks, []);
+});
+
 test('lore page: a picture placed in the Lore tab\'s Image cell shows with its entry', async () => {
   const p = await h.page();
   await join(p, g1, 'lore.html');
@@ -259,6 +273,7 @@ test('map page: the GM adds, edits and removes places and levels, with pictures 
   await g.setInputFiles(dlg('[data-f="file"]'), { name: 'gate.png', mimeType: 'image/png', buffer: Buffer.from(IMAGES.level1.bytes) });
   await g.waitForSelector(dlg('[data-preview] img'));
   await g.click(dlg('[data-save]'));
+  await g.locator('.loc', { hasText: 'Coral Gate' }).scrollIntoViewIfNeeded(); // pictures load as they near the screen
   await g.waitForSelector('.loc:has-text("Coral Gate") img[src]');
   const images = await h.tab(g1, 'Images');
   assert.deepEqual(images.at(-1).slice(0, 2), ['Coral Gate', ''], 'the upload is a new row of the Images tab');

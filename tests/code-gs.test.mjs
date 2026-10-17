@@ -804,6 +804,14 @@ test('place: a row goes in with one write when the Map tab has its usual columns
   assert.equal(writes, 1);
 });
 
+test('image: a page that kept the picture gets just its digest back', () => {
+  const { api } = imagesGame();
+  const r = gm(api, { op: 'image', tab: 'Images', row: 2 });
+  assert.ok(r.d && r.data);
+  assert.deepEqual(gm(api, { op: 'image', tab: 'Images', row: 2, have: r.d }), { ok: true, d: r.d, same: true });
+  assert.ok(gm(api, { op: 'image', tab: 'Images', row: 3, have: r.d }).data, 'another picture: sent');
+});
+
 test('images: the GM lists the Images tab to pick a picture', () => {
   const { api } = imagesGame();
   assert.equal(crew(api, { op: 'images' }).code, 'forbidden');
