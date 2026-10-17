@@ -547,6 +547,30 @@ test('feedback: the button sends a note to the Feedback tab without who sent it,
   await p.keyboard.press('Escape');
 });
 
+test('a full localStorage drops cached tabs to keep unsaved changes, and says so if even that fails', async () => {
+  const p = await openSheet();
+  await fail(50); // keep the change unsaved
+  await p.evaluate(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      const full = window.__full === 'always' || Object.keys(localStorage).some(x => /:tab:/.test(x));
+      if (k.includes(':pending:') && full) throw new DOMException('full', 'QuotaExceededError');
+      return real.call(this, k, v);
+    };
+  });
+  await p.click('[data-pip="t:Experience"][data-j="4"]');
+  const kept = await p.evaluate(() => ({
+    tabs: Object.keys(localStorage).filter(k => /:tab:/.test(k)).length,
+    pending: Object.keys(localStorage).filter(k => k.includes(':pending:')).map(k => localStorage.getItem(k)).join(''),
+  }));
+  assert.equal(kept.tabs, 0, 'cached tabs dropped');
+  assert.match(kept.pending, /Experience/, 'the change is kept');
+  await p.evaluate(() => { window.__full = 'always'; });
+  await p.click('[data-pip="t:Experience"][data-j="5"]');
+  await p.waitForFunction(() => /storage is full/.test(document.querySelector('.toast.show')?.textContent || ''));
+  await fail(0);
+});
+
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {
   const p = await openSheet({ width: 380, height: 760 });
   for (const t of ['sheet', 'inventory', 'moves', 'notes', 'log']) {

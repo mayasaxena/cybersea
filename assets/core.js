@@ -376,6 +376,7 @@ export function wireNav(root, client) {
     }
     if (e.auth) askKey(client, client.error);
     if (e.skipped) toast(notSaved(e.skipped.rows));
+    if (e.storageFull) toast('This browser’s storage is full: keep this page open until your changes reach the sheet, or they’ll be lost.', 'lo');
   });
 }
 
