@@ -162,6 +162,15 @@ export function whenIdle(root, busy) {
 }
 
 /* ---------- redraws ---------- */
+// fn, run once calls stop coming for ms (a search box redraws after typing pauses, not per key).
+// cancel() drops a pending call (a full redraw has drawn it already).
+export function debounce(fn, ms = 100) {
+  let t;
+  const later = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  later.cancel = () => clearTimeout(t);
+  return later;
+}
+
 // keepFocus(root, redraw): redraw replaces root's markup; whatever had focus in it gets focus back
 // (the new element with the same data-* attributes and id), so pressing a button by keyboard
 // twice works, and a screen reader doesn't fall back to the top of the page.

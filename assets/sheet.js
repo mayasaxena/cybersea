@@ -7,7 +7,7 @@ import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck } from './markup.js';
 import { gameRules, TABS } from './rules.js';
 import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
-import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus } from './core.js';
+import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
@@ -417,7 +417,9 @@ function ensureBondsCard() {
   if (t && st.bonds.length && !st.sections.some(s => same_(s.title, t))) st.sections.push({ tab: 'sheet', title: t, text: '', note: '' });
 }
 
+const searchMoves = debounce(() => { const l = document.getElementById('mlist'); if (l) l.innerHTML = moveListHTML(); });
 function render() {
+  searchMoves.cancel();
   ensureBondsCard();
   const ro = !canEdit();
   if (ro) editing = false;
@@ -628,7 +630,7 @@ function bind(el, final) {
 
 app.addEventListener('input', e => {
   const t = e.target;
-  if (t.id === 'q') { query = t.value; document.getElementById('mlist').innerHTML = moveListHTML(); return; }
+  if (t.id === 'q') { query = t.value; searchMoves(); return; }
   if (t.dataset.setup) { setup[t.dataset.setup] = t.value; return; }
   if (t.dataset.log != null) { st.log[+t.dataset.log].note = t.value; changed(); return; }
   if (t.matches('textarea')) { t.style.height = 'auto'; t.style.height = Math.max(60, t.scrollHeight + 4) + 'px'; }

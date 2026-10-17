@@ -2,7 +2,7 @@
 import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { gameRules, TABS } from './rules.js';
-import { esc, pageShell, refreshNav } from './core.js';
+import { esc, pageShell, refreshNav, debounce } from './core.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
 const app = document.getElementById('app');
@@ -22,7 +22,12 @@ let R = gameRules(client);
 let tab = 'moves';
 let query = '';
 
+const search = debounce(() => {
+  const ref = document.getElementById('ref');
+  if (ref) ref.innerHTML = query.trim() ? searchAllHTML(R, KEYS, query) : sectionHTML(R, tab);
+});
 function render() {
+  search.cancel();
   if (!store.loaded) { main.innerHTML = '<div class="empty">Loading…</div>'; return; }
   const tabs = KEYS.filter(k => k === 'moves' || sectionHasContent(R, k));
   if (!tabs.includes(tab)) tab = tabs[0];
@@ -41,7 +46,7 @@ main.addEventListener('click', e => {
 main.addEventListener('input', e => {
   if (e.target.id !== 'q') return;
   query = e.target.value;
-  document.getElementById('ref').innerHTML = query.trim() ? searchAllHTML(R, KEYS, query) : sectionHTML(R, tab);
+  search();
   main.querySelectorAll('.cats button').forEach(b => b.classList.toggle('on', !query && b.dataset.tab === tab));
 });
 document.addEventListener('keydown', e => {

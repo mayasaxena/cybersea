@@ -11,7 +11,7 @@ import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, modal, closeModal, toast, pageShell, refreshNav } from './core.js';
+import { esc, escTxt, ICON, armed, modal, closeModal, toast, pageShell, refreshNav, debounce } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -83,7 +83,9 @@ function placeHTML(p) {
 let W = world(store.rows); // a cached copy shows at once; the sheet may say it's unchanged
 const allPlaces = () => W.flatMap(r => r.places);
 
+const search = debounce(() => { const w = document.getElementById('world'); if (w) w.innerHTML = worldHTML(); });
 function render() {
+  search.cancel();
   if (!store.loaded && !store.missing) { main.innerHTML = '<div class="empty">Loading…</div>'; return; }
   if (store.missing) {
     main.innerHTML = isGm()
@@ -91,14 +93,8 @@ function render() {
       : '<div class="empty">Nothing on the map yet.</div>';
     return;
   }
-  const q = query.trim().toLowerCase();
   const gm = isGm();
   const onCount = allPlaces().filter(p => p.on).length;
-  const visible = p => (!q || p.search.includes(q)) && ((gm && showAll) || p.on);
-  const none = gm ? (q ? 'No matches.' : showAll ? 'No places in the Map tab yet.' : 'No places on the map yet: show every place and turn some on.')
-    : (q ? 'No matches.' : 'Nothing on the map yet.');
-  const regions = W.map(r => ({ ...r, maps: r.maps.filter(m => !q || `${m.name} ${m.text}`.toLowerCase().includes(q)), places: r.places.filter(visible) }))
-    .filter(r => r.maps.length || r.places.length);
   main.innerHTML = `
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search places" value="${esc(query)}" aria-label="Search places" autocomplete="off">
@@ -106,12 +102,23 @@ function render() {
         <button class="pbtn" data-new="place">+ Place</button><button class="pbtn" data-new="map">+ Region map</button>` : ''}
     </div>
     ${gm ? '<div class="robar"><span>You choose which places the crew see; every place starts hidden.</span></div>' : ''}
-    <div id="world">
+    <div id="world">${worldHTML()}</div>`;
+}
+
+// The regions and places that match the search: all a search redraws.
+function worldHTML() {
+  const q = query.trim().toLowerCase();
+  const gm = isGm();
+  const visible = p => (!q || p.search.includes(q)) && ((gm && showAll) || p.on);
+  const none = gm ? (q ? 'No matches.' : showAll ? 'No places in the Map tab yet.' : 'No places on the map yet: show every place and turn some on.')
+    : (q ? 'No matches.' : 'Nothing on the map yet.');
+  const regions = W.map(r => ({ ...r, maps: r.maps.filter(m => !q || `${m.name} ${m.text}`.toLowerCase().includes(q)), places: r.places.filter(visible) }))
+    .filter(r => r.maps.length || r.places.length);
+  return `
       ${regions.map(r => `
         ${r.maps.map(m => `<section class="worldmap"><div class="shead"><h2>${escTxt(m.name)}</h2>${gm ? `<button class="ic" data-edit="${m.at}" title="Edit ${esc(m.name)}" aria-label="Edit ${esc(m.name)}">${ICON.pen}</button>` : ''}</div>${imgHTML(m, 'mapimg')}${m.text.trim() ? `<div class="rich">${md(m.text)}</div>` : ''}${notesHTML(m)}</section>`).join('')}
         ${r.places.length ? `<div class="mgroup"><h3>${escTxt(r.name || 'Places')}</h3><div class="cols">${r.places.map(placeHTML).join('')}</div></div>` : ''}`).join('')}
-      ${!regions.some(r => r.places.length) ? `<div class="empty">${none}</div>` : ''}
-    </div>`;
+      ${!regions.some(r => r.places.length) ? `<div class="empty">${none}</div>` : ''}`;
 }
 
 const rerenderCard = p => { const el = document.getElementById(`loc-${p.i}`); if (el) el.outerHTML = placeHTML(p); };
@@ -149,11 +156,7 @@ main.addEventListener('click', e => {
 main.addEventListener('input', e => {
   if (e.target.id !== 'q') return;
   query = e.target.value;
-  const pos = e.target.selectionStart;
-  render();
-  const q = document.getElementById('q');
-  q.focus();
-  q.setSelectionRange(pos, pos);
+  search();
 });
 /* ---------- the GM's editor ----------
  * Adds, changes or removes a Map row (op "place"). A picture is kept, cleared, picked from the

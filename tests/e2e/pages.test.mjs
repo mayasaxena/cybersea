@@ -13,6 +13,10 @@ async function until(fn, ms = 6000) {
   while (Date.now() < end) { last = await fn(); if (last) return last; await sleep(100); }
   return last;
 }
+// fn's answer once it equals want (a search redraws once typing pauses), or its last answer.
+async function settled(fn, want) {
+  return until(async () => { const v = await fn(); return JSON.stringify(v) === JSON.stringify(want) ? v : null; }) ?? fn();
+}
 
 let h;
 let g1;
@@ -134,7 +138,7 @@ test('lore: read, search, add, edit and delete entries', async () => {
   assert.equal(row(rows, 'place', 'New entry'), undefined);
   await p.click('[data-act="edit"]');
   await p.fill('#q', 'bell');
-  assert.deepEqual(await p.$$eval('main .card h2', hs => hs.map(x => x.textContent)), ['The Drowned Bell']);
+  assert.deepEqual(await settled(() => p.$$eval('main .card h2', hs => hs.map(x => x.textContent)), ['The Drowned Bell']), ['The Drowned Bell']);
   await p.fill('#q', '');
   await p.click('[data-act="edit"]');
   await p.click('[data-act="rm"][data-i="1"]');
@@ -162,9 +166,9 @@ test('rules page: sections, search, and no GM-only rules for the crew', async ()
   const tabs = await p.$$eval('.cats button', bs => bs.map(b => b.textContent));
   assert.ok(!tabs.includes('Fates'), tabs.join());
   await p.fill('#q', 'poke');
-  assert.deepEqual(await p.$$eval('#ref .mn', ms => ms.map(m => m.textContent)), ['POKE AROUND']);
+  assert.deepEqual(await settled(() => p.$$eval('#ref .mn', ms => ms.map(m => m.textContent)), ['POKE AROUND']), ['POKE AROUND']);
   await p.fill('#q', 'trap');
-  assert.match(await p.textContent('#ref'), /No matches/);
+  await p.waitForSelector('#ref :text("No matches")');
   await p.fill('#q', '');
   await p.click('.cats button:has-text("Playbooks")');
   assert.deepEqual(await p.$$eval('#ref .move.pb .mn', ms => ms.map(m => m.textContent)), ['Trickster', 'Brute', 'Skiff']);
@@ -217,7 +221,7 @@ test("map page: from the Map tab; crew see the region's map and only the places 
   assert.ok(await until(() => lv2.evaluate(i => i.complete && i.naturalWidth === 32)), 'the level\'s picture loads');
   assert.equal(await p.locator('.loc', { hasText: 'Packet Reef' }).locator('.levels').count(), 0, 'a place with no levels is one picture');
   await p.fill('#q', 'market');
-  assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Scrap Town'], 'a level\'s text finds its place');
+  assert.deepEqual(await settled(() => p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Scrap Town']), ['Scrap Town'], 'a level\'s text finds its place');
 
   // Off again: gone for the crew.
   await g.locator('.loc', { hasText: 'Scrap Town' }).locator('[data-place]').click();
