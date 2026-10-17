@@ -11,15 +11,11 @@ import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, modal, closeModal, toast, pageShell, refreshNav, debounce } from './core.js';
+import { esc, escTxt, ICON, armed, modal, closeModal, toast, pageShell, refreshNav, debounce, noGame } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
-if (!game) {
-  pageShell(app, null, 'map');
-  app.insertAdjacentHTML('beforeend', '<main class="empty-page"><p>Open this page from an invite link first.</p><p><a href="index.html">Go to the start page</a></p></main>');
-  throw new Error('no game');
-}
+if (!game) noGame(app, 'map');
 const client = new GameClient(game);
 pageShell(app, client, 'map');
 const store = client.tab('Map');

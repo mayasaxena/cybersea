@@ -86,5 +86,5 @@ export function makeUsage({ log }) {
     draw();
   }
 
-  return { add, clear, pending: lines };
+  return { add, clear };
 }

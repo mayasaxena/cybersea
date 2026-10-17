@@ -74,6 +74,9 @@ export function toggleCheck(src, n) {
 }
 
 // Text without markup, for search and matching.
+// Plain text cut to n characters, for a dropdown's options.
+export const short = (t, n = 70) => { const p = plain(t); return p.length > n ? p.slice(0, n - 1) + '…' : p; };
+
 export function plain(src) {
   return String(src ?? '')
     .replace(/^\s*(?:- |\[( |x|X)\] )/gm, '')

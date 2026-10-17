@@ -7,17 +7,13 @@ import { gameRules, TABS as RULE_TABS } from './rules.js';
 import { systemOf, characterTypes, sum, circles } from './system.js';
 import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
-import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText } from './core.js';
+import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
-if (!game) {
-  pageShell(app, null, 'gm');
-  app.insertAdjacentHTML('beforeend', '<main class="empty-page"><p>Open this page from an invite link first.</p><p><a href="index.html">Go to the start page</a></p></main>');
-  throw new Error('no game');
-}
+if (!game) noGame(app, 'gm');
 
 const client = new GameClient(game);
 pageShell(app, client, 'gm');
@@ -34,20 +30,16 @@ let editing = false;
 let R = gameRules(client);
 
 // GM tab rows as editable entries (kinds lower-cased; unknown kinds kept as they are).
-const toEntries = rows => rows.filter(r => String(r[0]).trim() && String(r[1]).trim())
-  .map(([kind, name, value = '', notes = '']) => ({ kind: String(kind).trim().toLowerCase(), name: String(name).trim(), value, notes }));
-const toRows = es => es.map(e => [e.kind, e.name, e.value, e.notes]);
-let entries = toEntries(gmStore.rows);
+let entries = toEntries(gmStore.rows, true);
 let base = toRows(entries);
 function changed() { const next = toRows(entries); gmStore.change(base, next); base = next; }
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const busy = () => document.activeElement && main.contains(document.activeElement) && document.activeElement.matches('input, textarea');
+const busy = () => typingIn(main);
 
 // Someone else's change, held while this page is typing (see whenIdle).
 const later = whenIdle(main, busy);
 function adopt() {
-  const ne = toEntries(gmStore.rows);
-  if (same(toRows(ne), base) && main.dataset.ready) return;
+  const ne = toEntries(gmStore.rows, true);
+  if (sameRows(toRows(ne), base) && main.dataset.ready) return;
   entries = ne;
   base = toRows(ne);
   if (tab === 'npcs' || tab === 'notes') render();
@@ -60,7 +52,7 @@ const harmName = () => systemOf(R, 'npc').name('harm') || systemOf(R, characterT
 
 const characters = () => client.list.filter(t => t.kind === 'character').map(t => t.name);
 const harmOf = name => entries.find(e => e.kind === 'track' && e.name.toLowerCase() === name.toLowerCase());
-const unique = (kind, name) => { let n = name, k = 2; while (entries.some(e => e.kind === kind && e.name.toLowerCase() === n.toLowerCase())) n = `${name} ${k++}`; return n; };
+const unique = (kind, name) => freeName(name, n => entries.some(e => e.kind === kind && e.name.toLowerCase() === n));
 const pipsHTML = (id, arr, label) => arr.map((v, j) => `<button class="pip${pipClass(v)}" data-gpip="${esc(id)}" data-j="${j}" aria-label="${esc(label)} ${j + 1}" aria-pressed="${v === 1}"></button>`).join('');
 
 /* ---------- views ---------- */
