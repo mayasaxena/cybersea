@@ -24,6 +24,13 @@ export const API_VERSION = 11;
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
 const MAX_ALTS = 20;
 
+// Live updates (see listen): how long the stream may go without a word (the database sends
+// keep-alives) before it's reopened; sooner when the window comes back into focus; and how long
+// before trying again once the database turned it away.
+const SILENT_MS = 90000;
+const FOCUS_SILENT_MS = 45000;
+const REFUSED_MS = 300000;
+
 // A new row version (Code.gs makes them the same way).
 const newStamp = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -427,7 +434,11 @@ export class GameClient extends Emitter {
     this.polling = true;
     const every = Number(ls.get('cybersea:pollMs')) || CONFIG.pollMs; // override is for tests
     this.pollTimer = setInterval(() => { if (!this.live) this.poll(); }, every);
-    addEventListener('focus', () => { if (!this.live) this.poll(); });
+    // A stream can go quiet without an error (after the computer sleeps, say): the database sends
+    // keep-alives, so one that's been silent too long is reopened, and reads if it missed a ping.
+    this.watchTimer = setInterval(() => this.checkStream(SILENT_MS), 15000);
+    addEventListener('focus', () => { if (!this.checkStream(FOCUS_SILENT_MS) && !this.live) this.poll(); });
+    addEventListener('online', () => this.checkStream(0));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.flushAll(true); this.listen(''); return; }
       if (this.pushWanted) this.listen(this.pushWanted); // its first event reads
@@ -435,6 +446,19 @@ export class GameClient extends Emitter {
     });
     addEventListener('pagehide', () => this.flushAll(true));
     this.listen(this.pushWanted || '');
+  }
+
+  // Reopens the stream if nothing came on it for quiet ms (or, once it was turned away, for
+  // REFUSED_MS); true if it did.
+  checkStream(quiet) {
+    const es = this.events;
+    if (!es || document.hidden) return false;
+    const closed = es.readyState === 2; // EventSource.CLOSED: refused, it won't retry by itself
+    if (!(closed || this.live) || Date.now() - this.heard < (closed ? REFUSED_MS : quiet)) return false;
+    const url = this.pushUrl;
+    this.listen('');
+    this.listen(url);
+    return true;
   }
 
   poll() {
@@ -454,8 +478,8 @@ export class GameClient extends Emitter {
   // reconnects by itself. Its first event on (re)connecting is the latest ping: it reads only if
   // that came after our last read started, covering what changed while it wasn't listening.
   // After that, a ping for a change this page made itself is skipped (the page has those rows
-  // already). '' stops listening: hidden pages don't hold a connection (the free plan allows 100
-  // at once).
+  // already), unless its count shows a ping in between went unheard. '' stops listening: hidden
+  // pages don't hold a connection (the free plan allows 100 at once).
   listen(url) {
     if (!this.polling || typeof EventSource === 'undefined') return;
     if (document.hidden) url = '';
@@ -467,18 +491,29 @@ export class GameClient extends Emitter {
     if (!url) return;
     const es = new EventSource(url);
     this.events = es;
+    this.heard = Date.now();
     let first = true;
+    let count = 0; // the last ping's n
     const ping = e => {
+      this.heard = Date.now();
       let p = null;
       try { p = JSON.parse(e.data).data; } catch { /* not ours to read: read anyway */ }
-      const missed = first ? p != null && !(Number(p.at) <= (this.readAt || 0)) : !p || !p.by || p.by !== this.clientId;
+      const n = Number(p?.n);
+      const missed = first ? p != null && !(Number(p.at) <= (this.readAt || 0))
+        : !p || !p.by || p.by !== this.clientId || n !== count + 1;
+      count = n || 0;
       this.live = true;
       first = false;
       if (missed) this.poll();
     };
     es.addEventListener('put', ping);
     es.addEventListener('patch', ping);
-    es.addEventListener('error', () => { this.live = false; first = true; }); // polls until it's back
+    es.addEventListener('keep-alive', () => { this.heard = Date.now(); });
+    es.addEventListener('error', () => { // polls until it's back
+      this.live = false;
+      first = true;
+      if (es.readyState === 2) console.warn('Live updates: the database turned the connection away; checking the sheet every so often instead.');
+    });
     const stop = () => { es.close(); if (this.events === es) { this.events = null; this.live = false; } };
     es.addEventListener('cancel', stop);
     es.addEventListener('auth_revoked', stop);
