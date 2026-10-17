@@ -10,10 +10,15 @@
 //   node tools/dev-server.mjs                         site :8080, one fixture game on :8081
 //   GAMES=2 LATENCY=300-1500 node tools/dev-server.mjs
 //   RULES_JSON=/path/rules.json node tools/dev-server.mjs   preview with real rules (local only)
+//   PUSH=1 node tools/dev-server.mjs                  with live updates (see below)
 //
 // Test hooks on each API port: POST /__test/set {tab, rows} (edit a tab by hand to hold these
 // rows; rows: null deletes it), GET /__test/tab?name=X (dump display values),
 // POST /__test/fail {count} (next N echoes 500: the script runs, but its answer is lost).
+//
+// A game made with {push: true} has live updates on (apps-script/Push.gs): /__fb on its API port
+// stands in for the Firebase Realtime Database, streaming the script's pings as server-sent
+// events, and edits by hand also run Push.gs's "On change" trigger.
 
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -65,6 +70,36 @@ function editByHand(game, tab, rows) {
     edited.push(range);
   }
   for (const range of edited) game.api.onEdit({ range, source: ss });
+  if (game.push && edited.length) game.api.ctx.pushChange({ changeType: 'OTHER', source: ss });
+}
+
+// The Realtime Database's REST API, as much as Push.gs and the site use: PUT a value (with the
+// secret), and GET as server-sent events (put events: the value on connecting, then each new one).
+function firebase(game, base) {
+  const values = new Map();
+  const streams = new Map();
+  const send = (res, data) => res.write(`event: put\ndata: ${JSON.stringify({ path: '/', data: data ?? null })}\n\n`);
+  game.gas.setProps({ FIREBASE_URL: `${base}/__fb`, FIREBASE_SECRET: 'dev-secret' });
+  game.gas.onFetch = (url, opts) => {
+    const u = new URL(url);
+    if (!u.pathname.startsWith('/__fb/') || String(opts.method).toLowerCase() !== 'put') return null;
+    if (u.searchParams.get('auth') !== 'dev-secret') return { code: 401, text: '{"error":"Permission denied"}' };
+    const body = JSON.parse(opts.payload);
+    const v = JSON.parse(JSON.stringify(body), (k, x) => (x && x['.sv'] === 'timestamp' ? Date.now() : x));
+    values.set(u.pathname, v);
+    for (const res of streams.get(u.pathname) || []) send(res, v);
+    return { code: 200, text: JSON.stringify(v) };
+  };
+  game.push = { pings: () => [...values.values()].length };
+  return (req, res, url) => {
+    if (req.method !== 'GET') { res.writeHead(405).end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    const set = streams.get(url.pathname) || new Set();
+    streams.set(url.pathname, set);
+    set.add(res);
+    req.on('close', () => set.delete(res));
+    send(res, values.get(url.pathname));
+  };
 }
 
 // What .gitignore keeps out of the repo (rules.json, workbooks, the private materials folder)
@@ -95,7 +130,7 @@ function siteHandler(req, res) {
   res.end(readFileSync(file));
 }
 
-function apiHandler(game, latency) {
+function apiHandler(game, latency, firebaseOf = () => null) {
   const outputs = new Map();
   let failNext = 0;
   let n = 0;
@@ -116,6 +151,8 @@ function apiHandler(game, latency) {
     };
 
     if (req.method === 'OPTIONS') { res.writeHead(405).end(); return; }
+    const fb = firebaseOf();
+    if (fb && url.pathname.startsWith('/__fb/')) { fb(req, res, url); return; }
 
     if (url.pathname === '/exec' && req.method === 'GET') {
       redirect(game.api.doGet({ parameter: Object.fromEntries(url.searchParams) }));
@@ -174,9 +211,14 @@ export function start({ sitePort = 8080, apiPort = 8081, games = 1, latency, gam
     const site = await listen(siteHandler, sitePort);
     const apis = [];
     for (let i = 0; i < games; i++) {
-      const game = makeGame({ name: i ? `Fixture Game ${i + 1}` : 'Fixture Game', ...gameOptions[i] });
-      const port = await listen(apiHandler(game, parseLatency(latency)), apiPort ? apiPort + i : 0);
-      apis.push({ url: `http://127.0.0.1:${port}/exec`, base: `http://127.0.0.1:${port}`, game });
+      const { push, ...opts } = gameOptions[i] || {};
+      const game = makeGame({ name: i ? `Fixture Game ${i + 1}` : 'Fixture Game', ...opts });
+      let fb = null;
+      const handler = apiHandler(game, parseLatency(latency), () => fb);
+      const port = await listen(handler, apiPort ? apiPort + i : 0);
+      const base = `http://127.0.0.1:${port}`;
+      if (push) fb = firebase(game, base);
+      apis.push({ url: `${base}/exec`, base, game });
     }
     return {
       site: `http://127.0.0.1:${site}`,
@@ -194,7 +236,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     apiPort: Number(process.env.API_PORT || 8081),
     games,
     latency: process.env.LATENCY,
-    gameOptions: Array.from({ length: games }, () => ({ rulesJson })),
+    gameOptions: Array.from({ length: games }, () => ({ rulesJson, push: !!process.env.PUSH })),
   }).then(({ site, apis }) => {
     console.log(`site  ${site}`);
     for (const a of apis) {

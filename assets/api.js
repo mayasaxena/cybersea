@@ -262,6 +262,7 @@ export class GameClient extends Emitter {
     this.locked = false;   // the sheet turned our passphrase (or lack of one) away
     this.checking = false; // a new passphrase is on its way to the sheet
     this.listSig = null;   // what the last list event was about (see read)
+    this.clientId = newStamp(); // this page, to the sheet's live update pings (see listen)
   }
 
   tab(name) {
@@ -363,8 +364,9 @@ export class GameClient extends Emitter {
     this.emit({ key: true, list: true, me: true });
   }
 
+  // by: which page sent a change, so its own live update ping can be skipped (see listen).
   request(body, opts) {
-    return call(this.game.api, { ...body, key: this.game.key || undefined }, opts);
+    return call(this.game.api, { ...body, key: this.game.key || undefined, by: this.clientId }, opts);
   }
 
   // Fetch tabs; only tabs that changed since our cached copy come back with rows.
@@ -395,6 +397,9 @@ export class GameClient extends Emitter {
       }
       for (const n of names) if (!got.includes(n.toLowerCase())) this.tab(n).markMissing();
       this.reconcileMe(names, startedAt);
+      this.readAt = Number(r.at) || 0; // the sheet's clock, as the pings' times are
+      this.pushWanted = r.push || '';
+      this.listen(this.pushWanted);
       if (!this.anyPending()) this.setStatus('ok');
       // Pages redraw their nav (and more) on a list event, so send one only when the tab list,
       // our role or the game's name changed: most polls change none of them.
@@ -409,23 +414,74 @@ export class GameClient extends Emitter {
     } finally {
       this.reading = false;
       if (this.checking) { this.checking = false; this.emit({ me: true }); }
+      if (this.readAgain) { this.readAgain = false; setTimeout(() => this.poll(), 0); }
     }
   }
 
   watch(...names) { names.forEach(n => this.watched.add(n)); }
 
-  // Poll watched tabs while the page is visible; flush pending edits when it's hidden or closed.
+  // Keep the watched tabs up to date while the page is visible; flush pending edits when it's
+  // hidden or closed. With live updates (see listen), the page reads only when the sheet pings;
+  // without them, or while the connection is down, it polls.
   startPolling() {
-    const tick = () => {
-      if (document.hidden || this.reading || this.anyPending() || this.locked) return;
-      this.read().catch(() => {});
-    };
-    this.pollTimer = setInterval(tick, Number(ls.get('cybersea:pollMs')) || CONFIG.pollMs); // override is for tests
-    addEventListener('focus', tick);
+    this.polling = true;
+    const every = Number(ls.get('cybersea:pollMs')) || CONFIG.pollMs; // override is for tests
+    this.pollTimer = setInterval(() => { if (!this.live) this.poll(); }, every);
+    addEventListener('focus', () => { if (!this.live) this.poll(); });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.flushAll(true); else tick();
+      if (document.hidden) { this.flushAll(true); this.listen(''); return; }
+      if (this.pushWanted) this.listen(this.pushWanted); // its first event reads
+      else this.poll();
     });
     addEventListener('pagehide', () => this.flushAll(true));
+    this.listen(this.pushWanted || '');
+  }
+
+  poll() {
+    if (document.hidden || this.locked) return;
+    // Busy: read once the read on its way is done, or once our edits are in (so a read can't
+    // show their rows as they were), so a ping isn't lost.
+    if (this.reading) { this.readAgain = true; return; }
+    if (this.anyPending()) {
+      if (!this.retryTimer) this.retryTimer = setTimeout(() => { this.retryTimer = null; this.poll(); }, 1000);
+      return;
+    }
+    this.read().catch(() => {});
+  }
+
+  // Live updates: listen at url for the sheet's pings (see Push.gs) and read when one comes. The
+  // Firebase database streams them as server-sent events, so a plain EventSource does; it
+  // reconnects by itself. Its first event on (re)connecting is the latest ping: it reads only if
+  // that came after our last read started, covering what changed while it wasn't listening.
+  // After that, a ping for a change this page made itself is skipped (the page has those rows
+  // already). '' stops listening: hidden pages don't hold a connection (the free plan allows 100
+  // at once).
+  listen(url) {
+    if (!this.polling || typeof EventSource === 'undefined') return;
+    if (document.hidden) url = '';
+    if (url === (this.pushUrl || '') && (!url || this.events)) return;
+    if (this.events) this.events.close();
+    this.events = null;
+    this.live = false;
+    this.pushUrl = url;
+    if (!url) return;
+    const es = new EventSource(url);
+    this.events = es;
+    let first = true;
+    const ping = e => {
+      let p = null;
+      try { p = JSON.parse(e.data).data; } catch { /* not ours to read: read anyway */ }
+      const missed = first ? p != null && !(Number(p.at) <= (this.readAt || 0)) : !p || !p.by || p.by !== this.clientId;
+      this.live = true;
+      first = false;
+      if (missed) this.poll();
+    };
+    es.addEventListener('put', ping);
+    es.addEventListener('patch', ping);
+    es.addEventListener('error', () => { this.live = false; first = true; }); // polls until it's back
+    const stop = () => { es.close(); if (this.events === es) { this.events = null; this.live = false; } };
+    es.addEventListener('cancel', stop);
+    es.addEventListener('auth_revoked', stop);
   }
 
   flushAll(beacon = false) { for (const s of this.stores.values()) s.flush(beacon); }

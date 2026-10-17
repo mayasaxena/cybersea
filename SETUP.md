@@ -81,7 +81,7 @@ carries the game (and the passphrase, if you copied it as the GM).
 ## Editing the sheet directly
 
 You can edit any tab in Google Sheets as well; the site picks up changes within about 15
-seconds. The README tab explains the columns and symbols. Keep **Kind + Name** unique on each
+seconds, or at once with [live updates](#live-updates). The README tab explains the columns and symbols. Keep **Kind + Name** unique on each
 tab: that pair is how the site finds a row.
 
 The tabs the site edits also get a hidden **Version** column, which the script keeps up to date,
@@ -90,6 +90,46 @@ row (a player who was offline, say), the sheet keeps the newer row and the playe
 edit wasn't saved. Leave that column alone. The one change the script can't notice is a whole
 row being deleted, so a page that missed it could add the row back: to remove a row, clear its
 cells instead.
+
+### Live updates
+
+Without them, every open page checks the sheet for changes every 15 seconds. With them, a page
+reads the sheet once when it opens, then again only when something changes: the script pings a
+Firebase Realtime Database after every change, and every open page of the game hears it at once.
+A page skips the ping for a change it made itself. The ping holds only the time; the game itself
+stays in the sheet. It's free (Firebase's Spark plan, no billing), and one database can serve
+several games.
+
+1. In the [Firebase console](https://console.firebase.google.com), open your project (the one
+   from [Updating from the menu](#updating-from-the-menu) does), then **Build → Realtime
+   Database → Create database**, any location, **Start in locked mode**.
+2. On the database's **Rules** tab, paste this and click **Publish**. Anyone can read a game's
+   pings if they know where it is, which only the game's own pages are told; nobody can list
+   them or write, except the script.
+   ```json
+   {
+     "rules": {
+       ".read": false,
+       ".write": false,
+       "games": { "$topic": { ".read": true } }
+     }
+   }
+   ```
+3. Copy the database's URL from the top of its **Data** tab (like
+   `https://your-project-default-rtdb.firebaseio.com`).
+4. Open **Project settings** (the gear) **→ Service accounts → Database secrets**, and **Show**
+   and copy the secret. Google calls these secrets legacy, but they still work and need no
+   extra permissions in the script.
+5. In the game's Apps Script **Project Settings → Script properties**, add `FIREBASE_URL` (the
+   URL) and `FIREBASE_SECRET` (the secret). Set these on your game's copy only, never on the
+   template: script properties are copied with the sheet, and the secret lets the script write.
+6. For edits made in Google Sheets: in Apps Script, open **Triggers** (the alarm clock) **→ Add
+   Trigger**, choose the function **pushChange**, event source **From spreadsheet**, event type
+   **On change**, and **Save** (allow it if asked). Without it, the site's own changes are still
+   live, and changes made in Sheets show when a page next opens or comes back into view.
+
+Make sure the script has `Push.gs` (**Cybersea → Update the script** brings it in). Pages pick up
+live updates at their next read. To turn them off, delete `FIREBASE_URL`.
 
 ### Scratchpad and feedback
 

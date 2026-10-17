@@ -5,6 +5,7 @@
  *   Project Settings > Script properties: GM_KEY (the GM's passphrase). Optional: CREW_KEY, if
  *   players should need a passphrase too; without it, anyone with the web app URL (the invite
  *   link) is crew.
+ *   Optional: FIREBASE_URL and FIREBASE_SECRET, for live updates (Push.gs).
  *   Deploy > New deployment > Web app; Execute as: Me; Who has access: Anyone.
  *
  * Every request is a POST whose body is JSON sent as text/plain (no CORS preflight),
@@ -92,6 +93,12 @@ function handle_(req) {
     }
     noteKnownKey_(req.key);
   }
+  const res = op_(role, req);
+  pushIfDue_(req.by); // live updates (Push.gs), once the change is done
+  return res;
+}
+
+function op_(role, req) {
   switch (req.op) {
     case 'read': return read_(role, req);
     case 'patch': return withLock_(() => patch_(role, req));
@@ -453,6 +460,7 @@ function touched_(...names) {
   const out = {};
   ks.forEach(k => { out['gen:' + k] = stamp_(); });
   CacheService.getScriptCache().putAll(out, 21600);
+  pushDue_ = true;
 }
 
 /* ---------- ops ---------- */
@@ -490,6 +498,8 @@ function read_(role, req) {
   known.save(fresh);
   const res = { ok: true, v: API_VERSION, role, game: ss.getName(), at, list, tabs };
   if (role === 'gm') res.crewKey = keys_().crew; // lets the GM copy a crew invite link
+  const push = pushUrl_();
+  if (push) res.push = push; // where to listen for live updates (Push.gs)
   return res;
 }
 

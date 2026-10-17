@@ -92,7 +92,9 @@ function replaceWithXlsx(name, data, choice) {
   }
   // review: only say what it would do (the dialog shows it before anything changes).
   if (merge && choice.review) return { ok: false, code: 'review', conflicts, changes };
-  return replaceTabs_(ss, book, remove);
+  const done = replaceTabs_(ss, book, remove);
+  pushIfDue_(); // live updates (Push.gs)
+  return done;
 }
 
 // The workbook in base64 data, its tabs' cells read only for the tabs only(name, the file's

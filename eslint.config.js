@@ -7,7 +7,7 @@ const BROWSER = ['window', 'document', 'location', 'history', 'navigator', 'loca
   'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'console', 'alert', 'confirm', 'getComputedStyle', 'matchMedia',
   'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'CSS', 'Event', 'CustomEvent', 'HTMLElement', 'Node', 'NodeFilter',
   'createImageBitmap', 'OffscreenCanvas', 'crypto', 'structuredClone', 'queueMicrotask', 'addEventListener', 'removeEventListener',
-  'innerWidth', 'innerHeight', 'scrollTo', 'open', 'google', 'Storage', 'HTMLDetailsElement'];
+  'innerWidth', 'innerHeight', 'scrollTo', 'open', 'google', 'Storage', 'HTMLDetailsElement', 'EventSource'];
 const NODE = ['process', 'Buffer', 'console', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'URL', 'URLSearchParams',
   'TextEncoder', 'TextDecoder', 'fetch', 'AbortController', 'structuredClone', 'performance', 'atob', 'btoa', 'queueMicrotask',
   'Response', 'Blob', 'DOMException', 'crypto', 'setImmediate'];
