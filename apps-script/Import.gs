@@ -198,11 +198,13 @@ function fillSheet_(sh, t, skipped) {
   extra_(skipped, 'bold' + tab, () => range.setFontWeights(grid(c => (c.bold ? 'bold' : 'normal'))));
   extra_(skipped, 'fill colors' + tab, () => range.setBackgrounds(grid(c => c.fill || null)));
   extra_(skipped, 'wrapping' + tab, () => range.setWraps(grid(c => !!c.wrap)));
+  // One call per <col> span (Excel writes a span for side-by-side columns alike).
   t.cols.forEach(c => {
-    for (let i = Math.max(c.min, 1); i <= Math.min(c.max, nc); i++) {
-      if (c.width > 0) extra_(skipped, 'column widths' + tab, () => sh.setColumnWidth(i, Math.round(c.width * 7 + 5)));
-      if (c.hidden) extra_(skipped, 'hidden columns' + tab, () => sh.hideColumns(i));
-    }
+    const from = Math.max(c.min, 1);
+    const n = Math.min(c.max, nc) - from + 1;
+    if (n < 1) return;
+    if (c.width > 0) extra_(skipped, 'column widths' + tab, () => sh.setColumnWidths(from, n, Math.round(c.width * 7 + 5)));
+    if (c.hidden) extra_(skipped, 'hidden columns' + tab, () => sh.hideColumns(from, n));
   });
   if (t.frozenRows) extra_(skipped, 'frozen rows' + tab, () => sh.setFrozenRows(t.frozenRows));
   if (t.frozenCols) extra_(skipped, 'frozen columns' + tab, () => sh.setFrozenColumns(t.frozenCols));
