@@ -61,7 +61,7 @@ const harmName = () => systemOf(R, 'npc').name('harm') || systemOf(R, characterT
 const characters = () => client.list.filter(t => t.kind === 'character').map(t => t.name);
 const harmOf = name => entries.find(e => e.kind === 'track' && e.name.toLowerCase() === name.toLowerCase());
 const unique = (kind, name) => { let n = name, k = 2; while (entries.some(e => e.kind === kind && e.name.toLowerCase() === n.toLowerCase())) n = `${name} ${k++}`; return n; };
-const pipsHTML = (id, arr) => arr.map((v, j) => `<button class="pip${pipClass(v)}" data-gpip="${esc(id)}" data-j="${j}" aria-label="${j + 1}" aria-pressed="${v === 1}"></button>`).join('');
+const pipsHTML = (id, arr, label) => arr.map((v, j) => `<button class="pip${pipClass(v)}" data-gpip="${esc(id)}" data-j="${j}" aria-label="${esc(label)} ${j + 1}" aria-pressed="${v === 1}"></button>`).join('');
 
 /* ---------- views ---------- */
 function crewHTML() {
@@ -87,13 +87,13 @@ function npcHTML() {
           <input class="in st" data-f="name" data-i="${i}" value="${esc(e.name)}" aria-label="Name">
           <button class="mini del" data-act="rm" data-i="${i}" aria-label="Delete">×</button></div>
         <input class="in note" data-f="value" data-i="${i}" value="${esc(e.value)}" placeholder="Tags, comma-separated" aria-label="Tags">
-        <div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm)}</span>
+        <div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm, `${e.name} ${harmName()}`)}</span>
           <span class="pm"><button class="mini" data-act="harm-" data-name="${esc(e.name)}" aria-label="Less">−</button><button class="mini" data-act="harm+" data-name="${esc(e.name)}" aria-label="More">+</button></span></div>
         <textarea class="in rtext" data-f="notes" data-i="${i}" aria-label="Notes">${escTxt(e.notes)}</textarea></section>`;
     }
     return `<section class="card"><div class="shead"><h2>${escTxt(e.name)}</h2></div>
       ${e.value ? `<div class="tags">${tagChips(e.value)}</div>` : ''}
-      ${harm.length ? `<div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm)}</span></div>` : ''}
+      ${harm.length ? `<div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm, `${e.name} ${harmName()}`)}</span></div>` : ''}
       ${e.notes ? `<div class="rich">${md(e.notes)}</div>` : ''}</section>`;
   }).join('');
   return `<div class="mtools"><span class="grow"></span>${editToggle()}</div>
@@ -110,7 +110,7 @@ function notesHTML() {
       if (kind === 'clock') {
         const p = parseTrack(e.value);
         return `<section class="card"><div class="shead">${editing ? `<input class="in st" data-f="name" data-i="${i}" value="${esc(e.name)}" aria-label="Clock">` : `<h2>${escTxt(e.name)}</h2>`}
-          <span class="pips">${pipsHTML(`clock:${i}`, p)}</span>
+          <span class="pips">${pipsHTML(`clock:${i}`, p, e.name)}</span>
           ${editing ? `<span class="pm"><button class="mini" data-act="clock-" data-i="${i}" aria-label="Fewer">−</button><button class="mini" data-act="clock+" data-i="${i}" aria-label="More">+</button></span><button class="mini del" data-act="rm" data-i="${i}" aria-label="Delete">×</button>` : ''}</div></section>`;
       }
       return editing
@@ -128,7 +128,7 @@ function refHTML() {
   if (!keys.includes(refTab)) refTab = keys[0] || 'fates';
   return `<div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search everything" value="${esc(query)}" aria-label="Search" autocomplete="off">
-      <div class="cats">${keys.map(k => `<button data-ref="${k}" class="${!query && refTab === k ? 'on' : ''}">${SECTIONS[k].label}</button>`).join('')}</div>
+      <div class="cats">${keys.map(k => `<button data-ref="${k}" aria-pressed="${!query && refTab === k}" class="${!query && refTab === k ? 'on' : ''}">${SECTIONS[k].label}</button>`).join('')}</div>
     </div><div id="ref">${query.trim() ? searchAllHTML(R, keys, query) : keys.length ? sectionHTML(R, refTab) : '<div class="empty">The Rules tab is empty.</div>'}</div>`;
 }
 
@@ -139,6 +139,7 @@ const search = debounce(() => {
   if (!ref) return;
   const keys = REF_KEYS.filter(k => sectionHasContent(R, k));
   ref.innerHTML = query.trim() ? searchAllHTML(R, keys, query) : sectionHTML(R, refTab);
+  main.querySelectorAll('[data-ref]').forEach(b => { const on = !query.trim() && b.dataset.ref === refTab; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
 });
 function render() {
   search.cancel();

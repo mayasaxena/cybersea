@@ -74,7 +74,7 @@ function placeHTML(p) {
     ${p.text.trim() ? `<div class="rich">${md(p.text)}</div>` : ''}
     ${imgHTML(p, 'rimg')}
     ${p.levels.length ? `<div class="levels">
-      <div class="shead"><div class="cats" role="tablist">${p.levels.map((l, k) => `<button role="tab" data-loc="${p.i}" data-lv="${k}" aria-selected="${k === at}" class="${k === at ? 'on' : ''}">${escTxt(l.name)}</button>`).join('')}</div>${edit(lv.at, `Edit ${esc(lv.name)}`)}</div>
+      <div class="shead"><div class="cats" role="group" aria-label="Levels">${p.levels.map((l, k) => `<button data-loc="${p.i}" data-lv="${k}" aria-pressed="${k === at}" class="${k === at ? 'on' : ''}">${escTxt(l.name)}</button>`).join('')}</div>${edit(lv.at, `Edit ${esc(lv.name)}`)}</div>
       ${lv.text.trim() ? `<div class="rich">${md(lv.text)}</div>` : ''}${imgHTML(lv, 'rimg')}${notesHTML(lv)}</div>` : ''}
     ${notesHTML(p)}
     ${isGm() ? `<button class="add sm" data-new="level" data-for="${p.i}">+ Level</button>` : ''}</section>`;
@@ -98,7 +98,7 @@ function render() {
   main.innerHTML = `
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search places" value="${esc(query)}" aria-label="Search places" autocomplete="off">
-      ${gm ? `<div class="cats"><button data-show="all" class="${showAll ? 'on' : ''}">Every place</button><button data-show="on" class="${showAll ? '' : 'on'}">On the map (${onCount})</button></div>
+      ${gm ? `<div class="cats"><button data-show="all" aria-pressed="${showAll}" class="${showAll ? 'on' : ''}">Every place</button><button data-show="on" aria-pressed="${!showAll}" class="${showAll ? '' : 'on'}">On the map (${onCount})</button></div>
         <button class="pbtn" data-new="place">+ Place</button><button class="pbtn" data-new="map">+ Region map</button>` : ''}
     </div>
     ${gm ? '<div class="robar"><span>You choose which places the crew see; every place starts hidden.</span></div>' : ''}

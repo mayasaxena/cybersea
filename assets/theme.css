@@ -1,6 +1,6 @@
 :root{
   color-scheme:light;
-  --bg:#f3f5f7;--panel:#fff;--panel2:#f0f3f6;--line:#d9e0e7;--text:#17202a;--muted:#627181;
+  --bg:#f3f5f7;--panel:#fff;--panel2:#f0f3f6;--line:#d9e0e7;--text:#17202a;--muted:#5b6979;
   --cyan:#007c86;--pink:#c4185a;--purple:#6c3a9e;--blue:#2457c5;--green:#1c8a4c;--amber:#a07000;--red:#cf2a3a;--blood:#a3132b;
   --s1:#a3132b;--s2:#5a6a1c;--s3:#1f5fbf;--s4:#d45d00;--s5:#00807a;--s6:#b8236e;
   --ascii:rgba(20,40,80,.12);--glow:0px;--shadow:0 8px 24px rgba(20,30,40,.15);
@@ -199,6 +199,7 @@ ul.ck>li.on::before{background:var(--cyan);box-shadow:0 0 var(--glow) color-mix(
 /* edit mode */
 .in{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:4px 8px;min-width:0}
 .in:focus{outline:none;border-color:var(--cyan)}
+.in:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
 input.name{width:11ch;padding:2px 8px}
 .pb .in{font:inherit;letter-spacing:inherit;text-transform:inherit;width:14ch}
 .stat .in.sk{flex:1;width:0;padding:5px 6px;font:600 11px/1 "Chakra Petch",sans-serif;letter-spacing:.1em;text-transform:uppercase}
@@ -248,7 +249,8 @@ input.name{width:11ch;padding:2px 8px}
 
 /* data panel */
 .overlay{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
-.panel{width:min(560px,100%);display:grid;gap:10px;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+.panel{width:min(560px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;display:grid;gap:10px;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+.panel:focus{outline:none}
 .prow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .grow{flex:1}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
@@ -284,7 +286,6 @@ input.name{width:11ch;padding:2px 8px}
 .eitems li::marker{color:var(--cyan)}
 .enote{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 textarea.enote,.anote{display:block;width:100%;min-height:56px;resize:vertical}
-.panel.action{max-height:calc(100vh - 32px);overflow:auto}
 .panel.action h2{flex:1}
 .panel .rule{padding:0;max-height:38vh;overflow:auto}
 .opts{display:grid;gap:6px}

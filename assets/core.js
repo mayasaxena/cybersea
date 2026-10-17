@@ -32,7 +32,7 @@ export const pipClass = (v, bond) => (bond ? (v === 1 ? ' on' : v === 2 ? '' : '
 // A track's last `skulls` pips are skulls (a track's skulls= in the System tab); the very last bleeds.
 export const skullClass = (j, n, skulls) => (j >= n - (skulls || 0) ? (j === n - 1 ? ' skull bloody' : ' skull') : '');
 export const pips = (path, arr, label, bond = false, skulls = 0) => arr.map((v, j) =>
-  `<button class="pip${pipClass(v, bond)}${skullClass(j, arr.length, skulls)}" data-pip="${esc(path)}" data-j="${j}"${bond ? ' data-bond' : ''} aria-label="${esc(label)} ${j + 1}" aria-pressed="${v === 1}"></button>`).join('');
+  `<button class="pip${pipClass(v, bond)}${skullClass(j, arr.length, skulls)}" data-pip="${esc(path)}" data-j="${j}"${bond ? ' data-bond' : ''} aria-label="${esc(label)} ${j + 1}${bond && v === 2 ? ', used' : ''}" aria-pressed="${v === 1}"></button>`).join('');
 
 /* ---------- theme ---------- */
 export function applyTheme() {
@@ -184,28 +184,61 @@ export function debounce(fn, ms = 100) {
 // (the new element with the same data-* attributes and id), so pressing a button by keyboard
 // twice works, and a screen reader doesn't fall back to the top of the page.
 const FOCUS_KEYS = ['id', 'data-act', 'data-tab', 'data-pip', 'data-j', 'data-i', 'data-k', 'data-path', 'data-cat', 'data-kind', 'data-f', 'data-name', 'data-me', 'data-nav'];
+const focusSel = el => {
+  const attrs = FOCUS_KEYS.filter(a => el.hasAttribute(a)).map(a => `[${a}="${CSS.escape(el.getAttribute(a))}"]`).join('');
+  return attrs && el.tagName.toLowerCase() + attrs;
+};
 export function keepFocus(root, redraw) {
   const el = document.activeElement;
-  const sel = el && el !== document.body && root.contains(el)
-    ? FOCUS_KEYS.filter(a => el.hasAttribute(a)).map(a => `[${a}="${CSS.escape(el.getAttribute(a))}"]`).join('')
-    : '';
+  const sel = el && el !== document.body && root.contains(el) ? focusSel(el) : '';
   redraw();
   if (!sel || root.contains(el)) return;
-  const next = root.querySelector(el.tagName.toLowerCase() + sel);
+  const next = root.querySelector(sel);
   if (next) next.focus({ preventScroll: true });
 }
 
 /* ---------- dialogs ---------- */
-export function closeModal() { document.getElementById('overlay')?.remove(); }
+// A dialog keeps Tab inside it, and on closing gives focus back to what opened it (or, if a
+// redraw replaced that, to its stand-in).
+let opener = null;
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+export function closeModal() {
+  const o = document.getElementById('overlay');
+  if (!o) return;
+  o.remove();
+  const back = opener;
+  opener = null;
+  if (!back) return;
+  const el = back.el.isConnected ? back.el : back.sel && document.querySelector(back.sel);
+  el?.focus({ preventScroll: true });
+}
+
+function trapTab(e, panel) {
+  if (e.key !== 'Tab') return;
+  const els = [...panel.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent || el === document.activeElement);
+  if (!els.length) { e.preventDefault(); return; }
+  const first = els[0], last = els[els.length - 1];
+  if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
 
 export function modal(inner, { label = 'Dialog', wide = false } = {}) {
-  closeModal();
+  const was = document.getElementById('overlay');
+  if (was) was.remove(); // one dialog replacing another: focus still goes back to the first one's opener
+  else {
+    const el = document.activeElement;
+    opener = el && el !== document.body ? { el, sel: focusSel(el) } : null;
+  }
   const o = document.createElement('div');
   o.className = 'overlay';
   o.id = 'overlay';
-  o.innerHTML = `<div class="panel${wide ? ' action' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}">${inner}</div>`;
+  o.innerHTML = `<div class="panel${wide ? ' action' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}" tabindex="-1">${inner}</div>`;
   o.addEventListener('click', e => { if (e.target === o || e.target.closest('[data-close]')) closeModal(); });
+  const panel = o.firstElementChild;
+  o.addEventListener('keydown', e => trapTab(e, panel));
   document.body.append(o);
+  panel.focus({ preventScroll: true }); // callers focus a field of their own after this
   return o;
 }
 
@@ -396,7 +429,7 @@ export function openMenu(client) {
   const o = modal(`
     <div class="prow"><h2>Menu</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
     <div class="prow"><span class="lbl">Theme</span>
-      <div class="seg">${['auto', 'dark', 'light'].map(t => `<button data-theme-set="${t}" class="${theme === t ? 'on' : ''}">${t}</button>`).join('')}</div></div>
+      <div class="seg">${['auto', 'dark', 'light'].map(t => `<button data-theme-set="${t}" aria-pressed="${theme === t}" class="${theme === t ? 'on' : ''}">${t}</button>`).join('')}</div></div>
     ${g ? `
     <div class="mhd lbl">${escTxt(g.name)} · ${escTxt(whoText(client))}</div>
     <div class="status" id="sync-status">${escTxt(statusText(client))}</div>
@@ -415,7 +448,7 @@ export function openMenu(client) {
     if (th) {
       ls.set('cybersea:theme', th.dataset.themeSet);
       applyTheme();
-      o.querySelectorAll('[data-theme-set]').forEach(b => b.classList.toggle('on', b === th));
+      o.querySelectorAll('[data-theme-set]').forEach(b => { b.classList.toggle('on', b === th); b.setAttribute('aria-pressed', b === th); });
       return;
     }
     const m = e.target.closest('[data-m]')?.dataset.m;

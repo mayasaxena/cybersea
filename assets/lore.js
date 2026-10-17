@@ -80,7 +80,7 @@ function render() {
   main.innerHTML = `
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search lore" value="${esc(query)}" aria-label="Search lore" autocomplete="off">
-      <div class="cats">${[['all', 'All'], ...cats.map(c => [c, c])].map(([k, l]) => `<button data-act="cat" data-cat="${esc(k)}" class="${cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
+      <div class="cats">${[['all', 'All'], ...cats.map(c => [c, c])].map(([k, l]) => `<button data-act="cat" data-cat="${esc(k)}" aria-pressed="${cat === k}" class="${cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
       ${canEdit() ? `<button class="ic${editing ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${editing}">${ICON.pen}</button>` : ''}
     </div>
     ${canEdit() ? '' : readOnlyHTML(client, 'Lore')}
