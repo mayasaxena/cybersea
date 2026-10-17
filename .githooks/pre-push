@@ -5,6 +5,11 @@
 set -e
 cd "$(git rev-parse --show-toplevel)"
 
+if command -v eslint >/dev/null 2>&1; then
+  echo 'pre-push: lint'
+  eslint .
+fi
+
 echo 'pre-push: unit tests'
 npm test --silent
 

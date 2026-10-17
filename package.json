@@ -5,6 +5,7 @@
   "description": "Crew website for a Rapscallion game, backed by a Google Sheet.",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "lint": "eslint .",
     "dev": "node tools/dev-server.mjs",
     "check:book": "node tools/check-booktext.mjs",
     "check:book:history": "node tools/check-booktext.mjs --history",
