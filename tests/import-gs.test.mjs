@@ -213,6 +213,32 @@ test('listing a file\'s tabs reads none of their cells, shared strings or styles
   assert.deepEqual(read.filter(n => !/workbook/.test(n)), []);
 });
 
+test('formulas Excel filled down, newer functions, dates and theme colors: kept, or listed', () => {
+  const { replace, sheet } = setup();
+  const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const styles = `<?xml version="1.0"?><styleSheet ${NS}><numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>
+<fonts count="1"><font/></fonts><fills count="3"><fill><patternFill/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor theme="4"/></patternFill></fill></fills>
+<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0"/><xf numFmtId="49" fontId="0" fillId="0"/><xf numFmtId="164" fontId="0" fillId="0"/><xf numFmtId="14" fontId="0" fillId="2"/></cellXfs></styleSheet>`;
+  const r = replace([FRESH[1], {
+    name: 'Calc', header: false, style: 0,
+    rows: [
+      [{ raw: ref => `<c r="${ref}"><f t="shared" ref="A1:A2" si="0">1+1</f><v>2</v></c>` }, { raw: ref => `<c r="${ref}"><f>_xlfn.CONCAT("a","b")</f><v>ab</v></c>` }],
+      [{ raw: ref => `<c r="${ref}"><f t="shared" si="0"/><v>2</v></c>` }, { raw: ref => `<c r="${ref}" t="d"><v>2024-05-01T00:00:00</v></c>` }],
+      [{ v: 45413, s: 2 }, { v: 45413, s: 3 }],
+    ],
+  }], { extra: { 'xl/styles.xml': styles } });
+  assert.equal(r.ok, true, r.error);
+  const calc = sheet('Calc');
+  assert.equal(calc.getRange(1, 1).getFormulas()[0][0], '=1+1');
+  assert.equal(calc.getRange(1, 2).getFormulas()[0][0], '=CONCAT("a","b")', 'no _xlfn. mark');
+  assert.equal(calc.getRange(2, 1).getValue(), 2, 'a filled-down formula keeps its value');
+  assert.equal(calc.getRange(2, 2).getDisplayValue(), '2024-05-01T00:00:00', 'an ISO date stays as written');
+  assert.equal(calc.getRange(3, 1).getNumberFormat(), 'yyyy-mm-dd');
+  assert.equal(calc.getRange(3, 2).getNumberFormat(), 'm/d/yyyy', 'a built-in date format');
+  assert.ok(r.skipped.some(x => /filled down in Excel.*Calc/.test(x)), r.skipped.join('; '));
+  assert.ok(r.skipped.some(x => /theme colors/.test(x)), r.skipped.join('; '));
+});
+
 test('if a tab can’t be filled in, the old tabs stay as they were', () => {
   const { replace, names } = setup();
   const before = names();

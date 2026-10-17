@@ -13,7 +13,7 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8"?><styleSheet ${NS}><numFmts
 <fills count="3"><fill><patternFill/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="00E8EEF3"/></patternFill></fill></fills>
 <cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0"/><xf numFmtId="49" fontId="0" fillId="0"/><xf numFmtId="0" fontId="1" fillId="2"/><xf numFmtId="49" fontId="0" fillId="0"><alignment wrapText="1" vertical="top"/></xf></cellXfs></styleSheet>`;
 
-// tabs: [{name, rows: [[value | {f: formula} | {v, s: style}]], hidden, style (default for
+// tabs: [{name, rows: [[value | {f: formula} | {v, s: style} | {raw: ref => cell XML}]], hidden, style (default for
 // strings: 1), inline (inline strings, not shared), cols: [{min, max, width, hidden}],
 // freeze: {rows, cols}, validations: [{sqref, formula, type, strict}], protect: {open: [a1]},
 // merge: 'A1:B1'}]
@@ -23,6 +23,7 @@ export function makeXlsx(tabs, { extra = {} } = {}) {
     const rows = t.rows.map((line, r) => `<row r="${r + 1}">${line.map((v, c) => {
       const ref = `${col(c + 1)}${r + 1}`;
       if (v && typeof v === 'object' && 'f' in v) return `<c r="${ref}"><f>${esc(v.f)}</f><v></v></c>`;
+      if (v && typeof v === 'object' && 'raw' in v) return v.raw(ref); // a cell's XML as given
       const s = v && typeof v === 'object' ? v.s : r === 0 && t.header !== false ? 2 : (t.style ?? 1);
       const val = v && typeof v === 'object' ? v.v : v;
       if (val === '' || val == null) return `<c r="${ref}" s="${s}"/>`;
