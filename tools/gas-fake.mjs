@@ -242,15 +242,20 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
   });
   let locked = false;
 
-  return {
+  const gas = {
     ss,
     now,
+    flushes: 0,
+    onFlush: null,
     docProps: docStore,
     setProps(p) { Object.assign(store, p); },
     clearCache() { cache.clear(); },
     services: {
       SpreadsheetApp: {
         getActiveSpreadsheet: () => ss,
+        // Real Sheets batches writes, so an error from one can surface here instead; tests set
+        // gas.onFlush to throw one.
+        flush: () => { gas.flushes++; if (gas.onFlush) gas.onFlush(); },
         ValueType: { IMAGE: 'IMAGE' },
         // Only data: URLs, as the site's uploads send.
         newCellImage: () => {
@@ -323,6 +328,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
       },
     },
   };
+  return gas;
 }
 
 function blob(bytes, type, name) {

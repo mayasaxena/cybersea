@@ -112,6 +112,9 @@ function replaceTabs_(ss, book, remove) {
       made.push(sh);
       try {
         fillSheet_(sh, t, book.skipped);
+        // Sheets batches writes, so one it turns down can fail later, on any call. Make it fail
+        // here, while it can still name this tab and before any old tab goes.
+        SpreadsheetApp.flush();
       } catch (err) {
         throw new Error((err.message || err) + ' (the ' + t.name + ' tab)');
       }
@@ -137,7 +140,8 @@ function replaceTabs_(ss, book, remove) {
   } catch (err) {
     throw new Error((err.message || err) + ' (while swapping the new tabs in; File → Version history can undo it)');
   }
-  made.forEach((sh, i) => { if (book.tabs[i].hidden) sh.hideSheet(); });
+  // Sheets won't hide every tab; one it can't hide is listed, as is anything else after the swap.
+  made.forEach((sh, i) => { if (book.tabs[i].hidden) extra_(book.skipped, 'hiding the ' + sh.getName() + ' tab', () => sh.hideSheet()); });
   // setUpChecks's checks, as on a tab the site makes. The tabs are in by now, so a check that
   // can't be set is listed rather than stopping the import.
   made.forEach(sh => extra_(book.skipped, 'the site’s checks on the ' + sh.getName() + ' tab', () => guard_(sh)));
