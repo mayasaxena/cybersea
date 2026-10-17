@@ -48,12 +48,13 @@ export function whoIs(name, all) {
 export const bondTarget = (b, all) => (b.to === '-' ? null : whoIs(b.to || b.name, all));
 
 /* ---------- tags ---------- */
-// A tag's Rules row: "Aids [something]" explains "aids science", "Tough-x" explains "tough-2".
+// A tag's Rules row: "Aids [something]" explains "aids science", "Tough-x" explains "tough-2" and
+// "harm-x [something]" explains "harm-2 cutlasses".
 const tagRe = new Map();
 function patternOf(name) {
   if (!tagRe.has(name)) {
     const src = low(name).split(/(\[[^\]]*\])/).map(part => (/^\[.*\]$/.test(part) ? '.+'
-      : part.replace(/[.*+?^${}()|\\]/g, '\\$&').replace(/(^|-)x(?=-|$)/g, '$1\\d+'))).join('');
+      : part.replace(/[.*+?^${}()|\\]/g, '\\$&').replace(/(^|-)x(?=-|\s|$)/g, '$1\\d+'))).join('');
     tagRe.set(name, new RegExp(`^${src}$`));
   }
   return tagRe.get(name);
