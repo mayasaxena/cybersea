@@ -21,7 +21,8 @@
  * editable). Anything else is left out and listed in the result.
  *
  * appsscript.json lists the scopes itself (as Code.gs's @OnlyCurrentDoc would): this spreadsheet
- * only, script.container.ui (the menu and dialog) and script.external_request (Code.gs's pictures).
+ * only, script.container.ui (the menu and dialog), script.external_request (Code.gs's pictures,
+ * Update.gs's files) and script.projects and script.deployments (Update.gs's update and deploy).
  */
 
 // A game's workbook is a few hundred KB; these leave lots of room and keep a run inside Apps
@@ -33,6 +34,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Cybersea')
     .addItem('Import an xlsx…', 'showReplaceDialog')
+    .addItem('Update the script', 'updateScript') // Update.gs
     .addToUi();
 }
 

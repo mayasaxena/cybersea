@@ -335,8 +335,8 @@ test('adds the Cybersea menu when the spreadsheet opens', () => {
   });
   ctx.onOpen();
   assert.equal(added, true);
-  assert.deepEqual(items, [['Import an xlsx…', 'showReplaceDialog']]);
-  assert.equal(typeof ctx[items[0][1]], 'function');
+  assert.deepEqual(items, [['Import an xlsx…', 'showReplaceDialog'], ['Update the script', 'updateScript']]);
+  for (const [, fn] of items) assert.equal(typeof ctx[fn], 'function');
 });
 
 test('the new tabs get the checks setUpChecks makes', () => {

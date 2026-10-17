@@ -1,0 +1,5 @@
+# The files Update the script (Update.gs) brings in from here, one per line.
+appsscript.json
+Code.gs
+Import.gs
+Update.gs
