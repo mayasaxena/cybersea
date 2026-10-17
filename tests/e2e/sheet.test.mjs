@@ -571,6 +571,22 @@ test('a full localStorage drops cached tabs to keep unsaved changes, and says so
   await fail(0);
 });
 
+test('a dialog keeps Tab inside it, scrolls when tall, and gives focus back when closed', async () => {
+  const p = await openSheet({ width: 380, height: 260 });
+  await p.focus('.gnav [data-nav="menu"]');
+  await p.keyboard.press('Enter');
+  await p.waitForSelector('[role="dialog"]');
+  const inside = () => p.evaluate(() => !!document.activeElement.closest('[role="dialog"]'));
+  for (let i = 0; i < 25; i++) { await p.keyboard.press('Tab'); assert.ok(await inside(), `tab ${i}`); }
+  await p.keyboard.press('Shift+Tab');
+  assert.ok(await inside());
+  const panel = await p.$eval('[role="dialog"]', d => ({ scroll: d.scrollHeight > d.clientHeight, fits: d.getBoundingClientRect().bottom <= innerHeight }));
+  assert.ok(panel.fits, 'the dialog fits the screen');
+  assert.ok(panel.scroll, 'and scrolls');
+  await p.keyboard.press('Escape');
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.nav), 'menu');
+});
+
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {
   const p = await openSheet({ width: 380, height: 760 });
   for (const t of ['sheet', 'inventory', 'moves', 'notes', 'log']) {

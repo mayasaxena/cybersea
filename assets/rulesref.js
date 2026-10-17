@@ -34,7 +34,7 @@ function render() {
   main.innerHTML = `
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search all rules" value="${esc(query)}" aria-label="Search rules" autocomplete="off">
-      <div class="cats">${tabs.map(k => `<button data-tab="${k}" class="${!query && tab === k ? 'on' : ''}">${SECTIONS[k].label}</button>`).join('')}</div>
+      <div class="cats">${tabs.map(k => `<button data-tab="${k}" aria-pressed="${!query && tab === k}" class="${!query && tab === k ? 'on' : ''}">${SECTIONS[k].label}</button>`).join('')}</div>
     </div>
     <div id="ref">${query.trim() ? searchAllHTML(R, tabs, query) : sectionHTML(R, tab)}</div>`;
 }
@@ -47,7 +47,7 @@ main.addEventListener('input', e => {
   if (e.target.id !== 'q') return;
   query = e.target.value;
   search();
-  main.querySelectorAll('.cats button').forEach(b => b.classList.toggle('on', !query && b.dataset.tab === tab));
+  main.querySelectorAll('.cats button').forEach(b => { const on = !query && b.dataset.tab === tab; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
 });
 document.addEventListener('keydown', e => {
   if (e.key === '/' && !e.target.closest('input,textarea,select')) { e.preventDefault(); document.getElementById('q')?.focus(); }

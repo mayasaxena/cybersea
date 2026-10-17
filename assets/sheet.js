@@ -138,7 +138,7 @@ function headerHTML() {
     </div>
     <div class="vitals">${vitals.map(([d, t]) => trackHTML(t.name, t, d.role, skullsOf(d))).join('')}</div>
     <div class="stats">${stats}</div>
-    <nav class="tabs">${SECTION_TABS.map(([k, l]) => `<button data-act="tab" data-tab="${k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="tabs">${SECTION_TABS.map(([k, l]) => `<button data-act="tab" data-tab="${k}" aria-pressed="${ui.tab === k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
   </header>`;
 }
 
@@ -237,7 +237,7 @@ function movesHTML() {
   const cats = [['all', 'All'], ...CATS().map(c => [c, catLabel(c)])];
   return `<div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search" value="${esc(query)}" aria-label="Search moves" autocomplete="off">
-      <div class="cats">${cats.map(([k, l]) => `<button data-act="cat" data-cat="${esc(k)}" class="${ui.cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
+      <div class="cats">${cats.map(([k, l]) => `<button data-act="cat" data-cat="${esc(k)}" aria-pressed="${ui.cat === k}" class="${ui.cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
     </div><div id="mlist">${moveListHTML()}</div>`;
 }
 

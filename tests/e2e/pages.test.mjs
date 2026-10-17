@@ -215,7 +215,7 @@ test("map page: from the Map tab; crew see the region's map and only the places 
   const st = p.locator('.loc', { hasText: 'Scrap Town' });
   assert.match(await st.locator('.levels .rich').textContent(), /The docks/);
   await st.locator('[data-lv="1"]').click();
-  await p.waitForSelector('.loc [data-lv="1"][aria-selected="true"]');
+  await p.waitForSelector('.loc [data-lv="1"][aria-pressed="true"]');
   assert.match(await p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels .rich').textContent(), /The market/);
   const lv2 = p.locator('.loc', { hasText: 'Scrap Town' }).locator('.levels img');
   assert.ok(await until(() => lv2.evaluate(i => i.complete && i.naturalWidth === 32)), 'the level\'s picture loads');
