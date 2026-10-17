@@ -94,12 +94,12 @@ test('ship page: ship stats roll, ship moves only', async () => {
   assert.equal(await p.$('[data-tab="log"]'), null, 'no actions tab for the ship');
 });
 
-test('ship kit: kit items and cargo are lists like a character’s, used without a log', async () => {
+test('ship kit and cargo: lists on the Ship tab like a character’s items, used without a log', async () => {
   const p = await h.page();
   await join(p, g1, 'ship.html');
-  await p.waitForSelector('h1.name');
-  await p.click('[data-act="tab"][data-tab="kit"]');
-  assert.deepEqual(await p.$$eval('main .card h2', hs => hs.map(x => x.textContent)), ['Kit', 'Cargo']);
+  await p.waitForSelector('[data-list="cargo"]');
+  assert.equal(await p.$('[data-act="tab"][data-tab="kit"]'), null, 'the ship has no Kit tab');
+  assert.deepEqual(await p.$$eval('main [data-list] h2', hs => hs.map(x => x.textContent)), ['Kit', 'Cargo']);
   assert.match(await p.textContent('[data-list="cargo"]'), /6 cargo space.*Crate of limes\s*×2/s);
   assert.match(await p.textContent('[data-list="item"]'), /Two oars/);
   assert.equal(await p.$('[data-act="use-item"]'), null, 'using cargo needs a sign-in');
@@ -143,7 +143,7 @@ test('a game without a Ship tab offers to set one up from a ship playbook', asyn
   assert.equal(row(rows, 'track', 'Wreck')[2], '○○○', 'wreck tally is Steadfast + 3');
   assert.equal(row(rows, 'move', 'SLIP AWAY')[2], '●');
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Two oars', 'A lantern'], 'the kit is items');
-  assert.deepEqual(row(rows, 'kit', 'Cargo').slice(2, 4), ['', '(6 cargo space)']);
+  assert.deepEqual(row(rows, 'sheet', 'Cargo').slice(2, 4), ['', '(6 cargo space)']);
 });
 
 test('lore: read, search, add, edit and delete entries', async () => {

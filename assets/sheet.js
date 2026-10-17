@@ -14,7 +14,7 @@ import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from '.
 import { makeUsage, useItem, useOf, signed } from './usage.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
-const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
+const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
 const PAGE = SHIP ? 'ship' : '';
 
 const app = document.getElementById('app');
@@ -184,7 +184,12 @@ function jotHTML() {
 }
 
 function sectionsHTML(tab) {
-  const cards = (tab === 'notes' ? jotHTML() : '') + st.sections.map((s, i) => (s.tab === tab && !isListSec(s) ? sectionHTML(s, i) : '')).join('') + (tab === 'notes' ? keptNotesHTML() : '');
+  // an item list's card (the ship's kit and cargo) stands where its section row is
+  const listAt = s => lists().find(l => l.def && same_(s.title, l.def.title));
+  const cards = (tab === 'notes' ? jotHTML() : '') +
+    st.sections.map((s, i) => (s.tab !== tab ? '' : listAt(s) ? listHTML(listAt(s), editing, canEdit()) : sectionHTML(s, i))).join('') +
+    lists().filter(l => !rowOf(l) && l.def?.tab === tab).map(l => listHTML(l, editing, canEdit())).join('') +
+    (tab === 'notes' ? keptNotesHTML() : '');
   return `<div class="cols">${cards}</div>` + (editing ? `<button class="add" data-act="add-section" data-tab="${tab}">+</button>` : '');
 }
 
@@ -244,12 +249,15 @@ const isWealth = name => { const w = W(); return [w.t, w.h].some(n => n && same_
 const isTnotes = s => s.tab === 'kit' && !!W().title && same_(s.title, W().title);
 const lw = s => String(s).toLowerCase();
 
-// The Kit tab's lists: the kit's items (item rows) and, where the game has a cargo section, cargo
-// (cargo rows). Each card is its section's (section role=kit, role=cargo), whatever tab that says.
+// Item lists: the kit's items (item rows) and, where the game has a cargo section, cargo (cargo
+// rows). Each card is its section's (section role=kit, role=cargo) and shows on that section's tab;
+// a character's items, with no kit section, show on the Kit tab under "Items".
 const LISTS = [['item', 'kit'], ['cargo', 'cargo']];
 const listOf = kind => (kind === 'cargo' ? st.cargo : st.items);
 const lists = () => LISTS.map(([kind, role]) => ({ kind, def: sys().section(role) })).filter(l => l.def || l.kind === 'item');
 const isListSec = s => lists().some(l => l.def && same_(s.title, l.def.title));
+const rowOf = l => (l.def ? st.sections.find(s => same_(s.title, l.def.title)) : null);
+const onKitTab = l => !l.def || (rowOf(l)?.tab || l.def.tab) === 'kit';
 const newId = kind => `new${kind}`;
 
 function kitHTML() {
@@ -275,7 +283,7 @@ function kitHTML() {
     else if (!ts && E && w.title) h += '<button class="add sm" data-act="add-tnotes">+ Notes</button>';
     h += '</section>';
   }
-  return '<div class="cols">' + h + lists().map(l => listHTML(l, E, can)).join('') + '</div>' + more;
+  return '<div class="cols">' + h + lists().filter(onKitTab).map(l => listHTML(l, E, can)).join('') + '</div>' + more;
 }
 
 // One list's card: its section's title and note (worked out from the stats if the sheet has no
