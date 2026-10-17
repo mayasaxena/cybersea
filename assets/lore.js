@@ -119,15 +119,12 @@ main.addEventListener('click', e => {
     render();
   }
   if (act === 'rm' && canEdit() && armed(b)) {
-    const i = +b.dataset.i;
-    const [gone] = entries.splice(i, 1);
+    const [gone] = entries.splice(+b.dataset.i, 1);
     if (!gone) return;
+    // gone from here now, from the sheet in a few seconds unless undone (TabStore.hideGone)
+    const undo = store.hideGone(base, toRows(entries));
     changed(); render();
-    deletedToast(gone.name, () => {
-      if (!canEdit()) return;
-      entries.push(gone); // a new row again, so last, as the sheet will have it
-      changed(); render();
-    });
+    deletedToast(gone.name, () => { if (undo()) later(adopt); });
   }
 });
 

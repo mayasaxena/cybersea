@@ -2,6 +2,7 @@
 
 import { esc, escTxt } from './markup.js';
 import { isSignedIn, isSigninRow } from './codec.js';
+import { UNDO_MS, offerUndo, withdrawUndo } from './hold.js';
 import { ls, gkey, listGames, inviteUrl, href, joinGame, forgetGame, inviteFromText } from './games.js';
 
 export { esc, escTxt };
@@ -132,18 +133,22 @@ export function doRoll(label, mod = 0, dice = 2, onRolled, { ask, per, adj } = {
 }
 
 // action = { label, run }: a button on the toast, e.g. Undo.
-export function toast(message, kind = '', action = null) {
+export function toast(message, kind = '', action = null, ms = 5000) {
   rollSeq++;
   const el = toastEl();
   el.innerHTML = `<span class="tl msg">${escTxt(message)}</span>` + (action ? `<button type="button" class="roll-go tact">${escTxt(action.label)}</button>` : '');
-  el.querySelector('.tact')?.addEventListener('click', e => { e.stopPropagation(); el.classList.remove('show'); action.run(); });
+  // An Undo button is what Cmd+Z does too, while the toast shows (see hold.js).
+  const run = () => { withdrawUndo(u); el.classList.remove('show'); action.run(); };
+  const u = action?.label === 'Undo' ? offerUndo(run, ms) : null;
+  el.querySelector('.tact')?.addEventListener('click', e => { e.stopPropagation(); run(); });
   el.className = 'toast show ' + kind;
   clearTimeout(toastT);
-  toastT = setTimeout(() => el.classList.remove('show'), 5000);
+  toastT = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// After taking something out: a toast saying so, whose Undo puts it back.
-export const deletedToast = (what, putBack) => toast(`Deleted ${what}`, '', { label: 'Undo', run: putBack });
+// After taking something out: a toast saying so, whose Undo puts it back, for as long as a
+// delete is held before it goes to the sheet (hold.js).
+export const deletedToast = (what, putBack) => toast(`Deleted ${what}`, '', { label: 'Undo', run: putBack }, UNDO_MS);
 
 /* ---------- holding updates while someone types ---------- */
 // whenIdle(root, busy) gives later(fn): fn runs now, or, while busy() (typing in a field under

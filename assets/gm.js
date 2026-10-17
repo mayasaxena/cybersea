@@ -10,6 +10,7 @@ import { parseTrack, formatTrack } from './codec.js';
 import { esc, escTxt, ICON, armed, deletedToast, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
 import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
+import { splitTags } from './crew.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
 const app = document.getElementById('app');
@@ -195,7 +196,18 @@ main.addEventListener('click', e => {
     changed(); render();
   }
   if (act === 'add-tag') addNpcTag(+b.dataset.tags.slice(4));
-  if (act === 'rm-tag') { const en = entries[+b.dataset.tags.slice(4)]; if (en) { en.value = removeTag(en.value, +b.dataset.k); changed(); render(); } }
+  if (act === 'rm-tag') {
+    const en = entries[+b.dataset.tags.slice(4)];
+    if (en) {
+      const was = en.value;
+      en.value = removeTag(was, +b.dataset.k);
+      changed(); render();
+      deletedToast(splitTags(was)[+b.dataset.k], () => {
+        const x = entries.find(e => e.kind === en.kind && e.name === en.name);
+        if (x) { x.value = was; changed(); render(); }
+      });
+    }
+  }
   if (act === 'harm+' || act === 'harm-') { setHarm(b.dataset.name, p => (act === 'harm+' ? p.push(0) : p.pop())); changed(); render(); }
   if (act === 'clock+' || act === 'clock-') { const c = entries[i]; const p = parseTrack(c.value); if (act === 'clock+') p.push(0); else p.pop(); c.value = formatTrack(p); changed(); render(); }
   if (act === 'rm' && armed(b)) {
@@ -204,12 +216,10 @@ main.addEventListener('click', e => {
     const h = gone.kind === 'npc' && harmOf(gone.name);
     entries.splice(i, 1);
     if (h) entries.splice(entries.indexOf(h), 1);
+    // gone from here now, from the sheet in a few seconds unless undone (TabStore.hideGone)
+    const undo = gmStore.hideGone(base, toRows(entries));
     changed(); render();
-    deletedToast(gone.name, () => {
-      entries.push(gone); // a new row again, so last, as the sheet will have it
-      if (h && !harmOf(gone.name)) entries.push(h);
-      changed(); render();
-    });
+    deletedToast(gone.name, () => { if (undo()) later(adopt); });
   }
 });
 

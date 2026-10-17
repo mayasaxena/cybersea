@@ -2,7 +2,7 @@
 // Run: NODE_PATH=$(npm root -g) node --test tests/e2e/
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite, signIn, until, polls } from './harness.mjs';
+import { harness, invite, signIn, until, polls, sleep } from './harness.mjs';
 import { KEYS } from '../fixtures/game.mjs';
 import { png } from '../fixtures/png.mjs';
 
@@ -418,7 +418,7 @@ test('kit: fill from a kit, add and remove items, treasure carries into hoard', 
   await p.click('[data-act="edit"]');
   await p.click('.wealth [data-pip="t:Treasure"][data-j="4"]'); // fill treasure: it rolls over into hoard
   await p.click('[data-act="treasure"][data-n="-1"]'); // spending with no loose treasure breaks a hoard
-  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Treasure')?.[2] === '●●●●○' && r; });
+  rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Treasure')?.[2] === '●●●●○' && !row(r, 'item', 'Bone dice') && r; }); // the delete goes after a short hold
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['A lantern (cracked, still works)', 'Rope', 'Rope (2)']);
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
   assert.match(row(rows, 'kit', 'Treasure')[2], /6-treasure/);
@@ -497,6 +497,10 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   await until(async () => row(await h.tab(api, 'Testa'), 'track', 'Harm')[2] !== sheetHarm); // the change reached the sheet
   await p.click('.usage [data-undo]');
   assert.equal(await p.$('.usage'), null);
+  // Cmd+Z undoes what the panel lists, too
+  await p.click('.harm .pip[data-j="5"]');
+  await p.keyboard.press('ControlOrMeta+KeyZ');
+  assert.equal(await p.$('.usage'), null);
   assert.equal(await track(p, 'harm'), harm);
   rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Harm')[2] === sheetHarm && r; });
   assert.equal(rows.filter(x => x[0] === 'log').length, 2, 'nothing logged');
@@ -508,18 +512,37 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   await p.click('[data-act="edit"]');
 });
 
-test('deleting something shows a toast whose Undo puts it back', async () => {
+test('a delete waits a few seconds before it goes to the sheet, and the toast\'s Undo keeps it where it was', async () => {
   const marks = row(await h.tab(api, 'Testa'), 'bond', 'Passenger')[2];
   const p = await openSheet();
+  const names = () => p.$$eval('[data-bind$=":name"][data-bind^="bond"]', bs => bs.map(b => b.value));
   await p.click('[data-act="edit"]');
   await p.click('[data-act="rm-bond"][data-j="1"]');
   await p.click('[data-act="rm-bond"][data-j="1"]');
-  assert.ok(await until(async () => !row(await h.tab(api, 'Testa'), 'bond', 'Passenger')));
+  assert.deepEqual(await names(), ['Ship', 'Bo'], 'gone from the page at once');
   assert.match(await p.textContent('.toast.show'), /Deleted Passenger/);
+  assert.equal(row(await h.tab(api, 'Testa'), 'bond', 'Passenger')[2], marks, 'still in the sheet');
   await p.click('.toast .tact');
-  const rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'bond', 'Passenger') && r; });
-  assert.equal(row(rows, 'bond', 'Passenger')[2], marks, 'with its marks');
-  assert.deepEqual(await p.$$eval('[data-bind$=":name"][data-bind^="bond"]', bs => bs.map(b => b.value)), ['Ship', 'Bo', 'Passenger']);
+  assert.deepEqual(await names(), ['Ship', 'Passenger', 'Bo'], 'back in its place');
+  await sleep(2000); // past the (shortened) hold
+  assert.equal(row(await h.tab(api, 'Testa'), 'bond', 'Passenger')[2], marks, 'never left the sheet');
+  // Cmd+Z does the same
+  await p.click('[data-act="rm-bond"][data-j="1"]');
+  await p.click('[data-act="rm-bond"][data-j="1"]');
+  await p.keyboard.press('ControlOrMeta+KeyZ');
+  assert.deepEqual(await names(), ['Ship', 'Passenger', 'Bo']);
+
+  // without Undo it goes once the hold is up, and other changes meanwhile don't send it early
+  await p.click('[data-act="rm-bond"][data-j="1"]');
+  await p.click('[data-act="rm-bond"][data-j="1"]');
+  await p.fill('[data-bind="bond:0:name"]', 'The ship');
+  await p.press('[data-bind="bond:0:name"]', 'Tab');
+  await until(async () => row(await h.tab(api, 'Testa'), 'bond', 'The ship'));
+  assert.ok(row(await h.tab(api, 'Testa'), 'bond', 'Passenger'), 'held while the rename went');
+  assert.ok(await until(async () => !row(await h.tab(api, 'Testa'), 'bond', 'Passenger')));
+  await p.fill('[data-bind="bond:0:name"]', 'Ship');
+  await p.press('[data-bind="bond:0:name"]', 'Tab');
+  await h.setTab(api, 'Testa', withRow(await h.tab(api, 'Testa'), ['bond', 'Passenger', marks, '']));
   await p.click('[data-act="edit"]');
 });
 
@@ -627,7 +650,14 @@ test('a player uploads a picture for their character in edit mode; everyone sees
   await p.click('[data-act="pic-rm"]');
   await p.click('[data-act="pic-rm"]');
   await p.waitForSelector('button.portrait.none[data-act="pic-add"]');
-  assert.equal(row(await h.tab(api, 'Testa'), 'info', 'Name')[col], '');
+  await p.click('.toast .tact'); // Undo keeps it
+  await p.waitForSelector('.pwrap .portrait img[src]');
+  await sleep(2000);
+  assert.ok(row(await h.tab(api, 'Testa'), 'info', 'Name')[col], 'still in the sheet');
+  await p.click('[data-act="pic-rm"]');
+  await p.click('[data-act="pic-rm"]');
+  await p.waitForSelector('button.portrait.none[data-act="pic-add"]');
+  assert.ok(await until(async () => row(await h.tab(api, 'Testa'), 'info', 'Name')[col] === ''));
   await q.close();
   await p.close();
 });

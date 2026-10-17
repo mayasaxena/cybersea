@@ -4,6 +4,7 @@
 // Using a kit item always logs, from its own dialog (sheet.js).
 
 import { escTxt } from './markup.js';
+import { offerUndo, withdrawUndo } from './hold.js';
 
 // A signed count for a line, e.g. "Harm +2" or "Treasure −1".
 export const signed = n => (n > 0 ? `+${n}` : `−${Math.abs(n)}`);
@@ -34,6 +35,7 @@ export function makeUsage({ log, undone }) {
   const undos = []; // one per change while the panel is open, each putting back what that change found
   let el = null;
   let note = '';
+  let offer = null; // Cmd+Z, while the panel is open, does what × does
 
   const lines = () => [...pending.values()].map(p => p.line(p.n)).filter(Boolean);
 
@@ -69,6 +71,8 @@ export function makeUsage({ log, undone }) {
   function clear() {
     pending.clear();
     undos.length = 0;
+    withdrawUndo(offer);
+    offer = null;
     note = '';
     hide();
   }
@@ -87,14 +91,15 @@ export function makeUsage({ log, undone }) {
   }
 
   // Add n to the change under key; line(total) words it, or returns '' when it nets out to nothing.
-  // undo, taken before the change was made, puts back what it changed.
-  function add(key, n, line, undo) {
+  // revert, taken before the change was made, puts back what it changed.
+  function add(key, n, line, revert) {
     const p = pending.get(key) || { n: 0, line };
     p.n += n;
     p.line = line;
     if (p.n) pending.set(key, p); else pending.delete(key);
-    if (undo) undos.push(undo);
+    if (revert) undos.push(revert);
     draw();
+    if (el) offer = offerUndo(undo);
   }
 
   return { add, clear };

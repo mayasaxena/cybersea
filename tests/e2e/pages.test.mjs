@@ -1,7 +1,7 @@
 // Browser tests for the crew home, ship, lore and rules pages, and for running two games.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite, signIn, until, polls } from './harness.mjs';
+import { harness, invite, signIn, until, polls, sleep } from './harness.mjs';
 import { KEYS, IMAGES, gameTabs } from '../fixtures/game.mjs';
 import { png } from '../fixtures/png.mjs';
 
@@ -170,13 +170,15 @@ test('lore: read, search, add, edit and delete entries', async () => {
   assert.deepEqual(await settled(() => p.$$eval('main .card h2', hs => hs.map(x => x.textContent)), ['The Drowned Bell']), ['The Drowned Bell']);
   await p.fill('#q', '');
   await p.click('[data-act="edit"]');
+  // the toast's Undo puts it back where it was, if pressed in time
   await p.click('[data-act="rm"][data-i="1"]');
   await p.click('[data-act="rm"][data-i="1"]');
-  assert.ok(await until(async () => !row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')));
-  // the toast's Undo puts it back, then it goes for good
   assert.match(await p.textContent('.toast.show'), /Deleted The Drowned Bell/);
   await p.click('.toast .tact');
-  assert.ok(await until(async () => row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')?.[2] === '- rings at low tide'));
+  await p.waitForSelector('[data-act="rm"][data-i="1"]');
+  assert.equal(await p.$eval('[data-f="name"][data-i="1"]', e => e.value), 'The Drowned Bell');
+  await sleep(2000);
+  assert.ok(row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell'), 'never left the sheet');
   await p.click('[data-act="rm"][data-i="1"]');
   await p.click('[data-act="rm"][data-i="1"]');
   assert.ok(await until(async () => !row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')));
@@ -370,7 +372,15 @@ test('map page: the GM adds, edits and removes places and levels, with pictures 
   await g.click(dlg('[data-del]'));
   await g.click(dlg('[data-del]'));
   await g.waitForSelector('.loc:has-text("Coral Arch")', { state: 'detached' });
-  assert.ok(!(await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Arch'));
+  await g.click('.toast .tact'); // Undo, in time: it never leaves the sheet
+  await g.waitForSelector('.loc:has-text("Coral Arch") .levels');
+  await sleep(2000);
+  assert.ok((await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Arch'));
+  await g.locator('.loc', { hasText: 'Coral Arch' }).locator('.shead [data-edit]').first().click();
+  await g.click(dlg('[data-del]'));
+  await g.click(dlg('[data-del]'));
+  await g.waitForSelector('.loc:has-text("Coral Arch")', { state: 'detached' });
+  assert.ok(await until(async () => !(await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Arch')));
   assert.equal((await h.tab(g1, 'Images')).at(-1)[0], 'Coral Gate');
 });
 

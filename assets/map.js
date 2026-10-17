@@ -11,7 +11,8 @@ import { bootstrap } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures, shrink } from './pictures.js';
-import { esc, escTxt, ICON, armed, modal, closeModal, toast, pageShell, refreshNav, debounce, noGame } from './core.js';
+import { esc, escTxt, ICON, armed, modal, closeModal, toast, deletedToast, pageShell, refreshNav, debounce, noGame } from './core.js';
+import { hold } from './hold.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -27,6 +28,8 @@ const shownLevel = {}; // place index -> which of its levels is showing
 
 const key = s => String(s || '').trim().toLowerCase();
 const isGm = () => client.role === 'gm';
+// Rows the GM deleted here, held a few seconds before the sheet hears (hold.js): row JSON -> hold.
+const gone = new Map();
 
 // The Map tab as regions, each with its maps and places; a place has its levels.
 function world(rows) {
@@ -38,7 +41,9 @@ function world(rows) {
   };
   const places = new Map();
   const levels = [];
-  rows.forEach(([reg, loc, level, image, text, notes, shown], at) => {
+  rows.forEach((row, at) => {
+    if (gone.has(JSON.stringify(row))) return; // a deleted place's levels go with it
+    const [reg, loc, level, image, text, notes, shown] = row;
     const item = { at, name: String(level || loc || reg || '').trim(), image, text: String(text || ''), notes: String(notes || '') };
     if (!String(loc || '').trim()) { region(reg).maps.push(item); return; }
     if (String(level || '').trim()) { levels.push([key(loc), { ...item, loc: String(loc).trim() }]); return; }
@@ -245,12 +250,13 @@ function openEditor(it, kind, place) {
     } finally {
       await client.read(['Map']).catch(() => {});
     }
-    toast(body.cells ? 'Saved to the Map tab.' : 'Removed from the Map tab.');
+    toast('Saved to the Map tab.');
   };
   const row = it ? { row: store.server.ns?.[it.at] || 0, was: store.server.rows[it.at] } : { row: 0 };
   o.querySelector('[data-del]')?.addEventListener('click', e => {
     if (!armed(e.target)) { say(kind === 'place' && it.levels.length ? 'Click again to delete it and its levels.' : 'Click again to delete it.'); return; }
-    send(row);
+    closeModal();
+    remove(it);
   });
   o.querySelector('[data-save]').addEventListener('click', () => {
     const v = n => (f(n)?.value || '').trim();
@@ -270,6 +276,28 @@ function openEditor(it, kind, place) {
     say(body.image?.data ? 'Uploading…' : 'Saving…');
     send(body);
   });
+}
+
+// Deleting a map, place or level: it goes from the page now, and from the Map tab once the
+// toast's Undo is past.
+function remove(it) {
+  const was = store.server.rows[it.at];
+  const k = JSON.stringify(was);
+  const redraw = () => { W = world(store.rows); render(); };
+  gone.set(k, hold(async () => {
+    gone.delete(k);
+    const at = store.server.rows.findIndex(r => JSON.stringify(r) === k);
+    try {
+      if (at >= 0) await client.request({ op: 'place', row: store.server.ns?.[at] || 0, was }, { timeout: 90000 });
+    } catch (err) {
+      toast(err.message, 'lo');
+    } finally {
+      await client.read(['Map']).catch(() => {});
+      redraw();
+    }
+  }));
+  redraw();
+  deletedToast(it.name, () => { gone.get(k)?.cancel(); if (gone.delete(k)) redraw(); });
 }
 
 store.on(() => { W = world(store.rows); render(); });

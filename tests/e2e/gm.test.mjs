@@ -1,7 +1,7 @@
 // Browser tests for the GM page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { harness, invite, until, polls } from './harness.mjs';
+import { harness, invite, until, polls, sleep } from './harness.mjs';
 import { KEYS } from '../fixtures/game.mjs';
 
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
@@ -68,6 +68,12 @@ test('NPCs: tag definitions, harm by size, renames carry harm, deletes', async (
   assert.equal(row(rows, 'track', 'New NPC'), undefined, 'harm row renamed with the NPC');
   await p.click('[data-act="edit"]');
   const del = p.locator('.card:has(input[value="Dockmaster Ilse"]) [data-act="rm"]');
+  await del.click();
+  await del.click();
+  await p.click('.toast .tact'); // Undo: it and its harm never leave the sheet
+  await p.waitForSelector('.card input[value="Dockmaster Ilse"]');
+  await sleep(2000);
+  assert.ok(row(await h.tab(api, 'GM'), 'npc', 'Dockmaster Ilse') && row(await h.tab(api, 'GM'), 'track', 'Dockmaster Ilse'));
   await del.click();
   await del.click();
   assert.ok(await until(async () => { const r = await h.tab(api, 'GM'); return !row(r, 'npc', 'Dockmaster Ilse') && !row(r, 'track', 'Dockmaster Ilse'); }));

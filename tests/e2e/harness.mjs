@@ -62,10 +62,10 @@ export async function harness({ games = 1, latency, gameOptions } = {}) {
   const browser = await chromium.launch();
   const errors = [];
   const contexts = [];
-  async function page({ width = 900, height = 900, pollMs = 400 } = {}) {
+  async function page({ width = 900, height = 900, pollMs = 400, undoMs = 1500 } = {}) {
     const ctx = await browser.newContext({ viewport: { width, height } });
     contexts.push(ctx);
-    await ctx.addInitScript(ms => { try { localStorage.setItem('cybersea:pollMs', String(ms)); } catch {} }, pollMs);
+    await ctx.addInitScript(([ms, u]) => { try { localStorage.setItem('cybersea:pollMs', String(ms)); localStorage.setItem('cybersea:undoMs', String(u)); } catch {} }, [pollMs, undoMs]);
     const p = await ctx.newPage();
     p.on('pageerror', e => errors.push(e.message));
     // Injected Google error pages (POST /__test/fail) have no CORS header, so the browser logs them; that's expected.
