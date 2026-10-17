@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a game spreadsheet template (.xlsx) to upload to Google Drive.
+"""Build a game workbook (.xlsx), to bring into a game's sheet with Cybersea > Replace with an xlsx….
 
 The template carries rulebook text and player data, so it is built locally and shared
 privately, never committed (.gitignore blocks *.xlsx).
@@ -51,7 +51,7 @@ README = [
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
     '    What a row does is in its Meta: roll=, session=, gain=, spend=, action= (see SETUP.md, "The game’s mechanics").',
     '  System: the game’s mechanics (Kind | Group | Name | Text | Meta): stat, track, section and choice rows. The site has no',
-    '    stat names or numbers of its own. Run setUpChecks in the Apps Script editor to protect Rules and System and add checks.',
+    '    stat names or numbers of its own. Cybersea > Replace with an xlsx… protects Rules and System and adds checks.',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
     '    (placed in the cell, =IMAGE("https://…"), or the name of a picture in the Images tab).',
