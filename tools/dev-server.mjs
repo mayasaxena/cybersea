@@ -74,17 +74,17 @@ function editByHand(game, tab, rows) {
 }
 
 // The Realtime Database's REST API, as much as Push.gs and the site use: PATCH a value (with the
-// secret; a {'.sv': {increment}} adds to what's there), and GET as server-sent events (a put event
+// script owner's sign-in; a {'.sv': {increment}} adds to what's there), and GET as server-sent events (a put event
 // with the value on connecting, a patch event for each change, keep-alives in between).
 function firebase(game, base) {
   const values = new Map();
   const streams = new Map();
   const send = (res, data, event = 'put') => res.write(`event: ${event}\ndata: ${JSON.stringify({ path: '/', data: data ?? null })}\n\n`);
-  game.gas.setProps({ FIREBASE_URL: `${base}/__fb`, FIREBASE_SECRET: 'dev-secret' });
+  game.gas.setProps({ FIREBASE_URL: `${base}/__fb` });
   game.gas.onFetch = (url, opts) => {
     const u = new URL(url);
     if (!u.pathname.startsWith('/__fb/') || String(opts.method).toLowerCase() !== 'patch') return null;
-    if (u.searchParams.get('auth') !== 'dev-secret') return { code: 401, text: '{"error":"Permission denied"}' };
+    if (u.searchParams.get('access_token') !== game.gas.oauthToken) return { code: 401, text: '{"error":"Permission denied"}' };
     const was = values.get(u.pathname) || {};
     const body = JSON.parse(opts.payload);
     const v = {};

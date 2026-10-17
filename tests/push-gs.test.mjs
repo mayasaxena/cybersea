@@ -6,7 +6,7 @@ import { createGas, loadCodeGs } from '../tools/gas-fake.mjs';
 import { makeXlsx } from './fixtures/xlsx.mjs';
 
 const H = ['Kind', 'Name', 'Value', 'Notes'];
-const FB = { FIREBASE_URL: 'https://cybersea-test-default-rtdb.firebaseio.com/', FIREBASE_SECRET: 's3cret' };
+const FB = { FIREBASE_URL: 'https://cybersea-test-default-rtdb.firebaseio.com/' };
 
 function setup(props = FB) {
   const gas = createGas({
@@ -22,15 +22,15 @@ function setup(props = FB) {
   gas.onFetch = (url, opts) => {
     if (!url.includes('firebaseio.com')) return null;
     pings.push({ url, method: opts.method, body: JSON.parse(opts.payload) });
-    return { code: 200, text: '{}' };
+    return new URL(url).searchParams.get('access_token') === 'owner-token' ? { code: 200, text: '{}' } : { code: 401, text: '{"error":"Permission denied"}' };
   };
   const api = loadCodeGs(gas);
   const gm = body => api.call({ key: 'gm', ...body });
   return { gas, api, gm, pings };
 }
 
-test('off without FIREBASE_URL and FIREBASE_SECRET: no listening place, no pings', () => {
-  const { gm, pings } = setup({ FIREBASE_URL: 'https://x.firebaseio.com' });
+test('off without FIREBASE_URL: no listening place, no pings', () => {
+  const { gm, pings } = setup({ FIREBASE_URL: '' });
   assert.equal(gm({ op: 'read', tabs: ['Nexa'] }).push, undefined);
   assert.equal(gm({ op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+3', '']] }).ok, true);
   assert.deepEqual(pings, []);
@@ -40,7 +40,6 @@ test('reads name the place to listen; a change pings it once it’s done, saying
   const { gas, gm, pings } = setup();
   const push = gm({ op: 'read', tabs: ['Nexa'] }).push;
   assert.match(push, /^https:\/\/cybersea-test-default-rtdb\.firebaseio\.com\/games\/[0-9a-f]{32}\.json$/);
-  assert.ok(!push.includes('s3cret'));
   assert.equal(gm({ op: 'read', tabs: ['Ship'] }).push, push, 'the same place every time');
   assert.deepEqual(pings, [], 'reads don’t ping');
 
@@ -48,7 +47,7 @@ test('reads name the place to listen; a change pings it once it’s done, saying
   gas.onFlush = () => { flushedFirst = !pings.length; };
   assert.equal(gm({ op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+3', '']], by: 'page1' }).ok, true);
   assert.equal(pings.length, 1);
-  assert.equal(pings[0].url, push + '?auth=s3cret');
+  assert.equal(pings[0].url, push + '?access_token=owner-token', 'written with the sign-in of the account the script runs as');
   assert.equal(pings[0].method, 'patch');
   const { at, ...rest } = pings[0].body;
   assert.deepEqual(rest, { by: 'page1', n: { '.sv': { increment: 1 } } });
@@ -107,6 +106,20 @@ test('the settings are read from the script properties once, then from the cache
   gm({ op: 'read', tabs: ['Nexa'] });
   gas.setProps({ FIREBASE_URL: '' });
   assert.ok(gm({ op: 'read', tabs: ['Nexa'] }).push, 'still on until the cache lets go');
+});
+
+test('a copy of the sheet listens in its own place, and one whose pings are turned away goes back to polling', () => {
+  const a = setup();
+  const b = setup();
+  const pa = a.gm({ op: 'read', tabs: ['Nexa'] }).push;
+  const pb = b.gm({ op: 'read', tabs: ['Nexa'] }).push;
+  assert.ok(pa && pb && pa !== pb, 'the place comes from the spreadsheet, not from anything copied with it');
+
+  // Someone who can't write to the database (a copy run by another account, say).
+  b.gas.oauthToken = 'someone-else';
+  assert.equal(b.gm({ op: 'patch', tab: 'Nexa', set: [['stat', 'Spitfire', '+3', '']] }).ok, true, 'the change itself still goes through');
+  assert.equal(b.pings.length, 1);
+  assert.equal(b.gm({ op: 'read', tabs: ['Nexa'] }).push, undefined, 'pages aren’t told to wait on pings that don’t come');
 });
 
 test('an import pings when it’s done', () => {
