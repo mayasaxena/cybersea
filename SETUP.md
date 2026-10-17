@@ -283,10 +283,11 @@ games start with the current version.
 ```
 node tools/dev-server.mjs            # site on :8080, a test game on :8081
 npm test                             # unit tests
+npm run lint                         # eslint, if installed (no packages needed)
 npm run e2e                          # browser tests (Playwright + Chromium)
 ```
 
-`git config core.hooksPath .githooks` turns on a pre-push hook that runs the unit tests, the
+`git config core.hooksPath .githooks` turns on a pre-push hook that runs eslint (when installed), the unit tests, the
 workbook tool tests and, when `RAPSCALLION_TXT` points at the rulebook text, the book text check.
 The repository has no CI, so this is what stands in for it; run `npm run e2e` yourself before
 pushing a change to the site.
