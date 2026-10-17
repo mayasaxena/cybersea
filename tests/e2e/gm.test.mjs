@@ -109,6 +109,6 @@ test('reference: Fates material, a tags glossary, and search', async () => {
   await p.click('[data-ref="tags"]');
   assert.match(await p.textContent('#ref'), /jumpy\s*Startles easily\./i);
   await p.fill('#q', 'trap');
-  assert.deepEqual(await p.$$eval('#ref .mn', ms => ms.map(m => m.textContent)), ['SPRING A TRAP']);
+  await p.waitForFunction(() => [...document.querySelectorAll('#ref .mn')].map(m => m.textContent).join() === 'SPRING A TRAP');
   assert.deepEqual(h.errors, []);
 });

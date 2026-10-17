@@ -4,7 +4,7 @@ import { bootstrap, href } from './games.js';
 import { GameClient } from './api.js';
 import { md } from './markup.js';
 import { pictureHTML, showPictures } from './pictures.js';
-import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle } from './core.js';
+import { esc, escTxt, ICON, armed, pageShell, refreshNav, readOnlyHTML, whenIdle, debounce } from './core.js';
 
 const app = document.getElementById('app');
 const game = bootstrap();
@@ -65,14 +65,18 @@ client.on(e => {
 const categories = () => [...new Set(entries.map(e => e.kind))];
 const unique = (kind, name) => { let n = name, k = 2; while (entries.some(e => e.kind.toLowerCase() === kind.toLowerCase() && e.name.toLowerCase() === n.toLowerCase())) n = `${name} ${k++}`; return n; };
 
+const search = debounce(() => {
+  const box = document.getElementById('results');
+  if (!box) return;
+  box.innerHTML = resultsHTML();
+  box.querySelectorAll('textarea').forEach(t => { t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; });
+});
 function render() {
+  search.cancel();
   main.dataset.ready = store.loaded ? '1' : '';
   if (store.missing) { main.innerHTML = '<div class="empty-page"><p>This game’s sheet has no Lore tab.</p></div>'; return; }
   if (!store.loaded) { main.innerHTML = '<div class="empty">Loading…</div>'; return; }
-  const q = query.trim().toLowerCase();
   const cats = categories();
-  const shown = entries.map((e, i) => ({ e, i })).filter(({ e }) => (cat === 'all' || e.kind === cat) && (!q || `${e.kind} ${e.name} ${e.value} ${e.notes}`.toLowerCase().includes(q)));
-  const groups = cats.filter(c => cat === 'all' || c === cat);
   main.innerHTML = `
     <div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search lore" value="${esc(query)}" aria-label="Search lore" autocomplete="off">
@@ -81,13 +85,21 @@ function render() {
     </div>
     ${canEdit() ? '' : readOnlyHTML(client, 'Lore')}
     <datalist id="lore-cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
-    ${groups.map(c => {
-      const items = shown.filter(x => x.e.kind === c);
-      if (!items.length) return '';
-      return `<div class="mgroup"><h3>${escTxt(c)}</h3><div class="cols">${items.map(({ e, i }) => entryHTML(e, i)).join('')}</div></div>`;
-    }).join('') || '<div class="empty">Nothing here yet.</div>'}
-    ${editing ? '<button class="add" data-act="add">+ Entry</button>' : ''}`;
+    <div id="results">${resultsHTML(cats)}</div>`;
   main.querySelectorAll('textarea').forEach(t => { t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; });
+}
+
+// The entries that match the search and category: all a search redraws.
+function resultsHTML(cats = categories()) {
+  const q = query.trim().toLowerCase();
+  const shown = entries.map((e, i) => ({ e, i })).filter(({ e }) => (cat === 'all' || e.kind === cat) && (!q || `${e.kind} ${e.name} ${e.value} ${e.notes}`.toLowerCase().includes(q)));
+  const groups = cats.filter(c => cat === 'all' || c === cat);
+  return (groups.map(c => {
+    const items = shown.filter(x => x.e.kind === c);
+    if (!items.length) return '';
+    return `<div class="mgroup"><h3>${escTxt(c)}</h3><div class="cols">${items.map(({ e, i }) => entryHTML(e, i)).join('')}</div></div>`;
+  }).join('') || '<div class="empty">Nothing here yet.</div>') +
+    (editing ? '<button class="add" data-act="add">+ Entry</button>' : '');
 }
 
 function entryHTML(e, i) {
@@ -121,7 +133,7 @@ main.addEventListener('click', e => {
 
 main.addEventListener('input', e => {
   const t = e.target;
-  if (t.id === 'q') { query = t.value; const pos = t.selectionStart; render(); const q = document.getElementById('q'); q.focus(); q.setSelectionRange(pos, pos); return; }
+  if (t.id === 'q') { query = t.value; search(); return; }
   if (t.dataset.f === 'value' || t.dataset.f === 'notes') {
     entries[+t.dataset.i][t.dataset.f] = t.value;
     if (t.tagName === 'TEXTAREA') { t.style.height = 'auto'; t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; }

@@ -7,7 +7,7 @@ import { gameRules, TABS as RULE_TABS } from './rules.js';
 import { systemOf, characterTypes, sum, circles } from './system.js';
 import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
-import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle } from './core.js';
+import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
@@ -134,7 +134,14 @@ function refHTML() {
 
 const editToggle = () => `<button class="ic${editing ? ' on' : ''}" data-act="edit" title="Edit" aria-pressed="${editing}">${ICON.pen}</button>`;
 
+const search = debounce(() => {
+  const ref = document.getElementById('ref');
+  if (!ref) return;
+  const keys = REF_KEYS.filter(k => sectionHasContent(R, k));
+  ref.innerHTML = query.trim() ? searchAllHTML(R, keys, query) : sectionHTML(R, refTab);
+});
 function render() {
+  search.cancel();
   main.dataset.ready = gmStore.loaded ? '1' : '';
   if (client.role && client.role !== 'gm') {
     main.innerHTML = `<div class="empty-page"><p>This page needs the GM passphrase.</p><p><button class="pbtn" data-act="gm-key">Enter the GM passphrase</button></p></div>`;
@@ -201,12 +208,7 @@ main.addEventListener('click', e => {
 
 main.addEventListener('input', e => {
   const t = e.target;
-  if (t.id === 'q') {
-    query = t.value;
-    const keys = REF_KEYS.filter(k => sectionHasContent(R, k));
-    document.getElementById('ref').innerHTML = query.trim() ? searchAllHTML(R, keys, query) : sectionHTML(R, refTab);
-    return;
-  }
+  if (t.id === 'q') { query = t.value; search(); return; }
   if (t.dataset.f === 'value' || t.dataset.f === 'notes') {
     entries[+t.dataset.i][t.dataset.f] = t.value;
     if (t.tagName === 'TEXTAREA') { t.style.height = 'auto'; t.style.height = Math.max(70, t.scrollHeight + 4) + 'px'; }
