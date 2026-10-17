@@ -15,7 +15,7 @@ npm test --silent
 
 if [ -d tests/py ]; then
   echo 'pre-push: workbook tool tests'
-  python3 -I -m unittest discover -s tests/py -t . -q
+  python3 -I -m unittest discover -s tests/py
 fi
 
 if [ -n "$RAPSCALLION_TXT" ]; then

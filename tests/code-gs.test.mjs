@@ -906,3 +906,22 @@ test('a patch answers with the tab exactly as the next read sends it', () => {
     assert.deepEqual({ d: r.d, rows: r.rows, vers: r.vers }, { d: t.d, rows: t.rows, vers: t.vers });
   }
 });
+
+test('Sheets round trips: a few per tab read, none for an unchanged tab, and a patch costs the same however long the tab', () => {
+  const { gas, api } = setup();
+  const tabs = Object.keys(gm(api, { op: 'read', tabs: '*' }).tabs).length;
+  const cost = fn => { const c = gas.ss.calls; const r = fn(); return [gas.ss.calls - c, r]; };
+  const [fresh, r] = cost(() => gm(api, { op: 'read', tabs: '*' }));
+  assert.ok(fresh <= 3 * tabs, `${fresh} calls to read ${tabs} tabs`);
+  const have = Object.fromEntries(Object.entries(r.tabs).map(([k, t]) => [k, t.d]));
+  assert.equal(cost(() => gm(api, { op: 'read', tabs: '*', have }))[0], 0, 'unchanged tabs come from the remembered digests');
+
+  const patch = i => cost(() => gm(api, { op: 'patch', tab: 'Nexa', set: [['log', `L${i}`, 'x', '', {}]] }));
+  patch(0); // the tab's first versioned write adds the Version column
+  const [short] = patch(1);
+  for (let i = 2; i < 300; i++) patch(i);
+  const [long, res] = patch(300);
+  assert.equal(res.ok, true, res.error);
+  assert.ok(short <= 4, `${short} calls for a patch`);
+  assert.equal(long, short, 'no call per row');
+});

@@ -4,7 +4,7 @@
 // non-text cells are coerced (numbers, booleans) or become formulas, and a leading "'" is
 // hidden from display values.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { inflateRawSync } from 'node:zlib';
@@ -49,7 +49,8 @@ function cellImage(image) {
   };
 }
 
-// A protected sheet or range. Editors are just names; the owner is "owner" and can't be removed.
+// A protected sheet or range. Editors are just names: "owner" owns the spreadsheet and "me" runs the
+// script; as in Sheets, neither can be removed.
 class Protection {
   constructor(sheet, type, range) {
     Object.assign(this, { sheet, type, range, description: '', warningOnly: false, editors: ['owner', 'me'], domainEdit: true, unprotected: [] });
@@ -61,7 +62,7 @@ class Protection {
   isWarningOnly() { return this.warningOnly; }
   setWarningOnly(w) { this.warningOnly = !!w; return this; }
   getEditors() { return this.editors.slice(); }
-  removeEditors(es) { this.editors = this.editors.filter(e => e === 'owner' || !es.includes(e)); return this; }
+  removeEditors(es) { this.editors = this.editors.filter(e => e === 'owner' || e === 'me' || !es.includes(e)); return this; }
   canDomainEdit() { return this.domainEdit; }
   setDomainEdit(d) { this.domainEdit = !!d; return this; }
   getUnprotectedRanges() { return this.unprotected.slice(); }
@@ -118,7 +119,8 @@ class Range {
   setFontWeights(w) { this.cells((c, r, col) => { c.bold = w[r][col] === 'bold'; }); return this; }
   setBackgrounds(b) { this.cells((c, r, col) => { c.bg = b[r][col] || null; }); return this; }
   setWraps(w) { this.cells((c, r, col) => { c.wrap = !!w[r][col]; }); return this; }
-  // Checks and protection are recorded, not enforced: Sheets doesn't hold scripts to them either.
+  // Checks and protection are recorded, not enforced: the script runs as the owner, whom Sheets
+  // lets past both (a script's write skips the check's dialog and a protection's warning).
   setDataValidation(rule) {
     this.sheet.validations.push({ row: this.row, col: this.col, rows: this.nr, cols: this.nc, rule });
     this.cells(c => { c.rule = rule; });
@@ -131,6 +133,14 @@ class Range {
     return this.nr === 1 && this.nc === 1 ? a : `${a}:${colName(this.col + this.nc - 1)}${this.row + this.nr - 1}`;
   }
   protect() { return new Protection(this.sheet, 'RANGE', this); }
+}
+
+// Each read or write of a range's cells is a round trip to Sheets, the slow part of a script.
+// They're counted in ss.calls, so tests can hold the script to a few per tab.
+for (const m of ['getValues', 'getDisplayValues', 'getFormulas', 'setValues', 'setNumberFormat', 'setNumberFormats',
+  'setFontWeights', 'setBackgrounds', 'setWraps', 'setDataValidation']) {
+  const f = Range.prototype[m];
+  Range.prototype[m] = function (...a) { this.sheet.ss.calls++; return f.apply(this, a); };
 }
 
 class Sheet {
@@ -201,7 +211,7 @@ class Sheet {
 }
 
 class Spreadsheet {
-  constructor(name) { this.name = name; this.sheets = []; this.edits = 0; }
+  constructor(name) { this.name = name; this.sheets = []; this.edits = 0; this.calls = 0; }
   getName() { return this.name; }
   getSheets() { return this.sheets.slice(); }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
@@ -383,11 +393,18 @@ function clock(now) {
 
 // Run apps-script/Code.gs against a fake. Returns {doGet, doPost, call(body) -> parsed JSON,
 // onEdit(e), ctx} (onEdit as Sheets runs it after an edit by hand; a no-op for scripts without one;
-// ctx is the script's globals, to load the project's other files into, see loadAlso).
-// `transform` edits the source first (tests use it to stand in for an older deployment).
-export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.meta.url), transform = s => s) {
+// ctx is the scripts' globals).
+// Every file of the Apps Script project is loaded, Code.gs first, into one global scope, as in
+// the real project. `transform` edits Code.gs's source first (tests use it to stand in for an
+// older deployment).
+export function loadCodeGs(gas, transform = s => s) {
   const ctx = vm.createContext({ ...gas.services, console, Date: clock(gas.now) });
-  vm.runInContext(transform(readFileSync(path, 'utf8')), ctx, { filename: 'Code.gs' });
+  const dir = new URL('../apps-script/', import.meta.url);
+  const files = ['Code.gs', ...readdirSync(dir).filter(f => f.endsWith('.gs') && f !== 'Code.gs').sort()];
+  for (const f of files) {
+    const src = readFileSync(new URL(f, dir), 'utf8');
+    vm.runInContext(f === 'Code.gs' ? transform(src) : src, ctx, { filename: f });
+  }
   const parse = out => JSON.parse(out.getContent());
   return {
     doGet: e => parse(ctx.doGet(e)),
@@ -399,10 +416,3 @@ export function loadCodeGs(gas, path = new URL('../apps-script/Code.gs', import.
   };
 }
 
-// Load another file of the Apps Script project (they share one global scope) into a loaded
-// script's ctx, e.g. loadAlso(api, 'Import.gs').
-export function loadAlso(api, file) {
-  const path = new URL(`../apps-script/${file}`, import.meta.url);
-  vm.runInContext(readFileSync(path, 'utf8'), api.ctx, { filename: file });
-  return api.ctx;
-}

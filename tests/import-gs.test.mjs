@@ -2,7 +2,7 @@
 // tools/gas-fake.mjs with .xlsx files built by tests/fixtures/xlsx.mjs. Rules text here is made up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGas, loadCodeGs, loadAlso } from '../tools/gas-fake.mjs';
+import { createGas, loadCodeGs } from '../tools/gas-fake.mjs';
 import { makeXlsx } from './fixtures/xlsx.mjs';
 
 const H = ['Kind', 'Name', 'Value', 'Notes'];
@@ -21,7 +21,7 @@ function setup() {
   gas.docProps['gone:nexa'] = '{"x":[1,"s"]}';
   gas.docProps.other = 'kept';
   const api = loadCodeGs(gas);
-  const ctx = loadAlso(api, 'Import.gs');
+  const { ctx } = api;
   const sheet = name => gas.ss.getSheetByName(name);
   const replace = (tabs, opts, choice) => ctx.replaceWithXlsx('cybersea.xlsx', makeXlsx(tabs, opts).toString('base64'), choice);
   const list = tabs => ctx.listXlsxTabs('cybersea.xlsx', makeXlsx(tabs).toString('base64'));
@@ -369,4 +369,49 @@ test('never replaces or removes the Images tab; a file’s Images tab comes in o
   assert.equal(sheet('Images').getRange(3, 1).getDisplayValue(), 'Haven');
   assert.equal(replace(FRESH, {}, { tabs: ['Rules'], remove: ['Images'] }).removed.length, 0);
   assert.ok(gas.ss.getSheetByName('Images'));
+});
+
+test('filling a tab costs the same few Sheets round trips however many rows it has', () => {
+  const cost = n => {
+    const { replace, gas } = setup();
+    const rows = [H, ...Array.from({ length: n }, (_, i) => ['log', `Entry ${i}`, 'x', ''])];
+    const c = gas.ss.calls;
+    const res = replace([FRESH[1], { name: 'Nexa', rows }]);
+    assert.equal(res.ok, true, res.error);
+    return gas.ss.calls - c;
+  };
+  const few = cost(5);
+  assert.equal(cost(500), few, 'no call per row');
+  assert.ok(few <= 40, `${few} calls`);
+});
+
+// A workbook made by openpyxl (tools/xlsx), as a real one is, not only the hand-built fixture.
+// Skipped where Python or openpyxl isn't installed.
+test('imports a workbook built by tools/xlsx with openpyxl, then mechanics.py', async t => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  try { execFileSync('python3', ['-I', '-c', 'import openpyxl']); } catch { t.skip('no python3 with openpyxl'); return; }
+  const dir = mkdtempSync(join(tmpdir(), 'cybersea-xlsx-'));
+  const file = (name, data) => { const p = join(dir, name); writeFileSync(p, JSON.stringify(data)); return p; };
+  const rules = file('rules.json', [
+    { kind: 'move', group: 'basic', name: 'POKE', text: 'When you poke, roll +SNARK.', meta: '', vis: 'crew' },
+    { kind: 'playbook', group: '', name: 'Tester', text: 'Pokes things.', meta: '', vis: 'crew' },
+  ]);
+  const nexa = file('nexa.json', [['info', 'Name', 'Nexa', ''], ['stat', 'Snark', '+2', ''], ['jot', 'Notes', 'Owe Vex', '']]);
+  const mech = file('mechanics.json', { rows: [{ kind: 'stat', group: 'character', name: 'Snark', text: '', meta: '' }], meta: [] });
+  const built = join(dir, 'built.xlsx');
+  const out = join(dir, 'game.xlsx');
+  execFileSync('python3', ['-I', 'tools/xlsx/build.py', '--rules', rules, '--tab', `Nexa=${nexa}`, '--out', built]);
+  execFileSync('python3', ['-I', 'tools/xlsx/mechanics.py', '--mechanics', mech, built, '--out', out]);
+
+  const { api, ctx, names } = setup();
+  const res = ctx.replaceWithXlsx('game.xlsx', readFileSync(out).toString('base64'));
+  assert.equal(res.ok, true, res.error);
+  assert.ok(names().includes('System') && names().includes('Nexa'), names().join(', '));
+  const read = api.call({ key: 'gm-pass', op: 'read', tabs: ['Rules', 'System', 'Nexa'] });
+  assert.deepEqual(read.tabs.Rules.rows.map(r => r[2]), ['POKE', 'Tester']);
+  assert.deepEqual(read.tabs.System.rows.map(r => r.slice(0, 3)), [['stat', 'character', 'Snark']]);
+  assert.deepEqual(read.tabs.Nexa.rows.map(r => r.slice(0, 3)), [['info', 'Name', 'Nexa'], ['stat', 'Snark', '+2'], ['jot', 'Notes', 'Owe Vex']]);
 });
