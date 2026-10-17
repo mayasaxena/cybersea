@@ -20,7 +20,9 @@ rules.json: [{kind, group, name, text, meta, vis}, ...] (from tools/extract)
     other is a new row.
   lore, gm: rows for the Lore and GM tabs, as [[Kind, Name, Value, Notes], ...].
   map: rows for the Map tab, as [[Region, Location, Level, Image, Text, GM notes, Shown], ...]
-    (Image left blank: pictures are placed in the cells in Sheets).
+    (Image: blank, or the name of a picture in the Images tab).
+The workbook also gets an empty Images tab (Name | Image): pictures are placed in its cells in
+Sheets, and Replace with an xlsx… never replaces it once the sheet has one.
 Without --rules, the workbook holds only the theme's rows, to paste into an existing game.
 """
 import argparse
@@ -51,11 +53,14 @@ README = [
     '    stat names or numbers of its own. Run setUpChecks in the Apps Script editor to protect Rules and System and add checks.',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
-    '    (placed in the cell, or =IMAGE("https://…")).',
+    '    (placed in the cell, =IMAGE("https://…"), or the name of a picture in the Images tab).',
     '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
     '  Map: the world (Region | Location | Level | Image | Text | GM notes | Shown). A row with no Location is a region’s map;',
     '    one with a Location and no Level is a place; one with both is a floor of that place, in order (no Level rows: one picture).',
-    '    Image: a picture placed in the cell (Insert > Image > Insert image in cell) or =IMAGE("https://…"). GM notes: GM only.',
+    '    Image: a picture placed in the cell (Insert > Image > Insert image in cell), =IMAGE("https://…"), or the name of a picture',
+    '    in the Images tab. GM notes: GM only. The GM can also add and edit places and their pictures on the Map page.',
+    '  Images: every picture once (Name | Image). Type a Name into a Map or Lore Image cell to show it there.',
+    '    Replace with an xlsx… never replaces or removes this tab, so pictures put here stay.',
     '    Shown: "on" puts a place on the crew’s map (the GM’s button on the Map page sets it). Every place starts hidden.',
     '  Every other tab is a character sheet. Tabs starting with _ are ignored.',
     '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
@@ -159,6 +164,7 @@ def main():
                            error='Type "on" to show the place to the crew, or leave it blank.')
     maps.add_data_validation(shown)
     shown.add('G2:G1000')
+    text_sheet(wb.create_sheet('Images'), ['Name', 'Image'], [], [30, 40], free=('Image',))
     if loose:
         # Not a game tab (the site ignores tabs starting with _): copy each into the matching Rules row.
         text_sheet(wb.create_sheet('_Overrides'), ['Kind', 'Group', 'Name', 'Override name', 'Override text', 'Override meta'],

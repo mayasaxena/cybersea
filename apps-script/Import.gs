@@ -6,7 +6,9 @@
  *
  * The spreadsheet itself stays: its name, its script, the script's properties and the web app
  * deployment, so the site's URL and invite links keep working. Everything on a replaced tab goes,
- * including pictures placed in cells (File > Version history can bring them back).
+ * including pictures placed in cells (File > Version history can bring them back). The Images tab
+ * is never replaced or removed: it holds the pictures, which an .xlsx can't bring in, so a file's
+ * Images tab only comes in when the sheet has none yet.
  *
  * The script reads the .xlsx itself (it's a zip of XML files), so it needs no access beyond this
  * spreadsheet. It carries over what the game's workbooks use: values and formulas, plain-text,
@@ -42,8 +44,8 @@ function listXlsxTabs(name, data) {
   opened.book.tabs.forEach(t => { inFile[tabKey_(t.name)] = 1; });
   return {
     ok: true,
-    file: opened.book.tabs.map(t => ({ name: t.name, exists: !!findSheet_(ss, t.name) })),
-    sheetOnly: ss.getSheets().map(sh => sh.getName()).filter(n => !inFile[tabKey_(n)]),
+    file: opened.book.tabs.filter(t => !keptTab_(ss, t.name)).map(t => ({ name: t.name, exists: !!findSheet_(ss, t.name) })),
+    sheetOnly: ss.getSheets().map(sh => sh.getName()).filter(n => !inFile[tabKey_(n)] && !keptTab_(ss, n)),
   };
 }
 
@@ -55,9 +57,10 @@ function replaceWithXlsx(name, data, choice) {
   const opened = openXlsx_(name, data, only);
   if (!opened.ok) return opened;
   const book = opened.book;
-  if (only) book.tabs = book.tabs.filter(t => only.indexOf(t.name) >= 0);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  book.tabs = book.tabs.filter(t => !keptTab_(ss, t.name) && (!only || only.indexOf(t.name) >= 0));
   const remove = choice && Array.isArray(choice.remove) ? choice.remove.map(String) : null;
-  return withLock_(() => replaceTabs_(SpreadsheetApp.getActiveSpreadsheet(), book, remove));
+  return withLock_(() => replaceTabs_(ss, book, remove));
 }
 
 // The workbook in base64 data, its tabs' cells read only for the tabs named in only (all if null).
@@ -79,6 +82,11 @@ function tabKey_(name) {
   return String(name).trim().toLowerCase();
 }
 
+// Tabs of ss an import never touches: the Images tab, once there is one.
+function keptTab_(ss, name) {
+  return tabKind_(name) === 'images' && !!findSheet_(ss, name);
+}
+
 // Brings book's tabs into ss: each replaces the tab of the same name, keeping its place, or is
 // added at the end. Then removes the tabs named in remove (null: every tab the book doesn't
 // have, and the tabs end up in the book's order). The new tabs are made first, so a failure
@@ -89,7 +97,7 @@ function replaceTabs_(ss, book, remove) {
   book.tabs.forEach(t => { incoming[tabKey_(t.name)] = 1; });
   const gone = {};
   ss.getSheets().map(sh => sh.getName()).forEach(n => {
-    if (!incoming[tabKey_(n)] && (remove ? remove.some(r => tabKey_(r) === tabKey_(n)) : true)) gone[tabKey_(n)] = n;
+    if (!incoming[tabKey_(n)] && !keptTab_(ss, n) && (remove ? remove.some(r => tabKey_(r) === tabKey_(n)) : true)) gone[tabKey_(n)] = n;
   });
   const kept = ss.getSheets().map(sh => sh.getName()).filter(n => !incoming[tabKey_(n)] && !gone[tabKey_(n)]);
   if (!book.tabs.some(t => tabKind_(t.name) === 'rules') && !kept.some(n => tabKind_(n) === 'rules')) {
@@ -354,8 +362,8 @@ const REPLACE_DIALOG_HTML = `<!doctype html>
   .err { color: #c5221f; }
 </style>
 <p>Each ticked tab from the file replaces the tab of the same name here, including pictures placed
-in cells, or is added. Tabs you don't tick stay as they are. The spreadsheet, its script and the
-site's link stay the same. <b>File → Version history</b> can undo it.</p>
+in cells, or is added. Tabs you don't tick stay as they are, and so does the Images tab. The
+spreadsheet, its script and the site's link stay the same. <b>File → Version history</b> can undo it.</p>
 <label><input type="file" id="file" accept=".xlsx"></label>
 <div id="tabs"></div>
 <p id="msg"></p>

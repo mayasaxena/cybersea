@@ -252,6 +252,21 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
       SpreadsheetApp: {
         getActiveSpreadsheet: () => ss,
         ValueType: { IMAGE: 'IMAGE' },
+        // Only data: URLs, as the site's uploads send.
+        newCellImage: () => {
+          const pic = {};
+          const b = {
+            setSourceUrl: url => {
+              const m = String(url).match(/^data:([^;,]+);base64,(.*)$/);
+              if (!m) throw new Error('fake: only data URLs');
+              Object.assign(pic, { type: m[1], bytes: Buffer.from(m[2], 'base64') });
+              return b;
+            },
+            setAltTextTitle: () => b,
+            build: () => ({ image: pic }),
+          };
+          return b;
+        },
         ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' },
         newDataValidation: () => {
           const rule = { allowInvalid: true };

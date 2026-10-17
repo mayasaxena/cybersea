@@ -63,9 +63,9 @@ function byHand(gas, api, tab, rowNum, cells, { trigger = true } = {}) {
 
 test('ping works without a passphrase, GET otherwise refuses', () => {
   const { api } = setup();
-  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 7 });
+  assert.deepEqual(api.doGet({ parameter: { op: 'ping' } }), { ok: true, v: 8 });
   assert.equal(api.doGet({ parameter: {} }).ok, false);
-  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 7 });
+  assert.deepEqual(api.call({ op: 'ping' }), { ok: true, v: 8 });
 });
 
 test('explains missing passphrases', () => {
@@ -666,4 +666,114 @@ test('feedback: a flood is held back for a minute', () => {
   assert.equal(r.code, 'busy');
   tick(61_000);
   assert.equal(crew(api, { op: 'feedback', text: 'later' }).ok, true);
+});
+
+// The Images tab: every picture once, named from Map and Lore Image cells.
+function imagesGame() {
+  const b = n => Buffer.from(Array.from({ length: n }, (_, i) => (i * 11) & 255));
+  const pics = { haven: { type: 'image/png', bytes: b(40) }, lair: { type: 'image/jpeg', bytes: b(30) }, cat: { type: 'image/gif', bytes: b(9) } };
+  const gas = createGas({
+    props: KEYS,
+    tabs: {
+      Rules: [['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis']],
+      Images: [['Name', 'Image'],
+        ['Hackers Haven', { image: pics.haven }],
+        ['Lair', { image: pics.lair }],
+        ['Online', '=IMAGE("https://example.com/o.png")'],
+        ['Cat', { image: pics.cat }],
+        ['Unused', ''],
+      ],
+      Map: [MAP_H,
+        ['Vega', 'Haven', '', 'hackers haven ', 'A port.', '', 'on'],
+        ['', 'Haven', 'Level 1', 'Online', 'Docks.', '', ''],
+        ['', 'Haven', 'Level 2', { image: pics.cat }, 'Market.', '', ''],
+        ['Vega', 'Lair', '', 'Lair', 'Hidden.', '', ''],
+        ['Vega', 'Typo', '', 'No such picture', '', '', 'on'],
+      ],
+      Lore: [['Kind', 'Name', 'Value', 'Notes', 'Image'], ['Cybersea', 'Cat', 'Meow.', '', 'Cat']],
+    },
+  });
+  return { gas, api: loadCodeGs(gas), pics };
+}
+
+test('Images tab: a name in a Map or Lore Image cell sends that picture; a picture placed in the cell still works', () => {
+  const { api } = imagesGame();
+  const gmRows = gm(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows;
+  assert.deepEqual(gmRows.map(r => r[3]), ['images:2', 'https://example.com/o.png', 'row:4', 'images:3', '']);
+  assert.deepEqual(crew(api, { op: 'read', tabs: ['Lore'] }).tabs.Lore.imgs, ['images:5']);
+  const r = gm(api, { op: 'read', tabs: '*' });
+  assert.ok(!r.list.some(t => t.name === 'Images'), 'the site never reads the Images tab itself');
+  assert.equal(gm(api, { op: 'patch', tab: 'Images', set: [['x', 'y', '', '']] }).code, 'forbidden');
+});
+
+test('image: an Images row reaches the crew only while something they can see names it', () => {
+  const { api, pics } = imagesGame();
+  const r = crew(api, { op: 'image', tab: 'Images', row: 2 });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(Buffer.from(r.data, 'base64'), pics.haven.bytes);
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 5 }).ok, true, 'named by a Lore row');
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 3 }).code, 'missing', 'only a hidden place names Lair');
+  assert.equal(gm(api, { op: 'image', tab: 'Images', row: 3 }).type, 'image/jpeg', 'the GM sees every picture');
+  assert.equal(gm(api, { op: 'image', tab: 'Images', row: 4 }).code, 'missing', 'a formula is fetched by the browser itself');
+});
+
+test('images: the GM lists the Images tab to pick a picture', () => {
+  const { api } = imagesGame();
+  assert.equal(crew(api, { op: 'images' }).code, 'forbidden');
+  assert.deepEqual(gm(api, { op: 'images' }).images, [
+    ['Hackers Haven', 'images:2'], ['Lair', 'images:3'], ['Online', 'https://example.com/o.png'], ['Cat', 'images:5'],
+  ]);
+});
+
+test('place: the GM adds, edits and removes places, levels and maps; renaming a place moves its levels', () => {
+  const { api, gas } = imagesGame();
+  const map = () => gas.ss.getSheetByName('Map');
+  const rows = () => gm(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows;
+  const was = n => rows()[n - 2];
+  assert.equal(crew(api, { op: 'place', row: 0, cells: ['Vega', 'Dock', '', '', ''] }).code, 'forbidden');
+
+  // A new level goes after its place's last row; a new place at the end, hidden.
+  let r = gm(api, { op: 'place', row: 0, cells: ['', 'Haven', 'Level 3', 'Roof.', ''], image: { name: 'Cat' } });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.rows[3], ['', 'Haven', 'Level 3', 'images:5', 'Roof.', '', '']);
+  r = gm(api, { op: 'place', row: 0, cells: ['Vega', 'Dock', '', '=not a formula', 'GM only.'] });
+  assert.deepEqual(r.rows.at(-1), ['Vega', 'Dock', '', '', '=not a formula', 'GM only.', '']);
+  assert.equal(crew(api, { op: 'read', tabs: ['Map'] }).tabs.Map.rows.some(x => x[1] === 'Dock'), false, 'new places start hidden');
+
+  // Editing keeps what isn't sent (the picture, Shown) and turns down a stale copy.
+  r = gm(api, { op: 'place', row: 2, was: was(2), cells: ['Vega', 'Hacker Haven', '', 'A bigger port.', 'Secret.'] });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.rows.filter(x => x[1] === 'Hacker Haven').map(x => x[2] || x[3]), ['images:2', 'Level 1', 'Level 2', 'Level 3'], 'levels follow the rename');
+  assert.equal(rows()[0][6], 'on');
+  assert.equal(gm(api, { op: 'place', row: 2, was: ['old'], cells: ['Vega', 'X', '', '', ''] }).code, 'conflict');
+  r = gm(api, { op: 'place', row: 2, was: was(2), cells: ['Vega', 'Hacker Haven', '', 'A bigger port.', 'Secret.'], image: '' });
+  assert.equal(r.rows[0][3], '');
+
+  // Removing a place takes its levels; removing a level, just that row.
+  r = gm(api, { op: 'place', row: 4, was: was(4) });
+  assert.deepEqual(r.rows.filter(x => x[1] === 'Hacker Haven').map(x => x[2]), ['', 'Level 1', 'Level 3']);
+  r = gm(api, { op: 'place', row: 2, was: was(2) });
+  assert.equal(r.rows.some(x => x[1] === 'Hacker Haven'), false);
+  assert.equal(map().getLastRow(), 4);
+  assert.equal(gm(api, { op: 'place', row: 0, cells: ['', '', 'Level 1', '', ''] }).ok, false);
+});
+
+test('place: an uploaded picture goes to the Images tab under a free name, and the row names it', () => {
+  const { api, gas } = imagesGame();
+  const bytes = Buffer.from([137, 80, 78, 71, 1, 2, 3]);
+  const r = gm(api, { op: 'place', row: 0, cells: ['Vega', 'Cat Cafe', '', '', ''], image: { name: 'Cat', type: 'image/png', data: bytes.toString('base64') } });
+  assert.equal(r.ok, true, r.error);
+  const images = gas.ss.getSheetByName('Images');
+  assert.equal(images.getRange(7, 1).getDisplayValue(), 'Cat 2');
+  assert.equal(r.rows.at(-1)[3], 'images:7');
+  assert.deepEqual(Buffer.from(gm(api, { op: 'image', tab: 'Images', row: 7 }).data, 'base64'), bytes);
+  assert.equal(gm(api, { op: 'place', row: 0, cells: ['Vega', 'X', '', '', ''], image: { name: 'X', type: 'text/html', data: 'aGk=' } }).ok, false);
+});
+
+test('place: makes the Map and Images tabs when the sheet has neither', () => {
+  const { api } = setup();
+  const r = gm(api, { op: 'place', row: 0, cells: ['Vega', '', '', 'The sea.', ''], image: { name: 'Vega', type: 'image/jpeg', data: 'AQID' } });
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.rows, [['Vega', '', '', 'images:2', 'The sea.', '', '']]);
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 2 }).ok, true, 'a region map always shows');
 });

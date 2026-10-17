@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, invite, signIn } from './harness.mjs';
-import { KEYS, gameTabs } from '../fixtures/game.mjs';
+import { KEYS, IMAGES, gameTabs } from '../fixtures/game.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
@@ -219,10 +219,64 @@ test('lore page: a picture placed in the Lore tab\'s Image cell shows with its e
   assert.ok(await until(() => p.$eval('.card:has-text("Gull Harbor") img', i => i.complete && i.naturalWidth === 32)));
 });
 
-test('map page: with no Map tab, the GM is told to add one', async () => {
+test('map page: with no Map tab, the GM can start one', async () => {
   const g = await h.page();
   await join(g, g2, 'map.html', KEYS.GM_KEY);
-  await g.waitForSelector('main .empty:has-text("Add a Map tab")');
+  await g.waitForSelector('main .empty:has-text("No Map tab yet")');
+  await g.click('[data-new="map"]');
+  await g.fill('[role="dialog"] [data-f="region"]', 'Open Sea');
+  await g.click('[role="dialog"] [data-save]');
+  await g.waitForSelector('.worldmap h2:has-text("Open Sea")');
+  assert.deepEqual((await h.tab(g2, 'Map')).slice(0, 2).map(r => r.slice(0, 7)), [
+    ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'],
+    ['Open Sea', '', '', '', '', '', ''],
+  ]);
+});
+
+test('map page: the GM adds, edits and removes places and levels, with pictures from the Images tab or uploaded', async () => {
+  const g = await h.page();
+  await join(g, g1, 'map.html', KEYS.GM_KEY);
+  await g.waitForSelector('.loc:has-text("Hidden Dock") img');
+  assert.ok(await until(() => g.$eval('.loc:has-text("Hidden Dock") img', i => i.complete && i.naturalWidth === 48)), 'a name in the Image cell shows the Images tab’s picture');
+  const dlg = s => `[role="dialog"] ${s}`;
+
+  // A new place, its picture uploaded.
+  await g.click('[data-new="place"]');
+  await g.fill(dlg('[data-f="region"]'), 'Far Away');
+  await g.fill(dlg('[data-f="name"]'), 'Coral Gate');
+  await g.fill(dlg('[data-f="text"]'), 'A gate of coral.');
+  await g.selectOption(dlg('[data-f="pic"]'), 'upload');
+  await g.setInputFiles(dlg('[data-f="file"]'), { name: 'gate.png', mimeType: 'image/png', buffer: Buffer.from(IMAGES.level1.bytes) });
+  await g.waitForSelector(dlg('[data-preview] img'));
+  await g.click(dlg('[data-save]'));
+  await g.waitForSelector('.loc:has-text("Coral Gate") img[src]');
+  const images = await h.tab(g1, 'Images');
+  assert.deepEqual(images.at(-1).slice(0, 2), ['Coral Gate', ''], 'the upload is a new row of the Images tab');
+  assert.deepEqual(place(await h.tab(g1, 'Map'), 'Coral Gate').slice(0, 7), ['Far Away', 'Coral Gate', '', 'Coral Gate', 'A gate of coral.', '', '']);
+
+  // A level, its picture picked from the Images tab.
+  await g.locator('.loc', { hasText: 'Coral Gate' }).locator('[data-new="level"]').click();
+  await g.fill(dlg('[data-f="name"]'), 'Deck 1');
+  await g.waitForSelector(dlg('option[value="img:Dock picture"]'), { state: 'attached' });
+  await g.selectOption(dlg('[data-f="pic"]'), 'img:Dock picture');
+  await g.click(dlg('[data-save]'));
+  await g.waitForSelector('.loc:has-text("Coral Gate") .levels [data-lv="0"]:has-text("Deck 1")');
+  assert.ok((await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Gate' && r[2] === 'Deck 1' && r[3] === 'Dock picture'));
+
+  // Renamed: its level comes along.
+  await g.locator('.loc', { hasText: 'Coral Gate' }).locator('.shead [data-edit]').first().click();
+  await g.fill(dlg('[data-f="name"]'), 'Coral Arch');
+  await g.click(dlg('[data-save]'));
+  await g.waitForSelector('.loc:has-text("Coral Arch") .levels');
+  assert.ok((await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Arch' && r[2] === 'Deck 1'));
+
+  // Deleted, levels and all; the picture stays in the Images tab.
+  await g.locator('.loc', { hasText: 'Coral Arch' }).locator('.shead [data-edit]').first().click();
+  await g.click(dlg('[data-del]'));
+  await g.click(dlg('[data-del]'));
+  await g.waitForSelector('.loc:has-text("Coral Arch")', { state: 'detached' });
+  assert.ok(!(await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Arch'));
+  assert.equal((await h.tab(g1, 'Images')).at(-1)[0], 'Coral Gate');
 });
 
 test('two games stay separate, and the menu switches between them', async () => {

@@ -37,7 +37,9 @@ form.addEventListener('submit', async e => {
               ? 'The Map page needs it: the Map tab’s places and pictures don’t show.'
               : v < 6
                 ? 'Character sheets need it: the System tab (the game’s stats, tracks and actions) isn’t sent.'
-                : 'The feedback button needs it: feedback can’t reach the Feedback tab.';
+                : v < 7
+                  ? 'The feedback button needs it: feedback can’t reach the Feedback tab.'
+                  : 'The Images tab needs it: names typed in an Image cell show no picture, and the GM can’t edit the map from the site.';
       html += line(false, 'Script version', `This deployment runs an older Code.gs (version ${v}; the latest is ${API_VERSION}). ${missing} Paste the latest <code>apps-script/Code.gs</code> into the Apps Script editor and save, then <b>Deploy → Manage deployments</b>, click the pencil, set <b>Version: New version</b> and click <b>Deploy</b>. Saving alone doesn’t change what’s deployed.`);
     }
   } catch {
