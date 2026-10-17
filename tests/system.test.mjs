@@ -43,8 +43,8 @@ test('the fixture game: stats, tracks and cards a new character starts with', ()
   const of = kind => rows.filter(r => r[0] === kind).map(r => [r[1], r[2]]);
   assert.deepEqual(of('stat'), [['Blood', '-2'], ['Vinegar', '+1'], ['Polish', '+1'], ['Spitfire', '+1']]);
   assert.deepEqual(of('track'), [['Harm', '○○○○○○'], ['Luck', '●○○○○○○○'], ['Vice', '○'], ['Experience', '○○○○○○'], ['Treasure', '●○○○○'], ['Hoard', '●○○○○']]);
-  assert.deepEqual(rows.filter(r => ['sheet', 'notes', 'inventory'].includes(r[0])).map(r => `${r[0]}:${r[1]}`),
-    ['sheet:Vice', 'sheet:Oddity', 'sheet:Bonds', 'sheet:Troubles', 'sheet:Experience', 'notes:Questions', 'notes:Last Words', 'inventory:Treasure']);
+  assert.deepEqual(rows.filter(r => ['sheet', 'notes', 'kit'].includes(r[0])).map(r => `${r[0]}:${r[1]}`),
+    ['sheet:Vice', 'sheet:Oddity', 'sheet:Bonds', 'sheet:Troubles', 'sheet:Experience', 'notes:Questions', 'notes:Last Words', 'kit:Treasure']);
   assert.deepEqual(of('move').map(m => m[0]), ['SUMMON', 'HAGGLE']);
   assert.deepEqual(characterTypes(R0), ['pirate']);
   assert.equal(typeOf(R0, 'Trickster'), 'pirate');
@@ -53,7 +53,9 @@ test('the fixture game: stats, tracks and cards a new character starts with', ()
 test('the fixture game: a new ship', () => {
   const rows = shipRows(R0, { name: 'Gull', playbook: 'Skiff' });
   assert.deepEqual(rows.filter(r => r[0] === 'track').map(r => [r[1], r[2]]), [['Wreck', '○○○'], ['Renown', '○○○○○']]);
-  assert.deepEqual(rows.find(r => r[1] === 'Cargo'), ['sheet', 'Cargo', '', '(6 cargo space)']);
+  assert.deepEqual(rows.find(r => r[1] === 'Cargo'), ['kit', 'Cargo', '', '(6 cargo space)']);
+  assert.deepEqual(rows.find(r => r[1] === 'Kit'), ['kit', 'Kit', '', ''], 'the kit card lists items, not the kit’s text');
+  assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Two oars', 'A lantern']);
   assert.ok(!rows.some(r => r[0] === 'info' && r[1] === 'Player'));
 });
 
@@ -69,7 +71,7 @@ test('another game: its own stats, tracks and sizes, nothing from Rapscallion', 
     ['track', 'spacer', 'Edge', '', 'role=luck size=3 start=Nerve+1', 'crew'],
     ['track', 'spacer', 'Credits', '', 'role=treasure size=10', 'crew'],
     ['track', 'spacer', 'Stash', '', 'role=hoard size=1', 'crew'],
-    ['section', 'spacer', 'Wallet', '(10 credits = 1 stash)', 'role=treasure tab=inventory', 'crew'],
+    ['section', 'spacer', 'Wallet', '(10 credits = 1 stash)', 'role=treasure tab=kit', 'crew'],
     ['section', 'spacer', 'Background', '', 'fill=oddity', 'crew'],
   ]);
   assert.deepEqual(systemOf(R, 'spacer').stats, ['Grit', 'Nerve']);
@@ -77,7 +79,7 @@ test('another game: its own stats, tracks and sizes, nothing from Rapscallion', 
   assert.deepEqual(rows.filter(r => r[0] === 'stat').map(r => r[2]), ['+1', '+2']);
   assert.deepEqual(rows.filter(r => r[0] === 'track').map(r => [r[1], r[2]]),
     [['Stress', '○○○○'], ['Edge', '●●●'], ['Credits', '●●●○○○○○○○'], ['Stash', '○']], 'the playbook’s stress=4 wins over size=9; Edge starts at Nerve+1, capped at 3');
-  assert.deepEqual(rows.find(r => r[1] === 'Wallet'), ['inventory', 'Wallet', '- Starting kit: 3-credits', '(10 credits = 1 stash)']);
+  assert.deepEqual(rows.find(r => r[1] === 'Wallet'), ['kit', 'Wallet', '- Starting kit: 3-credits', '(10 credits = 1 stash)']);
   assert.ok(rows.some(r => r[0] === 'item' && r[1] === 'Blaster'));
   assert.equal(rows.find(r => r[1] === 'Background')[2].split('\n')[0], '**Steady hands** (+1,+2)');
   assert.equal(rollOf(R.playbook('Pilot').moves[0].meta, [{ k: 'Nerve', v: 2 }]).mod, 2);

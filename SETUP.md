@@ -214,9 +214,11 @@ it's edited only in the spreadsheet.
   `luck`, `vice`, `xp`, `treasure`, `hoard`), `size=` (pips: `6`, `Steadfast+3`, `level+6`; a
   playbook's `harm=8` overrides it), `start=` (marks it starts with, e.g. `Spitfire`), `refill=`
   (Session Begins marks it back up to this).
-- `section`: a card new sheets start with. Meta: `role=`, `tab=` (sheet, notes or inventory),
+- `section`: a card new sheets start with. Meta: `role=`, `tab=` (sheet, notes or kit),
   `fill=` (vices, oddity, kit, specials, questions, lastwords: copied from the playbook). Its Text
-  is the card's starting note; `{Fortune+5}` in it is worked out. The bonds section's `size=` is
+  is the card's starting note; `{Fortune+5}` in it is worked out. The `role=kit` and `role=cargo`
+  cards, on the Kit tab, list the sheet's `item` and `cargo` rows (`item | Name | how many | Notes`;
+  leave how many blank for things that aren't counted); a new sheet's kit becomes `item` rows. The bonds section's `size=` is
   the pips per bond and `full=xp:1` what filling one gives.
 - `choice`: an option. Group `chapter-end` (`pick` for the two picks; `gain=xp:1`, `heal=harm:2`,
   `refresh=bonds`), `begin-downtime` (`slots=2`), `npc` (NPC sizes: `size=` harm), `clock` (`size=`).

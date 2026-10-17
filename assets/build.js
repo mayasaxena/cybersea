@@ -1,10 +1,10 @@
 // Starting rows for a new character or ship, built from a playbook and the game's stat, track and
 // section rows in the System tab (see system.js). Text (vice, oddity, kit, questions, last words) is
 // copied from the Rules tab into the new tab so the player can edit their own copy. A
-// character's kit becomes inventory items.
+// kit becomes item rows on the Kit tab.
 
 import { parseStat, formatStat } from './codec.js';
-import { inventoryRows } from './inventory.js';
+import { kitRows } from './kit.js';
 import { systemOf, typeOf, floorOf, trackSize, circles, sum, fillIn, SHIP } from './system.js';
 
 const traitsOf = (rec, n) => {
@@ -33,7 +33,7 @@ function rowsFor(R, sys, pb, { name, player, traitsFrom, odd, kitRec, moves }) {
   rows.push(...stats.map(s => ['stat', s.k, formatStat(s.v), '']));
   const wealthRoles = ['treasure', 'hoard'];
   for (const t of sys.tracks) {
-    if (wealthRoles.includes(t.role)) continue; // the inventory's own (below)
+    if (wealthRoles.includes(t.role)) continue; // the kit's own (below)
     const n = trackSize(t, { pb, ...ctx });
     const start = t.start ? Math.min(n, Math.max(floorOf(R, t.role), sum(t.start, ctx))) : 0;
     rows.push(['track', t.name, circles(n, start), '']);
@@ -41,11 +41,12 @@ function rowsFor(R, sys, pb, { name, player, traitsFrom, odd, kitRec, moves }) {
   const wealth = sys.tracks.some(t => wealthRoles.includes(t.role)) || sys.section('treasure');
   for (const s of sys.sections) {
     if (s.role === 'treasure') continue;
-    const text = filled(s, pb, { odd, kitRec });
-    if (s.fill && !text) continue;
-    rows.push([s.tab === 'notes' || s.tab === 'inventory' ? s.tab : 'sheet', s.title, text, fillIn(s.note, ctx)]);
+    const items = s.role === 'kit'; // its card lists the kit's items (below), not its text
+    const text = items ? '' : filled(s, pb, { odd, kitRec });
+    if (s.fill && !text && !items) continue;
+    rows.push([s.tab === 'notes' || s.tab === 'kit' ? s.tab : 'sheet', s.title, text, fillIn(s.note, ctx)]);
   }
-  if (wealth) rows.push(...inventoryRows(sys, kitRec ? kitRec.text : '')); // the kit becomes items on the Inventory tab
+  if (wealth || sys.section('kit')) rows.push(...kitRows(sys, kitRec ? kitRec.text : '')); // the kit becomes items on the Kit tab
   for (const m of moves) rows.push(['move', m.name, '●', '']);
   return rows;
 }

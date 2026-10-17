@@ -58,7 +58,7 @@ export const signinRow = on => ['signin', 'Signed in', on ? 'yes' : '', ''];
 export function parseSheet(rows) {
   const st = {
     info: {}, stats: [], tracks: {}, bonds: [], sections: [], moves: [], specials: [],
-    advances: {}, log: [], state: {}, items: [], jot: '',
+    advances: {}, log: [], state: {}, items: [], cargo: [], jot: '',
   };
   for (const [kind, name, value = '', notes = ''] of rows) {
     const k = String(kind).trim().toLowerCase();
@@ -69,10 +69,11 @@ export function parseSheet(rows) {
       case 'stat': st.stats.push({ k: n, v: parseStat(value) }); break;
       case 'track': st.tracks[n.toLowerCase()] = { name: n, pips: parseTrack(value) }; break;
       case 'bond': st.bonds.push({ name: n, pips: parseBond(value) }); break;
-      case 'sheet': case 'notes': case 'inventory': st.sections.push({ tab: k, title: n, text: value, note: notes }); break;
+      case 'sheet': case 'notes': case 'kit': st.sections.push({ tab: k, title: n, text: value, note: notes }); break;
       case 'move': st.moves.push({ name: n, marked: parseTrack(value)[0] === 1, text: notes }); break;
       case 'special': st.specials.push({ name: n, marked: parseTrack(value)[0] === 1, text: notes }); break;
       case 'item': st.items.push({ name: n, count: parseCount(value), note: notes }); break;
+      case 'cargo': st.cargo.push({ name: n, count: parseCount(value), note: notes }); break; // like items, in their own list
       case 'jot': st.jot = value; break; // the scratchpad: jot | Notes | whatever was jotted down
       case 'advance': st.advances[n] = parseInt(value, 10) || 0; break;
       case 'log': st.log.push(parseLog(n, value, notes)); break;
@@ -85,7 +86,7 @@ export function parseSheet(rows) {
 }
 
 // Section cards: the kind is the sheet-page tab they show on.
-const SECTION_KINDS = ['sheet', 'notes', 'inventory'];
+const SECTION_KINDS = ['sheet', 'notes', 'kit'];
 const INFO_ORDER = ['Name', 'Playbook', 'Player', 'Level'];
 
 export function serializeSheet(st) {
@@ -102,6 +103,7 @@ export function serializeSheet(st) {
   for (const s of st.sections) rows.push([SECTION_KINDS.includes(s.tab) ? s.tab : 'sheet', s.title, s.text || '', s.note || '']);
   if (st.jot) rows.push(['jot', 'Notes', st.jot, '']);
   for (const it of st.items || []) rows.push(['item', it.name, it.count == null ? '' : String(it.count), it.note || '']);
+  for (const it of st.cargo || []) rows.push(['cargo', it.name, it.count == null ? '' : String(it.count), it.note || '']);
   for (const m of st.moves) rows.push(['move', m.name, m.marked ? '●' : '○', m.text || '']);
   for (const m of st.specials) rows.push(['special', m.name, m.marked ? '●' : '○', m.text || '']);
   for (const [k, n] of Object.entries(st.advances)) rows.push(['advance', k, String(n), '']);

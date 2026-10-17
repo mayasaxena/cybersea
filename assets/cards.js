@@ -3,7 +3,7 @@ import { parseSheet, isSignedIn } from './codec.js';
 import { href } from './games.js';
 import { plain } from './markup.js';
 import { esc, escTxt, fmt, pipClass, skullClass } from './core.js';
-import { wealth, wealthOf } from './inventory.js';
+import { wealth, wealthOf } from './kit.js';
 import { gameRules } from './rules.js';
 import { systemOf, typeOf, sum, SHIP } from './system.js';
 
@@ -76,6 +76,6 @@ export function shipCardHTML(client, { gm = false } = {}) {
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
     ${gm ? roleLine(st, sys, 'oddity') + line('Moves', st.moves.filter(m => m.marked).map(m => m.name).join(', ')) +
       line(escTxt(sys.title('specials')), [...section(st, sys.title('specials')).matchAll(/^\[x\]\s*(.+)$/gim)].map(m => m[1].trim()).join(', ')) +
-      line(escTxt(sys.title('crew')), list('crew')) + line(escTxt(sys.title('cargo')), list('cargo')) : ''}
+      line(escTxt(sys.title('crew')), list('crew')) + line(escTxt(sys.title('cargo')), st.cargo.map(c => c.name).join(', ')) : ''}
   </a>`;
 }

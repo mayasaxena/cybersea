@@ -37,7 +37,7 @@ RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name',
 MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown']
 OVERRIDES = ['override_name', 'override_text', 'override_meta']
 # As SHEET_KINDS in Code.gs and mechanics.py (tests/kinds.test.mjs).
-CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,jot,inventory,item,move,special,advance,log,state,signin'
+CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,jot,kit,item,cargo,move,special,advance,log,state,signin'
 BOLD = Font(bold=True)
 HEAD_FILL = PatternFill('solid', fgColor='E8EEF3')
 

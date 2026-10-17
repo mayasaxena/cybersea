@@ -1035,7 +1035,7 @@ function onSight_(ss, token) {
 const RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'oddity', 'kit', 'lastwords', 'question',
   'pmove', 'smove', 'pnote', 'renown', 'rule', 'special', 'tag', 'trouble', 'table', 'fate', 'world', 'faction'];
 const SYSTEM_KINDS = ['stat', 'track', 'section', 'choice'];
-const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin'];
+const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'kit', 'item', 'cargo', 'move', 'special', 'advance', 'log', 'state', 'signin'];
 const GUARD_NOTE = 'Cybersea: ';
 
 function setUpChecks() {

@@ -1,7 +1,7 @@
 // Changes made outside edit mode (a pip marked, a bond used, treasure spent, a box ticked) gather
 // in a small panel at the bottom of the page. Log writes them to the log as one entry, with an
 // optional note; closing the panel leaves them out of the log. The changes are saved either way.
-// Using an inventory item always logs, from its own dialog (sheet.js).
+// Using a kit item always logs, from its own dialog (sheet.js).
 
 import { escTxt } from './markup.js';
 

@@ -6,15 +6,15 @@ import { GameClient } from './api.js';
 import { parseSheet, serializeSheet, logId, parseCount } from './codec.js';
 import { md, toggleCheck, plain, short } from './markup.js';
 import { gameRules, TABS } from './rules.js';
-import { systemOf, typeOf, rollOf, cap, sum, SHIP as SHIP_TYPE } from './system.js';
+import { systemOf, typeOf, rollOf, cap, sum, fillIn, SHIP as SHIP_TYPE } from './system.js';
 import { esc, escTxt, ICON, pips, pipClass, fmt, armed, doRoll, toast, modal, closeModal, pageShell, refreshNav, readOnlyHTML, whenIdle, keepFocus, debounce, fitText, freeName, noGame } from './core.js';
 import { makeActions } from './actions.js';
 import { shipRows } from './build.js';
-import { wealth, wealthOf, setWealth, addTreasure, inventoryRows, uniqueName } from './inventory.js';
+import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from './kit.js';
 import { makeUsage, useItem, useOf, signed } from './usage.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
-const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['inventory', 'Inventory'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
+const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
 const PAGE = SHIP ? 'ship' : '';
 
 const app = document.getElementById('app');
@@ -32,6 +32,7 @@ const uiKey = gkey(game, `ui:${tabName.toLowerCase()}`);
 // Only the character's signed-in player (or the GM) edits a sheet; anyone signed in edits the ship.
 const canEdit = () => client.canEdit(SHIP ? 'Ship' : tabName);
 const ui = Object.assign({ tab: 'sheet', cat: 'all', open: [] }, ls.get(uiKey, {}));
+if (!SECTION_TABS.some(([k]) => k === ui.tab)) ui.tab = 'sheet';
 const openSet = new Set(ui.open);
 const saveUi = () => { ui.open = [...openSet]; ls.set(uiKey, ui); };
 
@@ -183,7 +184,7 @@ function jotHTML() {
 }
 
 function sectionsHTML(tab) {
-  const cards = (tab === 'notes' ? jotHTML() : '') + st.sections.map((s, i) => (s.tab === tab ? sectionHTML(s, i) : '')).join('') + (tab === 'notes' && !SHIP ? keptNotesHTML() : '');
+  const cards = (tab === 'notes' ? jotHTML() : '') + st.sections.map((s, i) => (s.tab === tab && !isListSec(s) ? sectionHTML(s, i) : '')).join('') + (tab === 'notes' ? keptNotesHTML() : '');
   return `<div class="cols">${cards}</div>` + (editing ? `<button class="add" data-act="add-section" data-tab="${tab}">+</button>` : '');
 }
 
@@ -238,18 +239,26 @@ function movesHTML() {
     </div><div id="mlist">${moveListHTML()}</div>`;
 }
 
-/* ---------- inventory: treasure and hoard pips, notes, and items ---------- */
+/* ---------- kit: treasure and hoard pips, notes, and item lists ---------- */
 const isWealth = name => { const w = W(); return [w.t, w.h].some(n => n && same_(n, name)); };
-const isTnotes = s => s.tab === 'inventory' && !!W().title && same_(s.title, W().title);
+const isTnotes = s => s.tab === 'kit' && !!W().title && same_(s.title, W().title);
 const lw = s => String(s).toLowerCase();
 
-function inventoryHTML() {
+// The Kit tab's lists: the kit's items (item rows) and, where the game has a cargo section, cargo
+// (cargo rows). Each card is its section's (section role=kit, role=cargo), whatever tab that says.
+const LISTS = [['item', 'kit'], ['cargo', 'cargo']];
+const listOf = kind => (kind === 'cargo' ? st.cargo : st.items);
+const lists = () => LISTS.map(([kind, role]) => ({ kind, def: sys().section(role) })).filter(l => l.def || l.kind === 'item');
+const isListSec = s => lists().some(l => l.def && same_(s.title, l.def.title));
+const newId = kind => `new${kind}`;
+
+function kitHTML() {
   const E = editing;
   const can = canEdit();
   const w = W();
-  const others = st.sections.map((s, i) => (s.tab === 'inventory' && !isTnotes(s) ? sectionHTML(s, i) : '')).join('');
-  const more = `<div class="cols">${others}</div>` + (E ? '<button class="add" data-act="add-section" data-tab="inventory">+</button>' : '');
-  if (!st.items.length && !track(w.t) && !track(w.h)) return fillHTML() + more;
+  const others = st.sections.map((s, i) => (s.tab === 'kit' && !isTnotes(s) && !isListSec(s) ? sectionHTML(s, i) : '')).join('');
+  const more = `<div class="cols">${others}</div>` + (E ? '<button class="add" data-act="add-section" data-tab="kit">+</button>' : '');
+  if (!st.items.length && !st.cargo.length && !track(w.t) && !track(w.h)) return fillHTML() + more;
   const ti = st.sections.findIndex(isTnotes);
   const ts = st.sections[ti];
   const row = name => {
@@ -266,78 +275,107 @@ function inventoryHTML() {
     else if (!ts && E && w.title) h += '<button class="add sm" data-act="add-tnotes">+ Notes</button>';
     h += '</section>';
   }
-  h = '<div class="cols">' + h + '<section class="card"><div class="shead"><h2>Items</h2><span class="cnt">' + st.items.length + '</span></div><ul class="items">' +
-    st.items.map((it, j) => (E ? itemEditHTML(it, j) : itemHTML(it, j, can))).join('') +
-    '</ul>' + (E ? '<div class="additem"><input class="in" id="newitem" placeholder="Add an item" aria-label="New item" autocomplete="off"><button class="pbtn" data-act="add-item">Add</button></div>' : '') +
-    '</section></div>';
-  return h + more;
+  return '<div class="cols">' + h + lists().map(l => listHTML(l, E, can)).join('') + '</div>' + more;
+}
+
+// One list's card: its section's title and note (worked out from the stats if the sheet has no
+// such row), the items, and the section's own text as notes.
+function listHTML({ kind, def }, E, can) {
+  const arr = listOf(kind);
+  const si = def ? st.sections.findIndex(s => same_(s.title, def.title)) : -1;
+  const s = st.sections[si];
+  const note = s ? s.note : fillIn(def?.note || '', { stats: st.stats, level: parseInt(st.info.level, 10) || 0 });
+  let h = `<section class="card" data-list="${kind}"><div class="shead"><h2>${escTxt(def?.title || 'Items')}</h2><span class="cnt">${arr.length}</span></div>` +
+    (note ? `<div class="note">${escTxt(note)}</div>` : '') + '<ul class="items">' +
+    arr.map((it, j) => (E ? itemEditHTML(kind, it, j) : itemHTML(kind, it, j, can))).join('') + '</ul>' +
+    (E ? `<div class="additem"><input class="in" id="${newId(kind)}" placeholder="Add an item" aria-label="${esc(`New ${lw(def?.title || 'item')}`)}" autocomplete="off"><button class="pbtn" data-act="add-item" data-kind="${kind}">Add</button></div>` : '');
+  if (s && E) h += `<textarea class="in rtext" data-bind="sec:${si}:text" aria-label="${esc(`${s.title} notes`)}" placeholder="Notes">${escTxt(s.text || '')}</textarea>`;
+  else if (s?.text) h += `<div class="rich" data-sec="${si}">${md(s.text)}</div>`;
+  return h + '</section>';
 }
 
 // Outside edit mode an item can only be used: its count goes down and the use is logged.
-function itemHTML(it, j, can) {
+function itemHTML(kind, it, j, can) {
   const out = it.count === 0;
   return `<li class="item${out ? ' out' : ''}"><div class="ibody"><span class="iname">${escTxt(it.name)}</span>` +
     (it.count != null ? `<span class="cnt">×${it.count}</span>` : '') +
     (it.note ? `<div class="inote">${escTxt(plain(it.note))}</div>` : '') + '</div>' +
-    (can ? `<button class="chip" data-act="use-item" data-j="${j}"${out ? ' disabled title="None left"' : ` title="Use ${esc(it.name)}"`}>Use</button>` : '') + '</li>';
+    (can ? `<button class="chip" data-act="use-item" data-kind="${kind}" data-j="${j}"${out ? ' disabled title="None left"' : ` title="Use ${esc(it.name)}"`}>Use</button>` : '') + '</li>';
 }
 
 // In edit mode: name, count (blank for items that aren't counted), notes, and removing it.
-function itemEditHTML(it, j) {
-  return `<li class="item edit"><div class="irow"><input class="in" data-bind="item:${j}:name" value="${esc(it.name)}" aria-label="Item">` +
-    `<input class="in icount" type="number" min="0" step="1" data-bind="item:${j}:count" value="${it.count ?? ''}" placeholder="—" aria-label="How many ${esc(it.name)}" title="How many (blank if not counted)">` +
-    `<button class="mini del" data-act="rm-item" data-j="${j}" title="Remove" aria-label="Remove ${esc(it.name)}">×</button></div>` +
-    `<textarea class="in rtext inote" data-bind="item:${j}:note" aria-label="Notes on ${esc(it.name)}" placeholder="Notes">${escTxt(it.note || '')}</textarea></li>`;
+function itemEditHTML(kind, it, j) {
+  return `<li class="item edit"><div class="irow"><input class="in" data-bind="${kind}:${j}:name" value="${esc(it.name)}" aria-label="Item">` +
+    `<input class="in icount" type="number" min="0" step="1" data-bind="${kind}:${j}:count" value="${it.count ?? ''}" placeholder="—" aria-label="How many ${esc(it.name)}" title="How many (blank if not counted)">` +
+    `<button class="mini del" data-act="rm-item" data-kind="${kind}" data-j="${j}" title="Remove" aria-label="Remove ${esc(it.name)}">×</button></div>` +
+    `<textarea class="in rtext inote" data-bind="${kind}:${j}:note" aria-label="Notes on ${esc(it.name)}" placeholder="Notes">${escTxt(it.note || '')}</textarea></li>`;
 }
 
 // The Notes tab gathers notes kept elsewhere, each under what it's a note for.
 function keptNotesHTML() {
-  const noted = st.items.map((it, j) => [it, j]).filter(([it]) => editing || it.note);
-  if (!noted.length) return '';
-  return '<section class="card kept"><div class="shead"><h2>Items</h2></div>' + noted.map(([it, j]) => `<div class="kn"><h3>${escTxt(it.name)}</h3>` +
-    (editing ? `<textarea class="in rtext inote" data-bind="item:${j}:note" aria-label="Notes on ${esc(it.name)}" placeholder="Notes">${escTxt(it.note || '')}</textarea>` : `<div class="rich">${md(it.note)}</div>`) +
-    '</div>').join('') + '</section>';
+  return lists().map(({ kind, def }) => {
+    const noted = listOf(kind).map((it, j) => [it, j]).filter(([it]) => editing || it.note);
+    if (!noted.length) return '';
+    return `<section class="card kept"><div class="shead"><h2>${escTxt(def?.title || 'Items')}</h2></div>` + noted.map(([it, j]) => `<div class="kn"><h3>${escTxt(it.name)}</h3>` +
+      (editing ? `<textarea class="in rtext inote" data-bind="${kind}:${j}:note" aria-label="Notes on ${esc(it.name)}" placeholder="Notes">${escTxt(it.note || '')}</textarea>` : `<div class="rich">${md(it.note)}</div>`) +
+      '</div>').join('') + '</section>';
+  }).join('');
 }
 
-// The Use dialog for an item: how many (for counted items) and a note. onUse(n, note).
+// The Use dialog for an item: how many (for counted items) and, for the log, a note. onUse(n, note).
 function openUseItem(item, onUse) {
   const counted = item.count != null;
   const o = modal(`<div class="prow"><h2>${escTxt(item.name)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
     ${item.note ? `<div class="mbody rule">${md(item.note)}</div>` : ''}
     ${counted ? `<label class="field"><span class="lbl">How many (${item.count} left)</span><input class="in" type="number" data-n min="1" max="${esc(item.count)}" value="1"></label>` : ''}
-    <textarea class="in anote" placeholder="Note (optional)" aria-label="Note"></textarea>
+    ${SHIP ? '' : '<textarea class="in anote" placeholder="Note (optional)" aria-label="Note"></textarea>'}
     <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-use>Use</button></div>`, { label: `Use ${item.name}` });
-  (o.querySelector('[data-n]') || o.querySelector('textarea')).focus();
+  (o.querySelector('[data-n]') || o.querySelector('textarea') || o.querySelector('[data-use]')).focus();
   o.addEventListener('click', e => {
     if (!e.target.closest('[data-use]')) return;
     const n = counted ? parseInt(o.querySelector('[data-n]').value, 10) || 1 : 0;
-    const text = o.querySelector('textarea').value.trim();
+    const text = o.querySelector('textarea')?.value.trim() || '';
     closeModal();
     onUse(n, text);
   });
 }
 
-function useItemAt(j) {
-  const it = st.items[j];
+// On a character the use goes in their log, and undoing it takes it out again. The ship has no
+// log, so its undo just gives the count back.
+function useItemAt(kind, j) {
+  const it = listOf(kind)[j];
   if (!it || !canEdit() || editing || it.count === 0) return;
   openUseItem(it, (n, note) => {
-    const cur = st.items.find(x => x.name === it.name);
+    const cur = listOf(kind).find(x => x.name === it.name);
     if (!cur) return;
     const { used: k, left } = useItem(cur, n);
     if (left != null) cur.count = left;
-    const at = Date.now();
-    const id = logId(at);
-    st.log.push({ id, at, title: cur.name, items: [left != null ? `Used ${k}, ${left} left` : 'Used'], note });
+    let undo;
+    if (SHIP) {
+      undo = () => {
+        const c = canEdit() && listOf(kind).find(x => x.name === cur.name);
+        if (!c) return;
+        if (c.count != null) c.count += k;
+        changed();
+        render();
+      };
+    } else {
+      const at = Date.now();
+      const id = logId(at);
+      st.log.push({ id, at, title: cur.name, items: [left != null ? `Used ${k}, ${left} left` : 'Used'], note });
+      undo = () => undoUse(id);
+    }
     changed();
     render();
-    toast(left != null ? `Used ${k} ${cur.name} (${left} left)` : `Used ${cur.name}`, '', { label: 'Undo', run: () => undoUse(id) });
+    toast(left != null ? `Used ${k} ${cur.name} (${left} left)` : `Used ${cur.name}`, '', { label: 'Undo', run: undo });
   });
 }
 
 // Undoing a use gives back what it took and removes its log entry.
+const allItems = () => [...st.items, ...st.cargo];
 function undoUse(id) {
   const i = st.log.findIndex(e => e.id === id);
-  const u = i >= 0 && canEdit() && useOf(st.log[i], st.items);
+  const u = i >= 0 && canEdit() && useOf(st.log[i], allItems());
   if (!u) return;
   if (u.n) u.item.count += u.n;
   st.log.splice(i, 1);
@@ -345,36 +383,38 @@ function undoUse(id) {
   render();
   toast(u.n ? `Gave back ${u.n} ${u.item.name} (${u.item.count} left)` : `Undid using ${u.item.name}`);
 }
-const undoHTML = (e, i) => (!editing && canEdit() && useOf(e, st.items) ? `<button class="chip" data-act="undo-use" data-i="${i}" title="Undo this use">Undo</button>` : '');
+const undoHTML = (e, i) => (!editing && canEdit() && useOf(e, allItems()) ? `<button class="chip" data-act="undo-use" data-i="${i}" title="Undo this use">Undo</button>` : '');
 
-// A sheet with no inventory yet: offer to start one from a kit.
+// A sheet with no kit yet: offer to start one from one of its playbook's kits.
 function fillHTML() {
-  if (!canEdit()) return '<div class="empty">No inventory yet.</div>';
+  if (!canEdit()) return '<div class="empty">No kit yet.</div>';
   const kits = (playbook()?.kits || []).filter(k => !k.meta.extra);
-  if (!kits.length) return '<section class="card setup"><h2>Inventory</h2><div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv" data-src="">Start an empty inventory</button></div></section>';
+  if (!kits.length) return '<section class="card setup"><h2>Kit</h2><div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-kit" data-src="">Start an empty kit</button></div></section>';
   const opt = (v, label) => `<option value="${esc(v)}"${v === kits[0].name ? ' selected' : ''}>${escTxt(label)}</option>`;
-  return `<section class="card setup"><h2>Start the inventory</h2>
-    <div class="status">Each item in the kit becomes its own line, and its ${escTxt(lw(W().t || 'treasure'))} goes on the pips.</div>
+  const t = W().t;
+  return `<section class="card setup"><h2>Start the kit</h2>
+    <div class="status">Each item in the kit becomes its own line${t ? `, and its ${escTxt(lw(t))} goes on the pips` : ''}.</div>
     <label class="field"><span class="lbl">From</span><select class="in" id="kitpick">${kits.map(k => opt(k.name, `${k.name}: ${short(k.text)}`)).join('')}</select></label>
-    <div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-inv">Fill the inventory</button></div></section>`;
+    <div class="prow"><span class="grow"></span><button class="pbtn primary" data-act="fill-kit">Fill the kit</button></div></section>`;
 }
 
-function fillInventory(src) {
+function fillKit(src) {
   const kit = playbook()?.kits.find(k => k.name === src)?.text;
-  const inv = parseSheet(inventoryRows(sys(), kit || ''));
+  const inv = parseSheet(kitRows(sys(), kit || ''));
   Object.assign(st.tracks, inv.tracks);
   if (!st.sections.some(isTnotes)) st.sections.push(...inv.sections);
   st.items = inv.items;
 }
 
-function addItem() {
-  const el = document.getElementById('newitem');
+function addItem(kind) {
+  const el = document.getElementById(newId(kind));
   const v = el?.value.trim();
   if (!v || !canEdit() || !editing) return;
-  st.items.push({ name: uniqueName(v, st.items.map(i => i.name)), count: null, note: '' });
+  const arr = listOf(kind);
+  arr.push({ name: uniqueName(v, arr.map(i => i.name)), count: null, note: '' });
   changed();
   render();
-  document.getElementById('newitem')?.focus();
+  document.getElementById(newId(kind))?.focus();
 }
 
 /* ---------- a new game has no Ship tab yet: set one up from a ship playbook ---------- */
@@ -427,7 +467,7 @@ function render() {
   else if (!store.loaded) main = '<div class="empty">Loading…</div>';
   else if (ui.tab === 'moves') main = movesHTML();
   else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing, ro, undoHTML);
-  else if (ui.tab === 'inventory' && !SHIP) main = inventoryHTML();
+  else if (ui.tab === 'kit') main = kitHTML();
   else main = sectionsHTML(ui.tab);
   const hdr = store.loaded && !store.missing ? headerHTML() : '';
   let body = document.getElementById('sheet');
@@ -569,15 +609,15 @@ app.addEventListener('click', e => {
       else if (r.hoard < before.hoard) toast(`Broke 1-${lw(w.h)} into ${w.per}-${lw(w.t)}.`);
       changed(); render(); break;
     }
-    case 'add-item': addItem(); break;
-    case 'use-item': useItemAt(+b.dataset.j); break;
+    case 'add-item': addItem(b.dataset.kind); break;
+    case 'use-item': useItemAt(b.dataset.kind, +b.dataset.j); break;
     case 'undo-use': if (st.log[i]) undoUse(st.log[i].id); break;
-    case 'rm-item': if (canEdit() && editing && armed(b)) { st.items.splice(+b.dataset.j, 1); changed(); render(); } break;
-    case 'add-tnotes': if (W().title) { st.sections.push({ tab: 'inventory', title: W().title, text: '', note: W().note }); changed(); render(); } break;
-    case 'fill-inv': {
+    case 'rm-item': if (canEdit() && editing && armed(b)) { listOf(b.dataset.kind).splice(+b.dataset.j, 1); changed(); render(); } break;
+    case 'add-tnotes': if (W().title) { st.sections.push({ tab: 'kit', title: W().title, text: '', note: W().note }); changed(); render(); } break;
+    case 'fill-kit': {
       if (!canEdit()) break;
       const src = b.dataset.src ?? document.getElementById('kitpick')?.value ?? '';
-      fillInventory(src); changed(); render(); break;
+      fillKit(src); changed(); render(); break;
     }
   }
 });
@@ -606,14 +646,15 @@ function bind(el, final) {
       s.title = nt;
     } else s[b] = v;
   } else if (what === 'bond') { if (!final || !v.trim()) return; st.bonds[+a].name = v.trim(); }
-  else if (what === 'item') {
-    const it = st.items[+a];
+  else if (what === 'item' || what === 'cargo') {
+    const arr = listOf(what);
+    const it = arr[+a];
     if (!it) return;
     if (b === 'note') it.note = v;
     else if (b === 'count') it.count = parseCount(v);
     else {
       if (!final || !v.trim() || v.trim() === it.name) return;
-      it.name = uniqueName(v.trim(), st.items.filter(x => x !== it).map(x => x.name));
+      it.name = uniqueName(v.trim(), arr.filter(x => x !== it).map(x => x.name));
     }
   } else if (what === 'move') {
     const m = charMove(a) || (() => { const lm = moveList().find(x => x.name === a); const n = { name: a, marked: !!lm?.marked, text: lm?.text || '' }; st.moves.push(n); return n; })();
@@ -647,7 +688,8 @@ app.addEventListener('toggle', e => {
 }, true);
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.id === 'newitem') { e.preventDefault(); addItem(); return; }
+  const nk = LISTS.find(([kind]) => e.target.id === newId(kind));
+  if (e.key === 'Enter' && nk) { e.preventDefault(); addItem(nk[0]); return; }
   if (e.key === '/' && !e.target.closest('input,textarea,select') && !document.getElementById('overlay')) {
     e.preventDefault();
     if (ui.tab !== 'moves') { ui.tab = 'moves'; saveUi(); render(); }

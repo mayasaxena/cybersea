@@ -1,4 +1,4 @@
-// A character's inventory: treasure and hoard as pip tracks, plus a list of items.
+// A sheet's kit: treasure and hoard as pip tracks, plus a list of items (and, on the ship, cargo).
 // Treasure carries over into hoard as it fills (a full treasure track is 1-hoard), and borrows back from
 // it when spent. Starting items come from a kit's text, split into one row per item.
 
@@ -47,33 +47,38 @@ export function addTreasure(st, w, n) {
   return setWealth(st, w, total % w.per, Math.floor(total / w.per));
 }
 
-// Split a kit's text into items and its treasure. Takes either a comma-separated line
-// ("Dagger (rusty), cloak, 1-treasure") or a "- item" list; sub-bullets join their item in
-// parentheses. Commas inside parentheses don't split. "N-<treasure>" and "N-<hoard> (of
+// Split a kit's text into items and its treasure. Takes a comma-separated line ("Dagger (rusty),
+// cloak, 1-treasure"), a "- item" list, or both (a line of items, then a list); sub-bullets join their
+// item in parentheses. Commas inside parentheses don't split. "N-<treasure>" and "N-<hoard> (of
 // <treasure>)", in the game's words for them, become treasure, with anything after them kept as a note.
 const reEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-export function splitKit(text, w = { t: '', h: '' }) {
-  const src = String(text || '').trim();
-  let parts;
-  if (/^\s*- /m.test(src)) {
-    parts = [];
-    for (const line of src.split('\n')) {
-      const m = line.match(/^(\s*)- (.*)$/);
-      if (!m) continue;
-      if (m[1].length && parts.length) parts[parts.length - 1] += ` (${m[2].trim()})`;
-      else parts.push(m[2]);
-    }
-  } else {
-    parts = [];
-    let depth = 0;
-    let cur = '';
-    for (const ch of src.replace(/\s*\n\s*/g, ' ')) {
-      if (ch === '(') depth++;
-      if (ch === ')') depth = Math.max(0, depth - 1);
-      if (ch === ',' && !depth) { parts.push(cur); cur = ''; } else cur += ch;
-    }
-    parts.push(cur);
+function splitCommas(text) {
+  const parts = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of text) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && !depth) { parts.push(cur); cur = ''; } else cur += ch;
   }
+  return [...parts, cur];
+}
+export function splitKit(text, w = { t: '', h: '' }) {
+  const parts = [];
+  let prose = []; // lines of a comma-separated run, joined once it ends
+  let bullet = false; // whether the last part came from a bullet (sub-bullets join it)
+  const flush = () => { if (prose.length) parts.push(...splitCommas(prose.join(' '))); prose = []; };
+  for (const line of String(text || '').trim().split('\n')) {
+    const m = line.match(/^(\s*)- (.*)$/);
+    if (!m) {
+      if (line.trim()) { prose.push(line.trim()); bullet = false; } else flush();
+      continue;
+    }
+    flush();
+    if (m[1].length && bullet) parts[parts.length - 1] += ` (${m[2].trim()})`;
+    else { parts.push(m[2]); bullet = true; }
+  }
+  flush();
   const names = [w.t, w.h].filter(Boolean).map(reEsc).join('|');
   const out = { items: [], treasure: 0, hoard: 0, notes: [] };
   for (let p of parts) {
@@ -99,9 +104,9 @@ export function uniqueName(name, taken) {
   return n;
 }
 
-// Rows for a new inventory from a kit's text: treasure and hoard tracks, their notes card
+// Rows for a new kit from a kit's text: treasure and hoard tracks, their notes card
 // (section role=treasure), and one item row per item.
-export function inventoryRows(sys, kitText) {
+export function kitRows(sys, kitText) {
   const w = wealthOf(sys);
   const k = splitKit(kitText, w);
   const st = { tracks: {} };
@@ -110,7 +115,7 @@ export function inventoryRows(sys, kitText) {
     setWealth(st, w, k.treasure, k.hoard);
     rows.push(['track', w.t, formatTrack(st.tracks[tk(w.t)].pips), ''], ['track', w.h, formatTrack(st.tracks[tk(w.h)].pips), '']);
   }
-  if (w.title) rows.push(['inventory', w.title, k.notes.length ? `- Starting kit: ${k.notes.join(', ')}` : '', w.note]);
+  if (w.title) rows.push(['kit', w.title, k.notes.length ? `- Starting kit: ${k.notes.join(', ')}` : '', w.note]);
   const names = [];
   for (const it of k.items) names.push(uniqueName(it, names));
   return [...rows, ...names.map(n => ['item', n, '', ''])];
