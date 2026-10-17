@@ -149,11 +149,16 @@ function forbidden_() {
 
 /* ---------- tabs ---------- */
 
+// Tabs named one of these are that kind; any other tab (but README and _hidden ones) is a character.
+const TAB_KINDS = ['rules', 'system', 'gm', 'lore', 'ship', 'map', 'feedback', 'images'];
+// Kinds edited in Sheets only: the site never writes them (tools/xlsx keeps the same lists).
+const SHEETS_ONLY = ['rules', 'system', 'map', 'feedback', 'images'];
+const sheetsOnly_ = kind => SHEETS_ONLY.indexOf(kind) >= 0;
+
 function tabKind_(name) {
   const n = String(name).trim().toLowerCase();
   if (!n || n.charAt(0) === '_' || n === 'readme') return null;
-  if (n === 'rules' || n === 'system' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map' || n === 'feedback' || n === 'images') return n;
-  return 'character';
+  return TAB_KINDS.indexOf(n) >= 0 ? n : 'character';
 }
 
 // Feedback is read in Sheets only, so the site never shows it, even to the GM. Nor Images: its
@@ -163,7 +168,7 @@ function canRead_(role, kind) {
 }
 
 function canWrite_(role, kind) {
-  return !!kind && kind !== 'rules' && kind !== 'system' && kind !== 'map' && kind !== 'feedback' && kind !== 'images' && (kind !== 'gm' || role === 'gm');
+  return !!kind && !sheetsOnly_(kind) && (kind !== 'gm' || role === 'gm');
 }
 
 function findSheet_(ss, name) {
@@ -379,7 +384,7 @@ function onEdit(e) {
   touched_(sh.getName());
   if (range.getColumn() > HEADER.length) return;
   const kind = tabKind_(sh.getName());
-  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images') return;
+  if (!kind || sheetsOnly_(kind)) return;
   const top = Math.max(range.getRow(), 2);
   const n = range.getLastRow() - top + 1;
   if (n < 1) return;
@@ -497,7 +502,7 @@ function patch_(role, req) {
   const sh = findSheet_(ss, req.tab);
   if (!sh) return { ok: false, code: 'missing', error: 'No tab called "' + req.tab + '".' };
   const kind = tabKind_(sh.getName());
-  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
+  if (!canWrite_(role, kind)) return sheetsOnly_(kind) ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
 
   const sets = (req.set || []).map(r => ({ cells: cells_(r, 4), w: when_(r[4]) }));
   const vc = verCol_(sh);
@@ -648,7 +653,7 @@ function create_(role, req) {
     return { ok: false, code: 'name', error: 'Pick a different name: up to ' + MAX_TAB_NAME + ' characters, without [ ] * ? / \\ :' };
   }
   const kind = tabKind_(name);
-  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || kind === 'images' || (kind === 'gm' && role !== 'gm')) {
+  if (!kind || sheetsOnly_(kind) || (kind === 'gm' && role !== 'gm')) {
     return { ok: false, code: 'name', error: '"' + name + '" is a reserved name.' };
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
