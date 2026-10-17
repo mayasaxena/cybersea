@@ -81,9 +81,10 @@ button.portrait.none:hover{color:var(--text);border-color:var(--cyan)}
 .pip.on{background:var(--c);box-shadow:0 0 var(--glow) color-mix(in srgb,var(--c) 60%,transparent)}
 .harm .pip{--c:var(--purple)}
 .luck .pip{--c:var(--green)}
-/* marked treasure pips are pixel-art gold coins with a skull (icons/treasure-coin.svg, one rect per pixel) */
+/* marked treasure pips are pixel-art gold coins with a skull (icons/treasure-coin.svg, 24x24, one rect per pixel; drawn 24px
+   so each of its pixels is one screen pixel, like the skull pips) */
 .treasure .pip{--c:var(--gold)}
-.treasure .pip.on{border-color:transparent;border-radius:0;background:url("icons/treasure-coin.svg") center/100% no-repeat border-box;image-rendering:pixelated;box-shadow:none;filter:drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
+.treasure .pip.on{width:24px;height:24px;margin:-2px 0;border:0;border-radius:0;background:url("icons/treasure-coin.svg") center/100% no-repeat border-box;image-rendering:pixelated;box-shadow:none;filter:drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
 .treasure .pip.on:hover{box-shadow:none;filter:brightness(1.12) drop-shadow(0 0 calc(var(--glow) / 2) color-mix(in srgb,var(--c) 60%,transparent))}
 .pip.nb{border-style:dotted;opacity:.45;cursor:default}
 .pip.nb:hover{box-shadow:none}
