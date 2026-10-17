@@ -408,7 +408,7 @@ a.pbtn{display:inline-block;text-decoration:none}
 .mapimg img,.rimg img{display:block;width:100%;height:auto}
 .mapimg img{max-height:85vh;object-fit:contain}
 /* a spreadsheet image while the script sends it, or the reason it couldn't */
-.mapimg img[data-row]:not([src]),.rimg img[data-row]:not([src]){min-height:120px}
+.mapimg img[data-row]:not([src]),.rimg img[data-row]:not([src]){min-height:120px;visibility:hidden} /* loading: a blank box, not alt text */
 .mapimg .imgfail,.rimg .imgfail{display:block;padding:12px;color:#ccc;font-size:.9em}
 .levels{margin-top:10px}
 .levels .cats{margin:0}

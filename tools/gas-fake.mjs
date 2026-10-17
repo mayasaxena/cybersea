@@ -320,7 +320,7 @@ export function createGas({ name = 'Test Game', tabs = {}, props = {}, now = () 
       Utilities: {
         DigestAlgorithm: { MD5: 'md5' },
         Charset: { UTF_8: 'utf8' },
-        computeDigest: (alg, str) => [...createHash(alg).update(String(str), 'utf8').digest()].map(b => (b > 127 ? b - 256 : b)),
+        computeDigest: (alg, v) => [...createHash(alg).update(Array.isArray(v) ? Buffer.from(v.map(b => b & 255)) : Buffer.from(String(v), 'utf8')).digest()].map(b => (b > 127 ? b - 256 : b)),
         base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
         base64Decode: str => [...Buffer.from(String(str), 'base64')].map(b => (b > 127 ? b - 256 : b)),
         newBlob: (bytes, type, name) => blob(bytes, type, name),
