@@ -857,3 +857,17 @@ test('one read looks up the Images tab once, for the Map and Lore tabs both', ()
   api.ctx.namedImages_();
   assert.equal(once, reads, 'the same reads as one lookup');
 });
+
+test('a patch answers with the tab exactly as the next read sends it', () => {
+  const { api } = setup();
+  const steps = [
+    { set: [['track', 'Harm', '●●○✕✕✕', ''], ['info', 'Playbook', 'Mountebank', ''], ['bond', 'Ship', '●●·', '']] },
+    { ren: [['bond', 'Ship', 'The Gull']], set: [['note', '=2+2', "'tis", '007']] },
+    { del: [['info', 'Playbook'], ['custom', 'Hand-added']], set: [['info', 'Level', '1', '']] },
+  ];
+  for (const step of steps) {
+    const r = crew(api, { op: 'patch', tab: 'Nexa', ...step });
+    const t = crew(api, { op: 'read', tabs: ['Nexa'] }).tabs.Nexa;
+    assert.deepEqual({ d: r.d, rows: r.rows, vers: r.vers }, { d: t.d, rows: t.rows, vers: t.vers });
+  }
+});
