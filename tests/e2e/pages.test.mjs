@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, invite, signIn } from './harness.mjs';
 import { KEYS, IMAGES, gameTabs } from '../fixtures/game.mjs';
+import { png } from '../fixtures/png.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const row = (rows, kind, name) => rows.find(r => r[0] === kind && r[1] === name);
@@ -302,6 +303,18 @@ test('map page: the GM adds, edits and removes places and levels, with pictures 
   await g.waitForSelector('.loc:has-text("Coral Arch")', { state: 'detached' });
   assert.ok(!(await h.tab(g1, 'Map')).some(r => r[1] === 'Coral Arch'));
   assert.equal((await h.tab(g1, 'Images')).at(-1)[0], 'Coral Gate');
+});
+
+test('map page: a big uploaded picture is scaled down before it goes to the sheet', async () => {
+  const g = await h.page();
+  await join(g, g1, 'map.html', KEYS.GM_KEY);
+  await g.waitForSelector('[data-new="place"]');
+  await g.click('[data-new="place"]');
+  await g.selectOption('[role="dialog"] [data-f="pic"]', 'upload');
+  await g.setInputFiles('[role="dialog"] [data-f="file"]', { name: 'wide.png', mimeType: 'image/png', buffer: Buffer.from(png(3000, 300, [10, 20, 30])) });
+  await g.waitForSelector('[role="dialog"] [data-preview] img');
+  assert.ok(await until(() => g.$eval('[role="dialog"] [data-preview] img', i => i.complete && i.naturalWidth === 2048)));
+  await g.keyboard.press('Escape');
 });
 
 test('two games stay separate, and the menu switches between them', async () => {
