@@ -27,7 +27,6 @@ export const staticPips = (arr, bond = false, skulls = 0) => arr.map((v, j) => `
 // The GM's at-a-glance lines: the name a section starts with in bold, and a list's first-level lines.
 const section = (st, title) => (title ? st.sections.find(x => x.title.toLowerCase() === title.toLowerCase())?.text || '' : '');
 const boldName = t => (String(t).match(/^\*\*(.+?)\*\*/)?.[1] || '').replace(/[.:]$/, '').trim();
-const listNames = t => String(t).split('\n').filter(l => /^- /.test(l)).map(l => plain(l.slice(2)).split(/[,.]/)[0].trim()).filter(Boolean);
 const line = (label, text) => (text ? `<div class="cc-row"><span class="lbl">${label}</span> <span class="cc-text">${escTxt(text)}</span></div>` : '');
 
 const roleLine = (st, sys, role) => line(escTxt(sys.title(role)), boldName(section(st, sys.title(role))));
@@ -68,7 +67,6 @@ export function shipCardHTML(client, { gm = false } = {}) {
   if (s.missing) return `<a class="card crewcard" href="${esc(href('ship.html', client.game))}"><h2>Ship</h2><div class="note">Not set up yet.</div></a>`;
   const st = parseSheet(s.rows);
   const sys = systemOf(rulesOf(client), SHIP);
-  const list = role => listNames(section(st, sys.title(role))).join(', ');
   return `<a class="card crewcard" href="${esc(href('ship.html', client.game))}">
     <div class="shead"><h2>${escTxt(st.info.name || 'Ship')}</h2></div>
     <div class="note">${escTxt(st.info.playbook || '')}</div>
@@ -76,6 +74,6 @@ export function shipCardHTML(client, { gm = false } = {}) {
     <div class="cc-row cc-stats">${st.stats.map(x => `<span><span class="lbl">${escTxt(x.k)}</span> ${fmt(x.v)}</span>`).join('')}</div>
     ${gm ? roleLine(st, sys, 'oddity') + line('Moves', st.moves.filter(m => m.marked).map(m => m.name).join(', ')) +
       line(escTxt(sys.title('specials')), [...section(st, sys.title('specials')).matchAll(/^\[x\]\s*(.+)$/gim)].map(m => m[1].trim()).join(', ')) +
-      line(escTxt(sys.title('crew')), list('crew')) + line(escTxt(sys.title('cargo')), st.cargo.map(c => c.name).join(', ')) : ''}
+      line(escTxt(sys.title('crew')), st.crew.map(c => c.name).join(', ')) + line(escTxt(sys.title('cargo')), st.cargo.map(c => c.name).join(', ')) : ''}
   </a>`;
 }

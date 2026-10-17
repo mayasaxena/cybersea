@@ -13,14 +13,19 @@ import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from './kit.js';
 import { makeUsage, useItem, useOf, signed } from './usage.js';
 import { pictureHTML, showPictures, shrink } from './pictures.js';
+import { people, whoIs, bondTarget, crewSystem, newCrew } from './crew.js';
+import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
+import { staticPips } from './cards.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
-const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
+// The ship's crew tab is there when the game has a crew section (named as the System tab has it).
+const SECTION_TABS = SHIP ? [['sheet', 'Ship'], ['crew', ''], ['moves', 'Moves'], ['notes', 'Notes']] : [['sheet', 'Sheet'], ['kit', 'Kit'], ['moves', 'Moves'], ['notes', 'Notes'], ['log', 'Log']];
 const PAGE = SHIP ? 'ship' : '';
+const params = new URLSearchParams(location.search);
 
 const app = document.getElementById('app');
 const game = bootstrap();
-const tabName = document.body.dataset.tab || new URLSearchParams(location.search).get('c') || '';
+const tabName = document.body.dataset.tab || params.get('c') || '';
 
 if (!game || !tabName) {
   noGame(app, '', { ...(game ? { msg: 'No character picked.' } : {}), to: href('index.html', game), label: 'Go to the crew page' });
@@ -34,6 +39,9 @@ const uiKey = gkey(game, `ui:${tabName.toLowerCase()}`);
 const canEdit = () => client.canEdit(SHIP ? 'Ship' : tabName);
 const ui = Object.assign({ tab: 'sheet', cat: 'all', open: [] }, ls.get(uiKey, {}));
 if (!SECTION_TABS.some(([k]) => k === ui.tab)) ui.tab = 'sheet';
+// ship.html?crew=<name> (a bond's link) opens that crew member's sheet
+let showCrew = SHIP ? params.get('crew') || '' : '';
+if (showCrew) ui.tab = 'crew';
 const openSet = new Set(ui.open);
 const saveUi = () => { ui.open = [...openSet]; ls.set(uiKey, ui); };
 
@@ -113,6 +121,9 @@ function moveList() {
 }
 
 const catLabel = c => (c === 'playbook' ? st.info.playbook || 'Playbook' : cap(c));
+const CS = () => (SHIP ? crewSystem(R, sys()) : null);
+const sectionTabs = () => SECTION_TABS.map(([k, l]) => (k === 'crew' ? [k, CS()?.def.title || ''] : [k, l])).filter(([, l]) => l);
+const tabNow = () => (sectionTabs().some(([k]) => k === ui.tab) ? ui.tab : 'sheet');
 
 /* ---------- rendering ---------- */
 function headerHTML() {
@@ -138,26 +149,33 @@ function headerHTML() {
     </div>
     <div class="vitals">${vitals.map(([d, t]) => trackHTML(t.name, t, d.role, skullsOf(d))).join('')}</div>
     <div class="stats">${stats}</div>
-    <nav class="tabs">${SECTION_TABS.map(([k, l]) => `<button data-act="tab" data-tab="${k}" aria-pressed="${ui.tab === k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="tabs">${sectionTabs().map(([k, l]) => `<button data-act="tab" data-tab="${k}" aria-pressed="${tabNow() === k}" class="${tabNow() === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</nav>
   </header>`;
 }
 
-// The character's picture (the ship's, on the ship page): their info|Name row's Image. In edit
-// mode it can be uploaded, changed or taken off (op "picture"; the picture goes to the Images tab).
-let uploading = false;
-function portraitHTML() {
-  const pic = store.imageOf('info', 'Name');
-  const label = st.info.name || tabName;
-  if (!editing) return pic ? pictureHTML(store.name, pic, label, 'portrait') : '';
-  if (uploading) return '<div class="portrait none" aria-busy="true"><span class="sub">Uploading…</span></div>';
+// The character's picture (the ship's, on the ship page): their info|Name row's Image; a crew
+// member's is their crew row's. In edit mode it can be uploaded, changed or taken off (op
+// "picture"; the picture goes to the Images tab).
+let uploading = ''; // the row whose picture is on its way, as "kind|name"
+const INFO_ROW = ['info', 'Name'];
+function portraitHTML(row = INFO_ROW, label = st.info.name || tabName, cls = 'portrait') {
+  const pic = store.imageOf(...row);
+  const r = esc(row.join('|'));
+  if (!editing) return pic ? pictureHTML(store.name, pic, label, cls) : '';
+  if (uploading === row.join('|')) return `<div class="${cls} none" aria-busy="true"><span class="sub">Uploading…</span></div>`;
   return pic
-    ? `<div class="pwrap">${pictureHTML(store.name, pic, label, 'portrait')}<div class="ptools">` +
-      '<button class="mini" data-act="pic-add" title="Change the picture" aria-label="Change the picture">' + ICON.pen + '</button>' +
-      '<button class="mini del" data-act="pic-rm" title="Take the picture off" aria-label="Take the picture off">×</button></div></div>'
-    : '<button class="portrait none" data-act="pic-add" title="Add a picture"><span aria-hidden="true">+</span><span class="sub">Picture</span></button>';
+    ? `<div class="pwrap">${pictureHTML(store.name, pic, label, cls)}<div class="ptools">` +
+      `<button class="mini" data-act="pic-add" data-row="${r}" title="Change the picture" aria-label="Change the picture">${ICON.pen}</button>` +
+      `<button class="mini del" data-act="pic-rm" data-row="${r}" title="Take the picture off" aria-label="Take the picture off">×</button></div></div>`
+    : `<button class="${cls} none" data-act="pic-add" data-row="${r}" title="Add a picture"><span aria-hidden="true">+</span><span class="sub">Picture</span></button>`;
 }
+const rowOfAttr = v => {
+  const i = String(v || '').indexOf('|');
+  const row = i < 0 ? INFO_ROW : [v.slice(0, i), v.slice(i + 1)];
+  return row.join('|').toLowerCase() === INFO_ROW.join('|').toLowerCase() ? INFO_ROW : row;
+};
 
-function pickPicture() {
+function pickPicture(row) {
   const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp' });
   input.addEventListener('change', async () => {
     const file = input.files[0];
@@ -167,22 +185,22 @@ function pickPicture() {
       up = await shrink(file, PORTRAIT_SIDE);
     } catch (err) { toast(err.message, 'lo'); return; }
     URL.revokeObjectURL(up.url);
-    sendPicture({ name: st.info.name || tabName, type: up.type, data: up.data });
+    sendPicture({ name: row === INFO_ROW ? st.info.name || tabName : row[1], type: up.type, data: up.data }, row);
   });
   input.click();
 }
 
-async function sendPicture(image) {
-  uploading = true;
+async function sendPicture(image, row = INFO_ROW) {
+  uploading = row.join('|');
   render();
   try {
-    const r = await client.request({ op: 'picture', tab: store.name, image }, { timeout: 90000 });
+    const r = await client.request({ op: 'picture', tab: store.name, image, ...(row === INFO_ROW ? {} : { row }) }, { timeout: 90000 });
     store.receive(r, r.at);
     toast(image ? 'Picture saved to the sheet.' : 'Picture taken off.');
   } catch (err) {
     toast(err.message, 'lo');
   } finally {
-    uploading = false;
+    uploading = '';
     render();
   }
 }
@@ -212,15 +230,29 @@ function sectionHTML(s, i) {
   if (E) h += `<input class="in note" data-bind="sec:${i}:note" value="${esc(s.note || '')}" aria-label="Note">`;
   else if (s.note) h += `<div class="note">${escTxt(s.note)}</div>`;
   if (isBonds) {
-    h += '<div class="bonds">' + st.bonds.map((b, j) => '<div class="bond">' +
-      (E ? `<input class="in" data-bind="bond:${j}:name" value="${esc(b.name)}" aria-label="Name">` : `<span class="bn">${escTxt(b.name)}</span>`) +
-      `<span class="pips">${pips(`b:${j}`, b.pips, b.name, true)}</span>` +
-      (E ? `<button class="mini del" data-act="rm-bond" data-j="${j}" aria-label="Delete">×</button>` : '') + '</div>').join('') + '</div>';
+    const all = people(client).filter(p => p.key !== `c:${tabName.toLowerCase()}`);
+    h += '<div class="bonds">' + st.bonds.map((b, j) => {
+      const to = bondTarget(b, all);
+      return `<div class="bond${E ? ' edit' : ''}">` +
+        (E ? `<input class="in" data-bind="bond:${j}:name" value="${esc(b.name)}" aria-label="Name">` + bondToHTML(b, j, all, to)
+          : to ? `<a class="bn" href="${esc(to.href)}" title="${esc(to.label)}">${escTxt(b.name)}</a>` : `<span class="bn">${escTxt(b.name)}</span>`) +
+        `<span class="pips">${pips(`b:${j}`, b.pips, b.name, true)}</span>` +
+        (E ? `<button class="mini del" data-act="rm-bond" data-j="${j}" aria-label="Delete">×</button>` : '') + '</div>';
+    }).join('') + '</div>';
     if (E && st.bonds.length < 8) h += '<button class="add sm" data-act="add-bond">+</button>';
   }
   if (E) h += `<textarea class="in rtext" data-bind="sec:${i}:text" aria-label="${esc(s.title)}">${escTxt(s.text || '')}</textarea>`;
   else if (s.text) h += `<div class="rich" data-sec="${i}">${md(s.text)}</div>`;
   return h + '</section>';
+}
+
+// Who a bond links to: by its name, unless its row's Notes names someone (or "-" for no one).
+function bondToHTML(b, j, all, to) {
+  const opt = (v, label) => `<option value="${esc(v)}"${(b.to || '') === v ? ' selected' : ''}>${escTxt(label)}</option>`;
+  const byName = whoIs(b.name, all);
+  return `<select class="in bto" data-bind="bond:${j}:to" aria-label="${esc(`Who ${b.name} links to`)}" title="${esc(to ? `Links to ${to.label}` : 'Links to no one')}">` +
+    opt('', byName ? `→ ${byName.label}` : '→ No match') +
+    all.filter(p => p !== byName).map(p => opt(p.name, `→ ${p.label}`)).join('') + opt('-', 'No link') + '</select>';
 }
 
 // The scratchpad on the Notes tab, for anything the sheet has no place for. Unlike the cards it
@@ -232,10 +264,12 @@ function jotHTML() {
 }
 
 function sectionsHTML(tab) {
-  // an item list's card (the ship's kit and cargo) stands where its section row is
+  // an item list's card (the ship's kit and cargo) stands where its section row is; the crew's
+  // section row is the crew tab's
   const listAt = s => lists().find(l => l.def && same_(s.title, l.def.title));
+  const isCrew = s => !!CS() && same_(s.title, CS().def.title);
   const cards = (tab === 'notes' ? jotHTML() : '') +
-    st.sections.map((s, i) => (s.tab !== tab ? '' : listAt(s) ? listHTML(listAt(s), editing, canEdit()) : sectionHTML(s, i))).join('') +
+    st.sections.map((s, i) => (s.tab !== tab || isCrew(s) ? '' : listAt(s) ? listHTML(listAt(s), editing, canEdit()) : sectionHTML(s, i))).join('') +
     lists().filter(l => !rowOf(l) && l.def?.tab === tab).map(l => listHTML(l, editing, canEdit())).join('') +
     (tab === 'notes' ? keptNotesHTML() : '');
   return `<div class="cols">${cards}</div>` + (editing ? `<button class="add" data-act="add-section" data-tab="${tab}">+</button>` : '');
@@ -473,6 +507,115 @@ function addItem(kind) {
   document.getElementById(newId(kind))?.focus();
 }
 
+/* ---------- the ship's crew: a little sheet each ---------- */
+function crewTabHTML() {
+  const cs = CS();
+  const E = editing;
+  const si = st.sections.findIndex(s => same_(s.title, cs.def.title));
+  const s = st.sections[si];
+  const note = s ? s.note : fillIn(cs.def.note || '', { stats: st.stats, level: 0 });
+  let head = `<section class="card crewhead"><div class="shead"><h2>${escTxt(cs.def.title)}</h2><span class="cnt">${st.crew.length}</span></div>` +
+    (note ? `<div class="note">${escTxt(note)}</div>` : '');
+  if (s && E) head += `<textarea class="in rtext" data-bind="sec:${si}:text" aria-label="${esc(`${s.title} notes`)}" placeholder="Notes">${escTxt(s.text || '')}</textarea>`;
+  else if (s?.text) head += `<div class="rich" data-sec="${si}">${md(s.text)}</div>`;
+  head += '</section>';
+  const all = people(client);
+  const cards = st.crew.map((c, j) => (E ? crewEditHTML(cs, c, j, all) : crewHTML(cs, c, j, all))).join('');
+  const add = E ? `<div class="additem crewadd"><select class="in" id="newcrew" aria-label="${esc(`Kind of ${lw(cs.def.title)} member`)}">` +
+    cs.kinds.map(k => `<option value="${esc(k.name)}">${escTxt(k.name)}</option>`).join('') + '<option value="">Someone else</option></select>' +
+    '<button class="pbtn" data-act="add-crew">Add</button></div>' : '';
+  return head + (cards ? `<div class="cols">${cards}</div>` : (E ? '' : `<div class="empty">No ${escTxt(lw(cs.def.title))} yet.</div>`)) + add + (E ? tagListHTML(R, cs.tagGroup) : '');
+}
+
+// Whose they are: a link to that character's sheet.
+function servesHTML(cs, c, all) {
+  if (!c.serves) return '';
+  const p = whoIs(c.serves, all);
+  const who = p ? `<a href="${esc(p.href)}">${escTxt(p.label)}</a>` : escTxt(c.serves);
+  return `<span class="serves">${cs.def.serves ? `${escTxt(cs.def.serves)} ` : ''}${who}</span>`;
+}
+
+// The bonds the characters have with a crew member, each linking to that character.
+function crewBondsHTML(c, all) {
+  const me = `crew:${c.name.toLowerCase()}`;
+  const out = [];
+  let title = '';
+  for (const p of all.filter(x => x.key.startsWith('c:'))) {
+    const t = client.tab(p.name);
+    if (!t.loaded || t.missing) continue;
+    const cst = parseSheet(t.rows);
+    title ||= systemOf(R, typeOf(R, cst.info.playbook)).title('bonds');
+    for (const b of cst.bonds) if (bondTarget(b, all)?.key === me) out.push(`<a class="cc-bond" href="${esc(p.href)}">${escTxt(p.label)} <span class="pips">${staticPips(b.pips, true)}</span></a>`);
+  }
+  return out.length ? `<div class="cc-row lbonds"><span class="lbl">${escTxt(title || 'Bonds')}</span>${out.join('')}</div>` : '';
+}
+
+function crewTrackHTML(cs, c, j) {
+  if (!cs.harm && !c.pips.length) return '';
+  const label = cs.harm?.name || 'Harm';
+  return `<div class="track harm"><span class="lbl">${escTxt(label)}</span><span class="pips">${pips(`c:${j}`, c.pips, `${c.name} ${label}`)}</span>${editing ? pm(`c:${j}`) : ''}</div>`;
+}
+
+function crewTagsHTML(cs, c, j) {
+  return tagsHTML(c.tags, { R, group: cs.tagGroup, game: client.game, edit: editing, key: `crew-${j}` });
+}
+function addCrewTag(j) {
+  const c = st.crew[j];
+  const el = document.getElementById(`newtag-crew-${j}`);
+  if (!c || !el || !canEdit() || !editing) return;
+  const next = addTag(c.tags, el.value);
+  if (next !== c.tags) { c.tags = next; changed(); }
+  render();
+  document.getElementById(`newtag-crew-${j}`)?.focus();
+}
+
+function crewHTML(cs, c, j, all) {
+  return `<section class="card crewsheet" data-crew="${esc(c.name)}"><div class="lhead">${portraitHTML(['crew', c.name], c.name, 'portrait sm')}` +
+    `<div class="ident"><h2>${escTxt(c.name)}</h2><div class="note">${[c.type ? `<span>${escTxt(c.type)}</span>` : '', servesHTML(cs, c, all)].filter(Boolean).join(' · ')}</div></div></div>` +
+    crewTrackHTML(cs, c, j) +
+    crewTagsHTML(cs, c, j) +
+    crewBondsHTML(c, all) +
+    (c.note ? `<div class="rich">${md(c.note)}</div>` : '') + '</section>';
+}
+
+function crewEditHTML(cs, c, j, all) {
+  const opt = (v, label, cur) => `<option value="${esc(v)}"${same_(v, cur) ? ' selected' : ''}>${escTxt(label)}</option>`;
+  const kinds = cs.kinds.map(k => k.name);
+  if (c.type && !kinds.some(k => same_(k, c.type))) kinds.push(c.type);
+  const chars = all.filter(p => p.key.startsWith('c:'));
+  const serves = chars.some(p => same_(p.name, c.serves)) || !c.serves ? '' : opt(c.serves, c.serves, c.serves);
+  return `<section class="card crewsheet edit" data-crew="${esc(c.name)}"><div class="lhead">${portraitHTML(['crew', c.name], c.name, 'portrait sm')}` +
+    `<input class="in st" data-bind="crew:${j}:name" value="${esc(c.name)}" aria-label="Name">` +
+    `<button class="mini del" data-act="rm-crew" data-j="${j}" title="Remove" aria-label="${esc(`Remove ${c.name}`)}">×</button></div>` +
+    `<label class="field"><span class="lbl">Kind</span><select class="in" data-bind="crew:${j}:type">${opt('', '—', c.type)}${kinds.map(k => opt(k, k, c.type)).join('')}</select></label>` +
+    `<label class="field"><span class="lbl">${escTxt(cs.def.serves || 'Serves')}</span><select class="in" data-bind="crew:${j}:serves">${opt('', 'No one', c.serves)}${chars.map(p => opt(p.name, p.label, c.serves)).join('')}${serves}</select></label>` +
+    crewTrackHTML(cs, c, j) +
+    crewTagsHTML(cs, c, j) +
+    `<textarea class="in rtext" data-bind="crew:${j}:note" aria-label="${esc(`Notes on ${c.name}`)}" placeholder="Notes">${escTxt(c.note || '')}</textarea></section>`;
+}
+
+function addCrew() {
+  if (!canEdit() || !editing) return;
+  const cs = CS();
+  const kind = document.getElementById('newcrew')?.value || '';
+  const c = newCrew(cs, kind, st.crew.map(x => x.name));
+  c.name = freeName(c.name || 'Someone', n => st.crew.some(x => x.name.toLowerCase() === n));
+  st.crew.push(c);
+  changed();
+  render();
+}
+
+// After a bond's link opens the crew tab: bring that crew member's sheet into view, once.
+function revealCrew() {
+  if (!showCrew || !store.loaded || ui.tab !== 'crew') return;
+  const card = [...app.querySelectorAll('.crewsheet[data-crew]')].find(el => same_(el.dataset.crew, showCrew)) ||
+    [...app.querySelectorAll('.crewsheet[data-crew]')].find(el => whoIs(showCrew, [{ names: [el.dataset.crew] }]));
+  if (!card) return;
+  showCrew = '';
+  card.classList.add('hl');
+  card.scrollIntoView({ block: 'center' });
+}
+
 /* ---------- a new game has no Ship tab yet: set one up from a ship playbook ---------- */
 const setup = { name: '', playbook: '', kit: '', oddity: '' };
 function shipSetupHTML() {
@@ -521,16 +664,18 @@ function render() {
   let main;
   if (store.missing) main = SHIP ? shipSetupHTML() : `<div class="empty-page"><p>There’s no tab called “${escTxt(tabName)}” in this game’s sheet.</p><p><a href="${esc(href('index.html', client.game))}">Back to the crew</a></p></div>`;
   else if (!store.loaded) main = '<div class="empty">Loading…</div>';
-  else if (ui.tab === 'moves') main = movesHTML();
-  else if (ui.tab === 'log' && !SHIP) main = actions.logHTML(editing, ro, undoHTML);
-  else if (ui.tab === 'kit') main = kitHTML();
-  else main = sectionsHTML(ui.tab);
+  else if (tabNow() === 'moves') main = movesHTML();
+  else if (tabNow() === 'log' && !SHIP) main = actions.logHTML(editing, ro, undoHTML);
+  else if (tabNow() === 'kit') main = kitHTML();
+  else if (tabNow() === 'crew') main = crewTabHTML();
+  else main = sectionsHTML(tabNow());
   const hdr = store.loaded && !store.missing ? headerHTML() : '';
   let body = document.getElementById('sheet');
   if (!body) { body = document.createElement('div'); body.id = 'sheet'; app.append(body); }
   keepFocus(body, () => { body.innerHTML = hdr + `<main>${ro && sheetShown ? readOnlyHTML(client, SHIP ? 'Ship' : tabName, st.info.name || tabName) : ''}${main}</main>`; });
   document.title = `${st.info.name || tabName} · ${client.game.name || 'Cybersea'}`;
   autoSize();
+  revealCrew();
 }
 
 function autoSize() {
@@ -543,9 +688,10 @@ function clickPip(btn) {
   const path = btn.dataset.pip;
   const j = +btn.dataset.j;
   const bond = btn.hasAttribute('data-bond');
-  const arr = path.startsWith('b:') ? st.bonds[+path.slice(2)]?.pips : st.tracks[path.slice(2).toLowerCase()]?.pips;
+  const crew = path.startsWith('c:') ? st.crew[+path.slice(2)] : null;
+  const arr = path.startsWith('b:') ? st.bonds[+path.slice(2)]?.pips : crew ? crew.pips : st.tracks[path.slice(2).toLowerCase()]?.pips;
   if (!arr) return;
-  if (!bond && isWealth(path.slice(2))) { // treasure and hoard are counts: a full treasure track carries into hoard
+  if (!bond && !crew && isWealth(path.slice(2))) { // treasure and hoard are counts: a full treasure track carries into hoard
     const W_ = W();
     const w = wealth(st, W_);
     const isT = same_(path.slice(2), W_.t);
@@ -575,6 +721,9 @@ function clickPip(btn) {
     const b = st.bonds[+path.slice(2)];
     const title = sys().title('bonds');
     used(`b:${b.name.toLowerCase()}`, v === 2 ? 1 : -1, k => `${title ? `${title}: ` : ''}${b.name} ${k > 0 ? 'used' : 'restored'}${Math.abs(k) > 1 ? ` ×${Math.abs(k)}` : ''}`);
+  } else if (crew && was !== v) {
+    const label = CS()?.harm?.name || 'Harm';
+    used(`c:${crew.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${crew.name}: ${label} ${signed(k)}`);
   } else if (was !== v) {
     const t = st.tracks[path.slice(2).toLowerCase()];
     used(`t:${t.name.toLowerCase()}`, v === 1 ? 1 : -1, k => `${t.name} ${signed(k)}`);
@@ -582,6 +731,7 @@ function clickPip(btn) {
 }
 
 function setTrack(path, fn) {
+  if (path.startsWith('c:')) { const c = st.crew[+path.slice(2)]; if (c) fn(c.pips); return; }
   const name = path.slice(2);
   const k = name.toLowerCase();
   if (!st.tracks[k]) st.tracks[k] = { name, pips: [] };
@@ -626,8 +776,17 @@ app.addEventListener('click', e => {
     case 'tab': ui.tab = b.dataset.tab; saveUi(); render(); break;
     case 'cat': ui.cat = b.dataset.cat; saveUi(); render(); break;
     case 'sheet-menu': sheetMenu(); break;
-    case 'pic-add': if (editing && !uploading) pickPicture(); break;
-    case 'pic-rm': if (editing && !uploading && armed(b)) sendPicture(''); break;
+    case 'pic-add': if (editing && !uploading) pickPicture(rowOfAttr(b.dataset.row)); break;
+    case 'pic-rm': if (editing && !uploading && armed(b)) sendPicture('', rowOfAttr(b.dataset.row)); break;
+    case 'add-crew': addCrew(); break;
+    case 'add-tag': addCrewTag(+b.dataset.tags.slice(5)); break;
+    case 'rm-tag': {
+      const c = st.crew[+b.dataset.tags.slice(5)];
+      if (!c || !canEdit() || !editing) break;
+      c.tags = removeTag(c.tags, +b.dataset.k);
+      changed(); render(); break;
+    }
+    case 'rm-crew': if (canEdit() && editing && armed(b)) { st.crew.splice(+b.dataset.j, 1); changed(); render(); } break;
     case 'roll-stat': { const s = st.stats[i]; doRoll(s.k, s.v, 2); break; }
     case 'roll-move': {
       const m = lastMoves[i];
@@ -703,7 +862,21 @@ function bind(el, final) {
       if (t) { delete st.tracks[s.title.toLowerCase()]; st.tracks[nt.toLowerCase()] = { name: nt, pips: t.pips }; }
       s.title = nt;
     } else s[b] = v;
-  } else if (what === 'bond') { if (!final || !v.trim()) return; st.bonds[+a].name = v.trim(); }
+  } else if (what === 'bond') {
+    if (b === 'to') st.bonds[+a].to = v;
+    else { if (!final || !v.trim()) return; st.bonds[+a].name = v.trim(); }
+  } else if (what === 'crew') {
+    const c = st.crew[+a];
+    if (!c) return;
+    if (b === 'name') {
+      if (!final || !v.trim() || v.trim() === c.name) return;
+      c.name = freeName(v.trim(), n => st.crew.some(x => x !== c && x.name.toLowerCase() === n));
+    } else if (b === 'type') {
+      const fresh = !c.tags && !c.pips.length;
+      c.type = v;
+      if (fresh && v) { const n = newCrew(CS(), v, []); c.tags = n.tags; c.pips = n.pips; }
+    } else c[b] = v;
+  }
   else if (what === 'item' || what === 'cargo') {
     const arr = listOf(what);
     const it = arr[+a];
@@ -720,7 +893,7 @@ function bind(el, final) {
     else m.text = v;
   }
   changed();
-  if (final && /title|name/.test(b || '')) render();
+  if (final && /title|name|to|type|serves/.test(b || '')) render();
 }
 
 app.addEventListener('input', e => {
@@ -730,7 +903,7 @@ app.addEventListener('input', e => {
   if (t.dataset.log != null) { st.log[+t.dataset.log].note = t.value; changed(); return; }
   if (t.matches('textarea')) fitText([t]);
   const spec = t.dataset.bind || '';
-  if (/:(title|name|k)$/.test(spec) || spec.startsWith('bond:')) return; // applied on change
+  if (/:(title|name|k|to|type|serves)$/.test(spec) || spec.startsWith('bond:')) return; // applied on change
   bind(t, false);
 });
 app.addEventListener('change', e => {
@@ -748,6 +921,8 @@ app.addEventListener('toggle', e => {
 document.addEventListener('keydown', e => {
   const nk = LISTS.find(([kind]) => e.target.id === newId(kind));
   if (e.key === 'Enter' && nk) { e.preventDefault(); addItem(nk[0]); return; }
+  const nt = e.target.id?.match(/^newtag-crew-(\d+)$/);
+  if (e.key === 'Enter' && nt) { e.preventDefault(); addCrewTag(+nt[1]); return; }
   if (e.key === '/' && !e.target.closest('input,textarea,select') && !document.getElementById('overlay')) {
     e.preventDefault();
     if (ui.tab !== 'moves') { ui.tab = 'moves'; saveUi(); render(); }
@@ -773,8 +948,27 @@ function sheetMenu() {
 }
 
 /* ---------- start ---------- */
+// Bonds link to the characters, the ship and its crew: a character's page reads the Ship tab once;
+// the ship page follows the characters' tabs, for the bonds they have with its crew.
+const characters = () => client.list.filter(t => t.kind === 'character').map(t => t.name);
+const others = new Set();
+function follow(names) {
+  const fresh = names.filter(n => n.toLowerCase() !== tabName.toLowerCase() && !others.has(n.toLowerCase()));
+  for (const n of fresh) { others.add(n.toLowerCase()); client.tab(n).on(() => later(render)); }
+  return fresh;
+}
+const toRead = () => (SHIP ? characters() : ['Ship']);
 showPictures(app, client);
 render();
 client.watch(tabName); // Rules is read once per visit (cached by digest), not polled
-client.read([tabName, ...TABS]).catch(() => render()); // a wrong or missing passphrase opens the prompt (see wireNav)
+if (SHIP) client.watch(...characters());
+client.read([tabName, ...TABS, ...follow(toRead())]).catch(() => render()); // a wrong or missing passphrase opens the prompt (see wireNav)
+client.on(e => {
+  if (!e.list) return;
+  const fresh = follow(toRead());
+  if (!fresh.length) return;
+  if (SHIP) client.watch(...fresh);
+  client.read(fresh).catch(() => {});
+  render();
+});
 client.startPolling();

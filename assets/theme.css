@@ -160,6 +160,32 @@ h2{font:700 13px/1.2 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transfo
 .item .irow{display:flex;align-items:center;gap:8px}
 .item .icount{flex:0 0 64px}
 .item textarea.inote{min-height:60px;white-space:normal}
+/* the ship's crew: a little sheet each, and bonds that link to who they're with */
+a.bn,.crewsheet .note a,.crewsheet a.cc-bond{color:var(--cyan);text-decoration:underline dotted;text-underline-offset:3px}
+a.bn:hover,.crewsheet .note a:hover,.crewsheet a.cc-bond:hover{text-decoration-style:solid}
+.bond.edit{flex-wrap:wrap}
+.bond .bto{flex:0 1 150px;min-width:0}
+.card.crewhead{column-span:all}
+.crewadd{margin:0 0 14px}
+.portrait.sm{width:44px;height:44px}
+.portrait.sm.none{font-size:16px}
+.portrait.sm.none .sub{font-size:8px;letter-spacing:.06em}
+.crewsheet{display:grid;gap:8px}
+.crewsheet .lhead{display:flex;align-items:center;gap:10px}
+.crewsheet .ident{flex:1;min-width:0}
+.crewsheet .ident h2{overflow-wrap:anywhere}
+.crewsheet .lhead .in.st{flex:1;min-width:0}
+.crewsheet .tags{margin:0}
+.crewsheet .rich{margin:0}
+.crewsheet .lbonds{font-size:13px}
+a.tagchip{text-decoration:none;cursor:pointer}
+a.tagchip:hover{border-color:var(--blue)}
+.tagwrap{display:inline-flex;align-items:center;gap:2px}
+.tagwrap .mini{margin:0}
+.tagtext{align-self:center;font-size:13px;color:var(--muted)}
+.tagwrap .tagtext{padding:3px 4px}
+.gloss.hl{background:var(--panel2);box-shadow:inset 3px 0 0 var(--blue)}
+.crewsheet.hl{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
 .kept .kn h3{margin:12px 0 2px;font:700 12px/1.2 "Chakra Petch",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .kept .kn:first-of-type h3{margin-top:6px}
 /* changes made outside edit mode, waiting to be logged (usage.js) */

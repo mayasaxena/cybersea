@@ -59,7 +59,7 @@ export const system = [
   S('section', 'ship', 'Oddity', '', 'role=oddity fill=oddity'),
   S('section', 'ship', 'Kit', '', 'role=kit fill=kit'),
   S('section', 'ship', 'Cargo', '({Fortune+5} cargo space)', 'role=cargo'),
-  S('section', 'ship', 'Crew', '({Fortune+5} crew space)', 'role=crew'),
+  S('section', 'ship', 'Crew', '({Fortune+5} crew space)', 'role=crew tab=crew type=npc table=Hands serves="Hand of"'),
   S('section', 'ship', 'Specials', '', 'role=specials fill=specials'),
   S('section', 'ship', 'Questions', '', 'tab=notes fill=questions'),
   S('track', 'npc', 'Harm', '', 'role=harm'),
@@ -130,10 +130,14 @@ export const rules = [
   R('tag', 'item', 'shiny', 'Worth more than it looks.'),
   R('tag', 'weapon', 'loud', 'Everyone hears it.'),
   R('tag', 'npc', 'jumpy', 'Startles easily.'),
+  R('tag', 'npc', 'Good at [something]', 'Take +1 when they help with it.'),
+  R('tag', 'npc', 'Armor-x', 'Ignores that much harm.'),
   R('trouble', 'table', 'Soaked', 'Everything you carry is wet.'),
   R('fate', 'move', 'SPRING A TRAP', 'Something closes in.\n\n- The floor gives way.', '', 'gm'),
   R('fate', 'compass', 'BE CURIOUS', 'Ask questions.', '', 'gm'),
   R('table', 'Gear', 'Rope', 'A coil of rope.', 'cost=1'),
+  R('table', 'Hands', 'Deckhand', 'Bo Brine, salt in his beard; Ada Keel, one gold tooth', 'tags="1-harm, good at knots, jumpy" harm=2'),
+  R('table', 'Hands', 'Cook', 'Pip Ladle, flour everywhere', 'tags="good at stew, armor-1" harm=1'),
 
   O(R('kit', 'Brute', 'Kit 1', 'Club, sack, rope'), '', 'Club, sack, data cable'),
 ];
@@ -153,6 +157,7 @@ export const sampleCharacter = [
   ['track', 'Experience', '●●○○○○', ''],
   ['bond', 'Ship', '●●·', ''],
   ['bond', 'Passenger', '●○·', ''],
+  ['bond', 'Bo', '●··', ''],
   ['sheet', 'Vice', '**Haunted:** a made-up vice for testing.', ''],
   ['sheet', 'Bonds', '', ''],
   ['sheet', 'Kit', '- Dagger\n  - rusty\n- Cloak', ''],
@@ -175,6 +180,8 @@ export const sampleShip = [
   ['sheet', 'Cargo', '', '(6 cargo space)'],
   ['item', 'Two oars', '', ''],
   ['cargo', 'Crate of limes', '2', ''],
+  ['sheet', 'Crew', '', '(6 crew space)'],
+  ['crew', 'Bo Brine', '●○', 'Type: Deckhand\nServes: Testa\nTags: 1-harm, good at knots, jumpy\n\nFound asleep in the hold.'],
 ];
 
 // Tabs for the fake spreadsheet, as they'd be typed in (row 1 = header).

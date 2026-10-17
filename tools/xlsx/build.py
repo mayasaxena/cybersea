@@ -38,7 +38,7 @@ RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name',
 MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown']
 OVERRIDES = ['override_name', 'override_text', 'override_meta']
 # As SHEET_KINDS in Code.gs and mechanics.py (tests/kinds.test.mjs).
-CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,jot,kit,item,cargo,move,special,advance,log,state,signin'
+CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,jot,kit,item,cargo,crew,move,special,advance,log,state,signin'
 # The workbook's schema, which Cybersea > Import an xlsx… reads to bring an older workbook up
 # to date (MIGRATIONS in apps-script/Import.gs; tests/import-merge.test.mjs checks they agree).
 SCHEMA = 1
@@ -59,7 +59,8 @@ README = [
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
     '    (placed in the cell, =IMAGE("https://…"), or the name of a picture in the Images tab).',
-    '  Ship: the crew’s ship (the site offers to set it up if this tab is missing).',
+    '  Ship: the crew’s ship (the site offers to set it up if this tab is missing). Its crew members are crew rows:',
+    '    crew | Name | harm pips | "Type: …", "Serves: <character tab>", "Tags: …" lines, a blank line, then notes.',
     '  Map: the world (Region | Location | Level | Image | Text | GM notes | Shown). A row with no Location is a region’s map;',
     '    one with a Location and no Level is a place; one with both is a floor of that place, in order (no Level rows: one picture).',
     '    Image: a picture placed in the cell (Insert > Image > Insert image in cell), =IMAGE("https://…"), or the name of a picture',
@@ -77,7 +78,7 @@ README = [
     '',
     'Symbols',
     '  Tracks and clocks: ● marked, ○ open, ✕ crossed out. Typing x, o, 1 or 0 also works.',
-    '  Bonds: ● marked, ○ marked but used, · not marked.',
+    '  Bonds: ● marked, ○ marked but used, · not marked. A bond’s Notes can name who it links to (- for no one).',
     '',
     'Text: a blank line starts a new paragraph; "- " starts a bullet (indent two spaces to nest);',
     '"[ ] " and "[x] " are checklist items; **bold**, *trigger*, ~tag~, ^italic^.',

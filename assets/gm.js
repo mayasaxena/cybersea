@@ -9,6 +9,7 @@ import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
 import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
+import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
 
 const app = document.getElementById('app');
@@ -60,13 +61,17 @@ function crewHTML() {
   return `<div class="crew">${characters().map(n => crewCardHTML(client, n, { gm: true })).join('')}${shipCardHTML(client, { gm: true })}</div>`;
 }
 
-// NPC tags link to their definitions in the Rules tab.
-function tagChips(tags) {
-  return tags.split(',').map(t => t.trim()).filter(Boolean).map(t => {
-    const base = t.replace(/[-\s]?\d+$/, '').toLowerCase();
-    const def = R.recs.find(r => r.kind === 'tag' && r.name.toLowerCase().replace(/[-\s]?x$/, '') === base);
-    return `<span class="tagchip"${def ? ` title="${esc(def.text)}"` : ''}>${escTxt(t)}</span>`;
-  }).join('');
+// NPC tags (an npc row's Value): the Rules tab's npc tags as chips linking to them, the rest free text.
+const tagGroup = () => (R.by('tag', 'npc').length ? 'npc' : '');
+const npcTags = (e, i) => tagsHTML(e.value, { R, group: tagGroup(), game: client.game, edit: editing, key: `npc-${i}` });
+function addNpcTag(i) {
+  const e = entries[i];
+  const el = document.getElementById(`newtag-npc-${i}`);
+  if (!e || !el) return;
+  const next = addTag(e.value, el.value);
+  if (next !== e.value) { e.value = next; changed(); }
+  render();
+  document.getElementById(`newtag-npc-${i}`)?.focus();
 }
 
 function npcHTML() {
@@ -78,18 +83,18 @@ function npcHTML() {
       return `<section class="card"><div class="shead">
           <input class="in st" data-f="name" data-i="${i}" value="${esc(e.name)}" aria-label="Name">
           <button class="mini del" data-act="rm" data-i="${i}" aria-label="Delete">×</button></div>
-        <input class="in note" data-f="value" data-i="${i}" value="${esc(e.value)}" placeholder="Tags, comma-separated" aria-label="Tags">
+        ${npcTags(e, i)}
         <div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm, `${e.name} ${harmName()}`)}</span>
           <span class="pm"><button class="mini" data-act="harm-" data-name="${esc(e.name)}" aria-label="Less">−</button><button class="mini" data-act="harm+" data-name="${esc(e.name)}" aria-label="More">+</button></span></div>
         <textarea class="in rtext" data-f="notes" data-i="${i}" aria-label="Notes">${escTxt(e.notes)}</textarea></section>`;
     }
     return `<section class="card"><div class="shead"><h2>${escTxt(e.name)}</h2></div>
-      ${e.value ? `<div class="tags">${tagChips(e.value)}</div>` : ''}
+      ${npcTags(e, i)}
       ${harm.length ? `<div class="cc-row"><span class="lbl">${escTxt(harmName())}</span><span class="pips harm">${pipsHTML(e.name, harm, `${e.name} ${harmName()}`)}</span></div>` : ''}
       ${e.notes ? `<div class="rich">${md(e.notes)}</div>` : ''}</section>`;
   }).join('');
   return `<div class="mtools"><span class="grow"></span>${editToggle()}</div>
-    <div class="cols">${cards || '<div class="empty">No NPCs yet.</div>'}</div>
+    <div class="cols">${cards || '<div class="empty">No NPCs yet.</div>'}</div>${editing ? tagListHTML(R, tagGroup()) : ''}
     <div class="prow npcadd"><span class="lbl">Add</span>${(npcSizes().length ? npcSizes() : [['NPC', 0]]).map(([l, n]) => `<button class="pbtn" data-act="add-npc" data-harm="${n}">${escTxt(l)}</button>`).join('')}</div>`;
 }
 
@@ -189,6 +194,8 @@ main.addEventListener('click', e => {
     entries.push({ kind, name: unique(kind, kind === 'clock' ? 'New clock' : kind === 'secret' ? 'New secret' : 'New note'), value: kind === 'clock' ? circles(sum(R.by('choice', 'clock')[0]?.meta.size)) : '', notes: '' });
     changed(); render();
   }
+  if (act === 'add-tag') addNpcTag(+b.dataset.tags.slice(4));
+  if (act === 'rm-tag') { const en = entries[+b.dataset.tags.slice(4)]; if (en) { en.value = removeTag(en.value, +b.dataset.k); changed(); render(); } }
   if (act === 'harm+' || act === 'harm-') { setHarm(b.dataset.name, p => (act === 'harm+' ? p.push(0) : p.pop())); changed(); render(); }
   if (act === 'clock+' || act === 'clock-') { const c = entries[i]; const p = parseTrack(c.value); if (act === 'clock+') p.push(0); else p.pop(); c.value = formatTrack(p); changed(); render(); }
   if (act === 'rm' && armed(b)) {
@@ -207,6 +214,10 @@ main.addEventListener('input', e => {
     if (t.tagName === 'TEXTAREA') fitText([t], 70);
     changed();
   }
+});
+main.addEventListener('keydown', e => {
+  const m = e.target.id?.match(/^newtag-npc-(\d+)$/);
+  if (e.key === 'Enter' && m) { e.preventDefault(); addNpcTag(+m[1]); }
 });
 // Names are row keys: apply them when the field is left, and carry an NPC's harm along.
 main.addEventListener('change', e => {

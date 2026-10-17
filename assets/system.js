@@ -13,11 +13,14 @@
 // pips are drawn as skulls, the last one bloody, as on the book's harm tally). A number is a sum like
 // "6", "Steadfast+3", "level+6" or "Spitfire": numbers, stat names and the character's level.
 // Section meta: role (vice, oddity, bonds, troubles, xp, treasure, kit, cargo, crew, specials; the kit
-// and cargo cards are lists of item and cargo rows),
-// tab (sheet, notes or kit), fill (vices, oddity, kit, specials, questions, lastwords: copied
+// and cargo cards are lists of item and cargo rows, the crew's are a little sheet per crew row),
+// tab (sheet, notes, kit or crew), fill (vices, oddity, kit, specials, questions, lastwords: copied
 // from the playbook; the kit section's card lists the kit as items instead), size (pips per bond),
 // full (what filling a bond gives, e.g. xp:1). The section row's Text is the card's starting note;
-// {sum} in it is worked out, e.g. "({Fortune+5} space)".
+// {sum} in it is worked out, e.g. "({Fortune+5} space)". The crew section's type (a playbook type,
+// e.g. npc) gives crew members their tracks and tags (tag rows of that group), table names the Rules
+// table group whose rows are the kinds of crew member (each with tags= and its track sizes, e.g.
+// harm=2), and serves is what to call whose they are, e.g. serves="Hand of".
 //
 // Rows with actions, rolls and costs say so in their meta:
 //   action=session-begin|session-end|chapter-end|begin-downtime|leave-downtime|level-up, label="…"
@@ -71,6 +74,7 @@ function systemFor(R, t) {
   const tracks = R.by('track', t).map(r => ({ name: r.name, role: low(r.meta.role), size: r.meta.size, start: r.meta.start, refill: r.meta.refill, skulls: r.meta.skulls, text: r.text }));
   const sections = R.by('section', t).map(r => ({
     title: r.name, role: low(r.meta.role), tab: low(r.meta.tab) || 'sheet', fill: low(r.meta.fill), size: r.meta.size, full: r.meta.full, note: r.text,
+    table: r.meta.table || '', type: low(r.meta.type), serves: r.meta.serves || '',
   }));
   const track = role => tracks.find(x => x.role === role) || null;
   const section = role => sections.find(x => x.role === role) || null;
