@@ -212,6 +212,16 @@ test("map page: from the Map tab; crew see the region's map and only the places 
   assert.ok(await until(async () => !(await p.$('.loc:has-text("Scrap Town")'))), 'the crew page drops it');
 });
 
+test('map page: a second visit shows the cached Map tab, not an empty map', async () => {
+  const p = await h.page();
+  await join(p, g1, 'map.html');
+  await p.waitForSelector('.loc h2');
+  await p.reload();
+  await p.waitForSelector('.loc h2');
+  assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Packet Reef']);
+  assert.doesNotMatch(await p.textContent('main'), /Nothing on the map yet/);
+});
+
 test('lore page: a picture placed in the Lore tab\'s Image cell shows with its entry', async () => {
   const p = await h.page();
   await join(p, g1, 'lore.html');
