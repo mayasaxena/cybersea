@@ -210,6 +210,24 @@ test('the site never sees the tabs an import is still filling in', () => {
   assert.deepEqual(seen.filter(n => /import/i.test(n)), []);
 });
 
+test('a write Sheets turns down late still names its tab and leaves the old tabs', () => {
+  const { gas, replace, names, sheet } = setup();
+  const before = names();
+  gas.onFlush = () => { if (sheet('_overrides') || gas.ss.getSheets().some(s => /_importing 4/.test(s.getName()))) throw new Error('Service error'); };
+  assert.throws(() => replace(FRESH), /Service error \(the _Overrides tab\)/);
+  assert.deepEqual(names(), before);
+});
+
+test('a file whose tabs are all hidden still imports, with one tab left showing', () => {
+  const { replace, names, sheet } = setup();
+  const hidden = FRESH.filter(t => t.name !== 'README').map(t => ({ ...t, hidden: true }));
+  const r = replace(hidden);
+  assert.equal(r.ok, true);
+  assert.deepEqual(names(), ['Rules', 'Nexa', '_Overrides']);
+  assert.equal(names().filter(n => !sheet(n).isSheetHidden()).length, 1);
+  assert.ok(r.skipped.some(x => /hiding the _Overrides tab/.test(x)), r.skipped.join());
+});
+
 test('a check or format Sheets turns down is listed, not fatal; a value it turns down names the tab', () => {
   const { ctx, replace, names, sheet } = setup();
   ctx.guard_ = () => { throw new Error('Invalid argument'); };
