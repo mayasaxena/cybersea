@@ -16,8 +16,8 @@ export const IMAGES = {
   dock: { type: 'image/png', bytes: png(48, 30, [90, 90, 160]) },
 };
 
-// The Images tab: pictures kept once, named from Image cells.
-export const imagesRows = () => [['Name', 'Image'], ['Dock picture', pic(IMAGES.dock)]];
+// The Images tab: pictures kept once, named from Image cells (or, for a crew member, by their name).
+export const imagesRows = () => [['Name', 'Image'], ['Dock picture', pic(IMAGES.dock)], ['Bo Brine', pic(IMAGES.level1)]];
 
 export const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis', 'Override name', 'Override text', 'Override meta'];
 export const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];

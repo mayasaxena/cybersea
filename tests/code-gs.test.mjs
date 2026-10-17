@@ -911,6 +911,16 @@ test('picture: a crew member on the Ship tab has one too, on their crew row', ()
   assert.equal(crew(api, { op: 'picture', tab: 'Nexa', row: ['crew', 'Bo Brine'], image: '' }).ok, false, 'crew live on the Ship tab');
 });
 
+test('picture: a crew member with no picture of their own has the Images tab\'s under their name', () => {
+  const { api, gas } = imagesGame();
+  gm(api, { op: 'create', tab: 'Ship', rows: [['info', 'Cat', '', ''], ['crew', ' cat ', '○', ''], ['crew', 'Lair', '', ''], ['crew', 'Nobody', '', '']] });
+  assert.equal(gas.ss.getSheetByName('Ship').getLastColumn() < 6, true, 'the Ship tab has no Image column');
+  assert.deepEqual(crew(api, { op: 'read', tabs: ['Ship'] }).tabs.Ship.imgs, ['', 'images:5', 'images:3', ''], 'crew rows only');
+  assert.equal(crew(api, { op: 'image', tab: 'Images', row: 3 }).type, 'image/jpeg', 'the crew may load it');
+  const r = crew(api, { op: 'picture', tab: 'Ship', row: ['crew', 'Lair'], image: { name: 'cat' } });
+  assert.deepEqual(r.imgs, ['', 'images:5', 'images:5', ''], 'their own picture comes first');
+});
+
 test('picture: a tab with no Name row has nowhere to put one, and the GM tab is the GM\'s', () => {
   const { api } = setup();
   assert.equal(crew(api, { op: 'picture', tab: 'Ship', image: { name: 'x' } }).code, 'missing');
