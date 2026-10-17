@@ -66,7 +66,7 @@ if (!game) {
     const form = { name: '', player: '', playbook: pbs[0].name, oddity: '', kit: '', extraMove: '' };
     const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${escTxt(label)}</option>`;
     const short = t => { const p = plain(t); return p.length > 70 ? p.slice(0, 69) + '…' : p; };
-    const draw = () => {
+    const draw = (focus = 'name') => {
       const pb = R.playbook(form.playbook);
       const o = modal(`
         <div class="prow"><h2>New character</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
@@ -80,16 +80,16 @@ if (!game) {
         <div class="prow"><span class="grow"></span><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" data-create>Create</button></div>
         <div class="status" data-msg></div>`, { label: 'New character', wide: true });
       o.addEventListener('input', e => { if (e.target.dataset.f) form[e.target.dataset.f] = e.target.value; });
-      o.addEventListener('change', e => { if (e.target.dataset.f) form[e.target.dataset.f] = e.target.value; if (e.target.dataset.f === 'playbook') { form.oddity = ''; form.kit = ''; form.extraMove = ''; draw(); } });
+      o.addEventListener('change', e => { if (e.target.dataset.f) form[e.target.dataset.f] = e.target.value; if (e.target.dataset.f === 'playbook') { form.oddity = ''; form.kit = ''; form.extraMove = ''; draw('playbook'); } });
       o.querySelector('[data-create]').addEventListener('click', async () => {
         const msg = o.querySelector('[data-msg]');
         const name = form.name.trim();
         if (!name) { msg.textContent = 'Give them a name.'; return; }
         const p = R.playbook(form.playbook);
         const extra = +p.meta.pick ? form.extraMove || p.moves.find(m => !m.meta.start)?.name : undefined;
-        const rows = characterRows(R, { name, player: form.player.trim(), playbook: form.playbook, oddity: form.oddity || p.oddities[0]?.name, kit: form.kit || p.kits[0]?.name, extraMove: extra });
         msg.textContent = 'Creating…';
         try {
+          const rows = characterRows(R, { name, player: form.player.trim(), playbook: form.playbook, oddity: form.oddity || p.oddities[0]?.name, kit: form.kit || p.kits[0]?.name, extraMove: extra });
           const r = await client.request({ op: 'create', tab: name, rows });
           client.tab(r.tab).receive(r, r.at);
           if (client.role === 'crew' && !client.me) client.setMe(r.tab); // a player's new character is theirs
@@ -97,7 +97,7 @@ if (!game) {
           location.href = href('sheet.html', client.game, { c: r.tab });
         } catch (e) { msg.textContent = e.message; }
       });
-      o.querySelector('[data-f="name"]').focus();
+      o.querySelector(`[data-f="${focus}"]`).focus();
     };
     draw();
   }
