@@ -79,6 +79,8 @@ class Workbook(unittest.TestCase):
             self.assertTrue(kinds('Ship'))
             self.assertEqual(kinds('Feedback'), [])
             self.assertEqual(kinds('Images'), [])
+            # The schema build.py writes outlasts mechanics.py (the import reads it).
+            self.assertEqual(wb.custom_doc_props['Cybersea schema'].value, build.SCHEMA)
 
 
 if __name__ == '__main__':

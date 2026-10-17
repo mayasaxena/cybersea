@@ -128,6 +128,16 @@ class Range {
   }
   getDataValidation() { return this.sheet.cell(this.row, this.col).rule || null; }
   getNumberFormat() { return this.sheet.cell(this.row, this.col).fmt || 'General'; }
+  getNumberFormats() { return this.cells(c => c.fmt || 'General'); }
+  getFontWeights() { return this.cells(c => (c.bold ? 'bold' : 'normal')); }
+  getBackgrounds() { return this.cells(c => c.bg || '#ffffff'); }
+  getWraps() { return this.cells(c => !!c.wrap); }
+  // Pastes this range's cells (values, formulas, pictures and formats) at the top left of dest.
+  copyTo(dest) {
+    const from = this.cells(c => ({ ...c }));
+    from.forEach((line, r) => line.forEach((c, col) => Object.assign(dest.sheet.cell(dest.row + r, dest.col + col), c)));
+    this.sheet.ss.edits++;
+  }
   getA1Notation() {
     const a = `${colName(this.col)}${this.row}`;
     return this.nr === 1 && this.nc === 1 ? a : `${a}:${colName(this.col + this.nc - 1)}${this.row + this.nr - 1}`;
@@ -138,7 +148,8 @@ class Range {
 // Each read or write of a range's cells is a round trip to Sheets, the slow part of a script.
 // They're counted in ss.calls, so tests can hold the script to a few per tab.
 for (const m of ['getValues', 'getDisplayValues', 'getFormulas', 'setValues', 'setNumberFormat', 'setNumberFormats',
-  'setFontWeights', 'setBackgrounds', 'setWraps', 'setDataValidation']) {
+  'setFontWeights', 'setBackgrounds', 'setWraps', 'setDataValidation', 'getNumberFormats', 'getFontWeights',
+  'getBackgrounds', 'getWraps', 'copyTo']) {
   const f = Range.prototype[m];
   Range.prototype[m] = function (...a) { this.sheet.ss.calls++; return f.apply(this, a); };
 }
@@ -183,6 +194,7 @@ class Sheet {
   hideColumns(c, n = 1) { for (let i = 0; i < n; i++) this.hidden.add(c + i); return this; }
   isColumnHiddenByUser(c) { return this.hidden.has(c); }
   insertRowAfter(r) { this.cell(r, 1); this.grid.splice(r, 0, []); this.ss.edits++; return this; }
+  clearContents() { this.grid.forEach(line => line.forEach(c => { c.v = ''; c.formula = null; c.image = null; })); this.ss.edits++; return this; }
   deleteRow(r) { if (r <= this.grid.length) this.grid.splice(r - 1, 1); this.ss.edits++; return this; }
   setFrozenRows(n) { this.frozen = n; return this; }
   getFrozenRows() { return this.frozen; }
@@ -215,12 +227,12 @@ class Spreadsheet {
   getName() { return this.name; }
   getSheets() { return this.sheets.slice(); }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
-  insertSheet(name) {
+  insertSheet(name, index = this.sheets.length) {
     if (this.sheets.some(s => s.name.toLowerCase() === String(name).toLowerCase())) {
       throw new Error(`A sheet with the name "${name}" already exists. Please enter another name.`);
     }
     const sh = new Sheet(this, name);
-    this.sheets.push(sh);
+    this.sheets.splice(index, 0, sh);
     return sh;
   }
   deleteSheet(sh) {

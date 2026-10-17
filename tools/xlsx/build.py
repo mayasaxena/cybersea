@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a game workbook (.xlsx), to bring into a game's sheet with Cybersea > Replace with an xlsx….
+"""Build a game workbook (.xlsx), to bring into a game's sheet with Cybersea > Import an xlsx….
 
 The template carries rulebook text and player data, so it is built locally and shared
 privately, never committed (.gitignore blocks *.xlsx).
@@ -22,13 +22,14 @@ rules.json: [{kind, group, name, text, meta, vis}, ...] (from tools/extract)
   map: rows for the Map tab, as [[Region, Location, Level, Image, Text, GM notes, Shown], ...]
     (Image: blank, or the name of a picture in the Images tab).
 The workbook also gets an empty Images tab (Name | Image): pictures are placed in its cells in
-Sheets, and Replace with an xlsx… never replaces it once the sheet has one.
+Sheets, and Import an xlsx… never replaces it once the sheet has one.
 Without --rules, the workbook holds only the theme's rows, to paste into an existing game.
 """
 import argparse
 import json
 
 from openpyxl import Workbook
+from openpyxl.packaging.custom import IntProperty
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -38,6 +39,9 @@ MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown
 OVERRIDES = ['override_name', 'override_text', 'override_meta']
 # As SHEET_KINDS in Code.gs and mechanics.py (tests/kinds.test.mjs).
 CHARACTER_KINDS = 'info,stat,track,bond,sheet,notes,jot,kit,item,cargo,move,special,advance,log,state,signin'
+# The workbook's schema, which Cybersea > Import an xlsx… reads to bring an older workbook up
+# to date (MIGRATIONS in apps-script/Import.gs; tests/import-merge.test.mjs checks they agree).
+SCHEMA = 1
 BOLD = Font(bold=True)
 HEAD_FILL = PatternFill('solid', fgColor='E8EEF3')
 
@@ -51,7 +55,7 @@ README = [
     '    hides the row. Moves keep the book’s name (character sheets remember moves by name). Leave the book’s columns as they are.',
     '    What a row does is in its Meta: roll=, session=, gain=, spend=, action= (see SETUP.md, "The game’s mechanics").',
     '  System: the game’s mechanics (Kind | Group | Name | Text | Meta): stat, track, section and choice rows. The site has no',
-    '    stat names or numbers of its own. Cybersea > Replace with an xlsx… protects Rules and System and adds checks.',
+    '    stat names or numbers of its own. Cybersea > Import an xlsx… protects Rules and System and adds checks.',
     '  GM: the GM’s NPCs (npc), NPC harm (track), notes, secrets and clocks. Only shown with the GM passphrase.',
     '  Lore: shared lore. Kind = category, Name = title, Value = text, Notes = who added it, Image = a picture for the entry',
     '    (placed in the cell, =IMAGE("https://…"), or the name of a picture in the Images tab).',
@@ -62,7 +66,8 @@ README = [
     '    in the Images tab. GM notes: GM only. The GM can also add and edit places and their pictures on the Map page.',
     '    Shown: "on" puts a place on the crew’s map (the GM’s button on the Map page sets it). Every place starts hidden.',
     '  Images: every picture once (Name | Image). Type a Name into a Map or Lore Image cell to show it there.',
-    '    Replace with an xlsx… never replaces or removes this tab, so pictures put here stay.',
+    '    Import an xlsx… never replaces or removes this tab, so pictures put here stay.',
+    '  _Import: what the last Import an xlsx… brought in, so the next one keeps changes made here. Leave it alone.',
     '  Every other tab is a character sheet. Tabs starting with _ are ignored.',
     '  A character tab’s "signin | Signed in | yes" row means someone has signed in as them on the site (blank = nobody).',
     '',
@@ -181,6 +186,7 @@ def main():
         ws.add_data_validation(dv)
         dv.add('A2:A1000')
 
+    wb.custom_doc_props.append(IntProperty(name='Cybersea schema', value=SCHEMA))
     wb.save(a.out)
     print(f'wrote {a.out}: Rules {len(rules_rows)} rows; tabs {", ".join(ws.title for ws in wb.worksheets)}')
 

@@ -162,7 +162,7 @@ Names ignore capitals and spaces at the ends; the first row with a name wins. Pi
 uploads on the Map page land here too.
 
 The site never reads the Images tab itself. The crew get a picture from it only while a place
-they can see, a region's map, or a Lore entry names it. **Replace with an xlsx…** never replaces
+they can see, a region's map, or a Lore entry names it. **Import an xlsx…** never replaces
 or removes the Images tab (an .xlsx can't carry its pictures); a file's Images tab is only brought
 in when this sheet doesn't have one yet.
 
@@ -185,28 +185,59 @@ template, or, without `--rules`, makes a workbook of just the theme's rows to pa
 existing game. A theme's change to a book row this workbook doesn't have (a kit's Override text, say)
 goes in an `_Overrides` tab, to copy into that row by hand.
 
-## Replacing the sheet with a fresh xlsx
+## Bringing in a fresh xlsx
 
 The spreadsheet has a **Cybersea** menu (it appears a few seconds after the sheet opens). Its
-**Replace with an xlsx…** picks an `.xlsx` file from your computer, such as a freshly built
+**Import an xlsx…** picks an `.xlsx` file from your computer, such as a freshly built
 workbook, and lists its tabs, all ticked, and this sheet's tabs the file doesn't have, unticked.
 
-- Each ticked tab from the file replaces this sheet's tab of the same name, in the same place,
+- Each ticked tab from the file updates this sheet's tab of the same name, in the same place,
   or is added at the end. Tabs you leave unticked stay as they are.
-- Ticking one of this sheet's own tabs removes it. If you replace every tab and remove the rest,
+- With **Keep this sheet's changes** ticked (the default), a tab this sheet already has is merged
+  with the file's rather than replaced. Rows are matched by Kind + Name (Kind + Group + Name on
+  Rules and System, Region + Location + Level on Map), and each is compared with what the last
+  import brought in:
+  - A row you added here stays, after the row it followed. A row you removed here stays removed.
+    A cell you edited here keeps your edit.
+  - What only the file changed comes in: new rows, updated cells, and rows the file no longer has.
+  - Where both changed the same cell, or one side removed a row the other changed, the dialog
+    lists each one with both versions. Pick **Keep this sheet's** (the default) or **Use the
+    file's**, then **Import with these choices**. Nothing changes until then.
+  - The first time, there's no earlier import to compare with, so every cell that differs (and
+    isn't blank here) is listed.
+  - Columns this sheet has and the file doesn't (the hidden Version column, say) stay, and so do
+    pictures placed in the cells of rows it keeps.
+- Untick it to replace each ticked tab whole, as the file has it. Everything on a replaced tab goes,
+  including pictures placed in cells. **File → Version history** brings the old tabs back if you
+  need them. Keep pictures in the **Images** tab, which is never touched, and name them from Map
+  and Lore.
+- README and tabs starting with `_` are always replaced whole: they have no Kind and Name.
+- Ticking one of this sheet's own tabs removes it. If you bring in every tab and remove the rest,
   the tabs end up in the file's order.
 - The spreadsheet, its script, the GM passphrase and the deployment stay as they are, so the
   site's URL and everyone's invite links keep working.
-- Everything on a replaced tab goes, including pictures placed in cells. **File → Version
-  history** brings the old tabs back if you need them. Keep pictures in the **Images** tab,
-  which is never replaced, and name them from Map and Lore.
 - The sheet must end up with a **Rules** tab; otherwise nothing changes.
 - It keeps the file's values and formulas, plain-text, bold, fill and wrap formatting, column
   widths, hidden tabs and columns, frozen rows and columns, and drop-down (list) data
   validation. A protected sheet is protected for everyone but the spreadsheet's owner, except
   Excel's "allow edit" ranges. Anything else (merged cells, other kinds of validation) is left
   out, and the dialog lists it.
+- If the site saves a change to a tab while it's being merged, the import stops without changing
+  anything; run it again.
 - The first time you use it, Google asks you to authorize the script.
+
+What each import brought in is kept in a hidden **_Import** tab, which the next import compares
+against. Leave it alone; deleting it only means the next import lists every difference.
+
+### Schema versions and migrations
+
+A workbook says which version of the layout (schema) it uses: `tools/xlsx/build.py` writes it as
+the file's "Cybersea schema" property, and **_Import** remembers each tab's. When the layout
+changes (a tab or row kind renamed, say), `MIGRATIONS` in `Import.gs` gets a step that upgrades
+older tabs, and `SCHEMA` in `build.py` goes up by one. An import brings the file's tabs, this
+sheet's tabs and what **_Import** remembers up to date before merging, so rows you changed here
+still meet their counterparts in the newer file. A file newer than the sheet's script is turned
+down: update the script first.
 
 The script reads the file itself, so it needs no access to anything but this spreadsheet. The new
 tabs get the checks **setUpChecks** makes (see below) as they come in.
