@@ -66,9 +66,11 @@ function listXlsxTabs(name, data) {
 // Called from the dialog: name is the file's name, data its bytes in base64. choice: {tabs: the
 // file's tabs to bring in (as listXlsxTabs names them), remove: the sheet's tabs to delete, merge:
 // keep the sheet's own changes (see "keeping the sheet's own changes"), resolve: how to settle
-// conflicts}; without it, the sheet becomes the file (every tab brought in, every other tab
-// removed). With merge, a conflict not yet settled changes nothing: the result is {ok: false,
-// code: 'conflicts', conflicts: [{id, tab, row, what, cells: [{col, here, file}]}]}.
+// conflicts, review: change nothing, only list what would change}; without it, the sheet becomes
+// the file (every tab brought in, every other tab removed). With merge, a conflict not yet
+// settled changes nothing: the result is {ok: false, code: 'conflicts', conflicts: [{id, tab,
+// row, what, cells: [{col, here, file}]}], changes: [{tab, row, what, cells}]}; with review, it's
+// {ok: false, code: 'review', conflicts: [], changes}.
 function replaceWithXlsx(name, data, choice) {
   const only = choice && Array.isArray(choice.tabs) ? choice.tabs.map(tabKey_) : null;
   const opened = openXlsx_(name, data, only && ((n, schema) => only.indexOf(tabKey_(migrateName_(n, schema))) >= 0));
@@ -81,10 +83,13 @@ function replaceWithXlsx(name, data, choice) {
   book.tabs = book.tabs.filter(t => !keptTab_(ss, migrateName_(t.name, book.schema)) && (!only || only.indexOf(tabKey_(migrateName_(t.name, book.schema))) >= 0));
   const remove = choice && Array.isArray(choice.remove) ? choice.remove.map(String) : null;
   const resolve = choice && choice.resolve && typeof choice.resolve === 'object' ? choice.resolve : {};
-  const conflicts = prepareTabs_(ss, book, !!(choice && choice.merge), resolve);
+  const merge = !!(choice && choice.merge);
+  const { conflicts, changes } = prepareTabs_(ss, book, merge, resolve);
   if (conflicts.length) {
-    return { ok: false, code: 'conflicts', conflicts, error: 'Some rows changed both here and in the file. Pick which to keep. Nothing was changed yet.' };
+    return { ok: false, code: 'conflicts', conflicts, changes, error: 'Some rows changed both here and in the file. Pick which to keep. Nothing was changed yet.' };
   }
+  // review: only say what it would do (the dialog shows it before anything changes).
+  if (merge && choice.review) return { ok: false, code: 'review', conflicts, changes };
   return replaceTabs_(ss, book, remove);
 }
 
@@ -419,6 +424,7 @@ function mergeRows_(tabName, F, S, BF, BS, resolve) {
   S.names.forEach(n => { if (!inF[n]) { inF[n] = 1; names.push(n); } });
   const counts = { added: 0, updated: 0, removed: 0, kept: 0 };
   const conflicts = [];
+  const changes = []; // what the import will do, row by row, for the dialog to show first
   const show = v => (v.length > 200 ? v.slice(0, 199) + '…' : v);
   const heading = n => (n in F.col ? F.tab.header[F.col[n]] : S.tab.header[S.col[n]]) || n;
   // A conflict's choice, or undefined (and the conflict listed) while it has none.
@@ -429,6 +435,11 @@ function mergeRows_(tabName, F, S, BF, BS, resolve) {
     conflicts.push({ id, tab: tabName, row: row.label, what, cells: cells.map(c => ({ col: heading(c.n), here: show(c.here), file: show(c.file) })) });
     return undefined;
   };
+  const note = (row, what, cells) => {
+    changes.push({ tab: tabName, row: row.label, what, cells: cells.map(c => ({ col: heading(c.n), here: show(c.here), file: show(c.file) })) });
+  };
+  const cellsOf = (side, row, here) => side.names.map((n, i) => ({ n, v: String(row.cells[i] == null ? '' : row.cells[i]) }))
+    .filter(c => c.n !== VERSION_COL && c.v).map(c => ({ n: c.n, here: here ? c.v : '', file: here ? '' : c.v }));
   const ref = (side, row, n) => (n in (side === 'f' ? F : S).col ? { side, row, c: (side === 'f' ? F : S).col[n] } : null);
   const whole = (side, row) => names.map(n => ref(side, row, n));
 
@@ -457,6 +468,11 @@ function mergeRows_(tabName, F, S, BF, BS, resolve) {
     const kept = names.some(n => pick[n] === 's' && cellIn_(F, f, n) !== undefined && cellIn_(F, f, n) !== cellIn_(S, s, n));
     if (updated) counts.updated++;
     if (kept) counts.kept++;
+    if ((updated || kept) && !clash.length) {
+      const differ = names.filter(n => n !== VERSION_COL && cellIn_(F, f, n) !== undefined && cellIn_(S, s, n) !== undefined && cellIn_(F, f, n) !== cellIn_(S, s, n));
+      note(s, updated && kept ? 'keeps this sheet’s edits and takes the file’s' : updated ? 'takes the file’s changes' : 'keeps this sheet’s edit',
+        differ.map(n => ({ n, here: cellIn_(S, s, n), file: cellIn_(F, f, n) })));
+    }
     // The row's version stays only if the row does: the site sees a row it didn't write as changed.
     return names.map(n => (n === VERSION_COL ? (updated ? null : ref('s', s, n)) : ref(pick[n], pick[n] === 'f' ? f : s, n)));
   };
@@ -466,24 +482,26 @@ function mergeRows_(tabName, F, S, BF, BS, resolve) {
     const s = S.by[f.key];
     if (s) { out[f.key] = both(f, s); return; }
     if (BF && BF.by[f.key]) { // the sheet removed it since
-      if (sameAs_(F, f, BF)) { counts.kept++; return; }
+      if (sameAs_(F, f, BF)) { counts.kept++; note(f, 'stays removed (removed here)', cellsOf(F, f, false)); return; }
       const choice = settle(f, 'removed here, changed in the file', F.names.map((n, i) => ({ n, here: '', file: String(f.cells[i] == null ? '' : f.cells[i]) })).filter(c => c.n !== VERSION_COL && c.file));
       if (choice === 'file') { out[f.key] = whole('f', f); counts.added++; } else if (choice) counts.kept++;
       return;
     }
     out[f.key] = whole('f', f);
     counts.added++;
+    note(f, 'added from the file', cellsOf(F, f, false));
   });
   S.rows.forEach(s => {
     if (F.by[s.key]) return;
     if (BF && BF.by[s.key]) { // the file removed it since
-      if (sameAs_(S, s, BS)) { counts.removed++; return; }
+      if (sameAs_(S, s, BS)) { counts.removed++; note(s, 'removed (the file no longer has it)', cellsOf(S, s, true)); return; }
       const choice = settle(s, 'changed here, removed from the file', S.names.map((n, i) => ({ n, here: String(s.cells[i] == null ? '' : s.cells[i]), file: '' })).filter(c => c.n !== VERSION_COL && c.here));
       if (choice === 'sheet') { out[s.key] = whole('s', s); counts.kept++; } else if (choice) counts.removed++;
       return;
     }
     out[s.key] = whole('s', s);
     counts.kept++;
+    note(s, 'stays (only on this sheet)', cellsOf(S, s, true));
   });
 
   // The file's order, with the sheet's own rows after the row they followed on the sheet.
@@ -495,7 +513,7 @@ function mergeRows_(tabName, F, S, BF, BS, resolve) {
   });
   const rows = after[''].slice();
   F.rows.forEach(f => { if (out[f.key]) rows.push(out[f.key]); (after[f.key] || []).forEach(r => rows.push(r)); });
-  return { names, rows, conflicts, counts };
+  return { names, rows, conflicts, changes, counts };
 }
 
 /* What's on a sheet's tab, read once: a side to merge, and its cells to write back. */
@@ -569,8 +587,8 @@ function cellFrom_(src, side, row, c) {
 
 /*
  * The tabs of book made ready to bring in, each brought up to the current schema and, with merge,
- * merged with the sheet's tab of the same name. Returns the conflicts still to settle (nothing is
- * changed while there are any). Each tab gets replaces (the sheet's tab it takes the place of,
+ * merged with the sheet's tab of the same name. Returns {conflicts: those still to settle (nothing
+ * is changed while there are any), changes: what it will do, for the dialog to show first}. Each tab gets replaces (the sheet's tab it takes the place of,
  * which a migration may have renamed), remember (its rows as the file has them, for _Import),
  * and, if merged, merged (counts) and source (to check the sheet's tab is unchanged at the swap).
  */
@@ -579,6 +597,7 @@ function prepareTabs_(ss, book, merge, resolve) {
   const sheetTabs = ss.getSheets().filter(sh => !keptTab_(ss, sh.getName()));
   const sheetSchema = name => (base[tabKey_(name)] ? base[tabKey_(name)].schema : schema_());
   const conflicts = [];
+  const changes = [];
   book.tabs.forEach(t => {
     const fileName = t.name;
     const fileTab = migrate_(tabOf_(fileName, t.plain || []), book.schema);
@@ -599,6 +618,7 @@ function prepareTabs_(ss, book, merge, resolve) {
         const sideOf = which => was && was[which] ? keyed_(migrate_({ name: was.name, header: was[which][0] || [], rows: was[which].slice(1) }, was.schema), kind) : null;
         const m = mergeRows_(t.name, F, S, sideOf('file'), sideOf('sheet'), resolve || {});
         conflicts.push(...m.conflicts);
+        changes.push(...m.changes);
         if (m.conflicts.length) return;
         const header = m.names.map(n => (n in F.col ? cellFrom_(fsrc, F, { cells: fileTab.header }, F.col[n]) : cellFrom_(ssrc, S, { cells: S.tab.header }, S.col[n])));
         const rows = m.rows.map(cells => cells.map(x => (x ? cellFrom_(x.side === 'f' ? fsrc : ssrc, x.side === 'f' ? F : S, x.row, x.c) : { lit: '' })));
@@ -615,13 +635,14 @@ function prepareTabs_(ss, book, merge, resolve) {
       }
     }
     // Replaced whole: as the file has it, unless a migration changed it.
+    changes.push({ tab: t.name, row: '', what: old ? 'the whole tab is replaced by the file’s' : 'new tab', cells: [] });
     if (book.schema < schema_()) {
       const side = { names: fileTab.header.map(colName_) };
       const all = [fileTab.header].concat(fileTab.rows);
       emit_(t, all.map(cells => cells.map((v, c) => cellFrom_(fsrc, side, { cells }, c))));
     }
   });
-  return conflicts;
+  return { conflicts, changes };
 }
 
 function colsOf_(plain) {
@@ -947,7 +968,8 @@ const REPLACE_DIALOG_HTML = `<!doctype html>
 </style>
 <p>Brings in the ticked tabs from an .xlsx file, adding any this sheet doesn't have. With
 <b>Keep this sheet's changes</b>, rows added, edited or removed here since the last import stay as
-they are, and where both changed you choose. Without it, each ticked tab is replaced whole. The
+they are, and where both changed you choose. Import lists every change first. Without it, each
+ticked tab is replaced whole. The
 Images tab is never touched. <b>File → Version history</b> can undo it.</p>
 <label><input type="file" id="file" accept=".xlsx"></label>
 <label><input type="checkbox" id="merge" checked> Keep this sheet's changes</label>
@@ -977,7 +999,8 @@ Images tab is never touched. <b>File → Version history</b> can undo it.</p>
     go.disabled = !(data && ticked('file').length);
   };
   // A new choice of tabs or mode asks the sheet again, so conflicts shown so far no longer hold.
-  const reset = () => { conflicts.replaceChildren(); tabs.hidden = false; go.textContent = 'Import'; ready(); };
+  let reviewed = false; // whether the list below is what the next Import does
+  const reset = () => { conflicts.replaceChildren(); tabs.hidden = false; reviewed = false; go.textContent = 'Import'; ready(); };
   merge.onchange = reset;
   const say = (text, err) => { msg.className = err ? 'err' : ''; msg.textContent = text; };
   const fail = text => { say(text, true); ready(); };
@@ -993,10 +1016,38 @@ Images tab is never touched. <b>File → Version history</b> can undo it.</p>
     label.append(input, ' ' + name + ' ', el('span', text, 'note'));
     return label;
   };
+  // A row's cells as here and in the file.
+  const cellTable = cells => {
+    const table = el('table');
+    const head = el('tr');
+    head.append(el('td'), el('td', 'Here', 'note'), el('td', 'File', 'note'));
+    table.append(head);
+    cells.forEach(x => {
+      const tr = el('tr');
+      tr.append(el('td', x.col, 'note'), el('td', x.here), el('td', x.file));
+      table.append(tr);
+    });
+    return table;
+  };
+  // What the import will do, before it does it: each conflict, with a choice (this sheet's,
+  // picked, or the file's), then every other change.
+  const showReview = res => {
+    tabs.hidden = true; // the choice of tabs this is for; unticking Keep goes back to it
+    reviewed = true;
+    conflicts.replaceChildren();
+    if (res.conflicts.length) showConflicts(res.conflicts);
+    conflicts.append(el('h4', res.changes.length ? 'What will change' : 'Nothing will change'));
+    res.changes.forEach(c => {
+      const div = el('div', '', 'conflict change');
+      div.append(el('b', c.row ? c.tab + ' · ' + c.row : c.tab), el('span', c.what, 'note'));
+      if (c.cells.length) div.append(cellTable(c.cells));
+      conflicts.append(div);
+    });
+    go.textContent = res.conflicts.length ? 'Import with these choices' : 'Import these changes';
+  };
   // Each conflict, with what each side has, and a choice: this sheet's (picked) or the file's.
   const showConflicts = list => {
-    tabs.hidden = true; // the choice of tabs these conflicts are for; unticking Keep goes back to it
-    conflicts.replaceChildren(el('h4', 'Changed both here and in the file: pick which to keep'));
+    conflicts.append(el('h4', 'Changed both here and in the file: pick which to keep'));
     const bulk = el('div', '', 'bulk');
     const all = (side, text) => {
       const b = el('button', text);
@@ -1008,17 +1059,7 @@ Images tab is never touched. <b>File → Version history</b> can undo it.</p>
     list.forEach((c, i) => {
       const div = el('div', '', 'conflict');
       div.dataset.id = c.id;
-      div.append(el('b', c.tab + ' · ' + c.row), el('span', c.what, 'note'));
-      const table = el('table');
-      const head = el('tr');
-      head.append(el('td'), el('td', 'Here', 'note'), el('td', 'File', 'note'));
-      table.append(head);
-      c.cells.forEach(x => {
-        const tr = el('tr');
-        tr.append(el('td', x.col, 'note'), el('td', x.here), el('td', x.file));
-        table.append(tr);
-      });
-      div.append(table);
+      div.append(el('b', c.tab + ' · ' + c.row), el('span', c.what, 'note'), cellTable(c.cells));
       [['sheet', 'Keep this sheet’s'], ['file', 'Use the file’s']].forEach(([side, text]) => {
         const label = el('label');
         const r = document.createElement('input');
@@ -1031,11 +1072,10 @@ Images tab is never touched. <b>File → Version history</b> can undo it.</p>
       });
       conflicts.append(div);
     });
-    go.textContent = 'Import with these choices';
   };
   const resolve = () => {
     const out = {};
-    conflicts.querySelectorAll('.conflict').forEach(d => { out[d.dataset.id] = d.querySelector('input:checked').value; });
+    conflicts.querySelectorAll('.conflict[data-id]').forEach(d => { out[d.dataset.id] = d.querySelector('input:checked').value; });
     return out;
   };
   const summary = m => {
@@ -1086,16 +1126,21 @@ Images tab is never touched. <b>File → Version history</b> can undo it.</p>
   };
   go.onclick = () => {
     go.disabled = true;
-    say('Importing… this can take a minute.');
+    // Keeping this sheet's changes, the first Import only lists what it would do.
+    const review = merge.checked && !reviewed;
+    say(review ? 'Comparing with this sheet…' : 'Importing… this can take a minute.');
     google.script.run
       .withSuccessHandler(res => {
-        if (res && res.code === 'conflicts') {
-          showConflicts(res.conflicts);
-          return fail(res.error);
+        if (res && (res.code === 'review' || res.code === 'conflicts')) {
+          showReview(res);
+          if (res.code === 'conflicts' && !review) return fail(res.error); // the sheet changed since the list
+          say(res.conflicts.length ? 'Nothing has changed yet. Pick which to keep, then import.' : 'Nothing has changed yet.');
+          return ready();
         }
         if (!res || !res.ok) return fail((res && res.error) || 'Something went wrong.');
         conflicts.replaceChildren();
         tabs.hidden = false;
+        reviewed = false;
         go.textContent = 'Import';
         let text = 'Done: ' + res.tabs.join(', ') + '.';
         if (res.merged && res.merged.length) text += ' ' + res.merged.map(summary).join('. ') + '.';
@@ -1105,6 +1150,6 @@ Images tab is never touched. <b>File → Version history</b> can undo it.</p>
         if (!(res.skipped && res.skipped.length) && !(res.merged && res.merged.length)) setTimeout(() => google.script.host.close(), 1500);
       })
       .withFailureHandler(err => fail(String(err && err.message || err)))
-      .replaceWithXlsx(file.files[0].name, data, { tabs: ticked('file'), remove: ticked('remove'), merge: merge.checked, resolve: resolve() });
+      .replaceWithXlsx(file.files[0].name, data, { tabs: ticked('file'), remove: ticked('remove'), merge: merge.checked, resolve: resolve(), review });
   };
 </script>`;

@@ -255,3 +255,25 @@ test('tools/xlsx/build.py writes the schema the script is at', async () => {
   const py = readFileSync(new URL('../tools/xlsx/build.py', import.meta.url), 'utf8');
   assert.equal(Number(/^SCHEMA = (\d+)/m.exec(py)?.[1]), vm.runInContext('schema_()', ctx));
 });
+
+test('review lists every change before anything changes, including edits kept from the sheet', () => {
+  const { merge, rows, type, at, gas } = setup();
+  type('Nexa', at('Nexa', 'stat', 'Spitfire'), ['stat', 'Spitfire', '+3', '']); // edited here only
+  type('Nexa', at('Nexa', 'note', 'Typed'), ['', '', '', '']); // removed here only
+  type('Nexa', at('Nexa', 'stat', 'Snark') + 1, ['stat', 'Grit', '+1', '']); // added here
+  const file = [nexa(['info', 'Name', 'Nexa', 'pilot'], ['stat', 'Spitfire', '+2', ''], ['stat', 'Snark', '+1', ''], ['note', 'Typed', 'old', ''], ['jot', 'Notes', 'hi', ''])];
+  const before = JSON.stringify(gas.ss.getSheets().map(s => s.getDataRange().getValues()));
+  const res = merge(file, { review: true });
+  assert.equal(res.ok, false);
+  assert.equal(res.code, 'review');
+  assert.deepEqual(JSON.parse(JSON.stringify(res.changes)), [
+    { tab: 'Nexa', row: 'info · Name', what: 'takes the file’s changes', cells: [{ col: 'Notes', here: '', file: 'pilot' }] },
+    { tab: 'Nexa', row: 'stat · Spitfire', what: 'keeps this sheet’s edit', cells: [{ col: 'Value', here: '+3', file: '+2' }] },
+    { tab: 'Nexa', row: 'note · Typed', what: 'stays removed (removed here)', cells: [{ col: 'Kind', here: '', file: 'note' }, { col: 'Name', here: '', file: 'Typed' }, { col: 'Value', here: '', file: 'old' }] },
+    { tab: 'Nexa', row: 'jot · Notes', what: 'added from the file', cells: [{ col: 'Kind', here: '', file: 'jot' }, { col: 'Name', here: '', file: 'Notes' }, { col: 'Value', here: '', file: 'hi' }] },
+    { tab: 'Nexa', row: 'stat · Grit', what: 'stays (only on this sheet)', cells: [{ col: 'Kind', here: 'stat', file: '' }, { col: 'Name', here: 'Grit', file: '' }, { col: 'Value', here: '+1', file: '' }] },
+  ]);
+  assert.equal(JSON.stringify(gas.ss.getSheets().map(s => s.getDataRange().getValues())), before, 'nothing changed');
+  assert.equal(merge(file).ok, true);
+  assert.equal(rows('Nexa').find(r => r[1] === 'Spitfire')[2], '+3');
+});
