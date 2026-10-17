@@ -301,23 +301,27 @@ function readStyles_(doc) {
 }
 
 function readSheet_(doc, shared, styles, skipped, name) {
+  // Each part of a sheet sits at a known place under <worksheet>, so it's found there rather
+  // than by walking the whole tree (every cell) once per part.
+  const ws = kids_(doc, 'worksheet')[0] || doc;
+  const under = (...path) => path.reduce((els, n) => els.reduce((out, el) => out.concat(kids_(el, n)), []), [ws]);
   const values = [];
   const cells = [];
   let width = 0;
   let r = 0;
-  all_(doc, 'row').forEach(row => {
+  under('sheetData', 'row').forEach(row => {
     r = Number(row.a.r) || r + 1;
     let c = 0;
     kids_(row, 'c').forEach(cell => {
       const ref = /^([A-Z]+)(\d+)$/.exec(cell.a.r || '');
       c = ref ? colNum_(ref[1]) : c + 1;
       const style = styles[Number(cell.a.s) || 0] || {};
-      const f = first_(cell, 'f');
-      const v = first_(cell, 'v');
+      const f = kids_(cell, 'f')[0];
+      const v = kids_(cell, 'v')[0];
       let value;
       if (f && f.t) value = '=' + f.t;
       else if (cell.a.t === 's') value = shared[Number(v && v.t)] || '';
-      else if (cell.a.t === 'inlineStr') value = textOf_(first_(cell, 'is') || { c: [] });
+      else if (cell.a.t === 'inlineStr') value = textOf_(kids_(cell, 'is')[0] || { c: [] });
       else if (cell.a.t === 'b') value = !!v && v.t === '1';
       else if (cell.a.t === 'str' || cell.a.t === 'e') value = v ? v.t : '';
       else value = v && v.t !== '' ? Number(v.t) : '';
@@ -337,21 +341,21 @@ function readSheet_(doc, shared, styles, skipped, name) {
       if (!cells[i][j]) cells[i][j] = styles[0] || {};
     }
   });
-  const cols = all_(doc, 'col').map(c => ({
+  const cols = under('cols', 'col').map(c => ({
     min: Number(c.a.min), max: Number(c.a.max), width: c.a.customWidth === '1' || c.a.customWidth === 'true' ? Number(c.a.width) : 0,
     hidden: c.a.hidden === '1' || c.a.hidden === 'true',
   }));
-  const pane = all_(doc, 'pane').find(p => p.a.state === 'frozen' || p.a.state === 'frozenSplit');
-  const validations = all_(doc, 'dataValidation').map(v => ({
-    type: v.a.type || 'any', sqref: v.a.sqref || '', formula: (first_(v, 'formula1') || {}).t,
+  const pane = under('sheetViews', 'sheetView', 'pane').find(p => p.a.state === 'frozen' || p.a.state === 'frozenSplit');
+  const validations = under('dataValidations', 'dataValidation').map(v => ({
+    type: v.a.type || 'any', sqref: v.a.sqref || '', formula: (kids_(v, 'formula1')[0] || {}).t,
     strict: v.a.showErrorMessage === '1' || v.a.showErrorMessage === 'true',
     dropdown: v.a.showDropDown !== '1' && v.a.showDropDown !== 'true', // Excel's flag means "hide it"
   }));
-  if (all_(doc, 'mergeCell').length) skipped['merged cells (' + name + ')'] = 1;
-  if (all_(doc, 'conditionalFormatting').length) skipped['conditional formatting (' + name + ')'] = 1;
-  const prot = first_(doc, 'sheetProtection');
+  if (under('mergeCells', 'mergeCell').length) skipped['merged cells (' + name + ')'] = 1;
+  if (under('conditionalFormatting').length) skipped['conditional formatting (' + name + ')'] = 1;
+  const prot = under('sheetProtection')[0];
   const protect = prot && prot.a.sheet !== '0' && prot.a.sheet !== 'false' && Object.keys(prot.a).length
-    ? { open: all_(doc, 'protectedRange').map(p => p.a.sqref).join(' ').split(/\s+/).filter(Boolean) }
+    ? { open: under('protectedRanges', 'protectedRange').map(p => p.a.sqref).join(' ').split(/\s+/).filter(Boolean) }
     : null;
   return {
     values, cells, width, cols, validations, protect,
@@ -399,7 +403,16 @@ function unescapeXml_(s) {
 }
 
 function kids_(el, n) { return el ? el.c.filter(x => x.n === n) : []; }
-function first_(el, n) { return el ? all_(el, n)[0] || null : null; }
+// The first element named n under el, depth first; stops there.
+function first_(el, n) {
+  if (!el) return null;
+  for (const x of el.c) {
+    if (x.n === n) return x;
+    const deeper = first_(x, n);
+    if (deeper) return deeper;
+  }
+  return null;
+}
 function all_(el, n, out) {
   out = out || [];
   (el ? el.c : []).forEach(x => { if (x.n === n) out.push(x); all_(x, n, out); });
