@@ -16,6 +16,21 @@ app.append(main);
 const KEYS = ['moves', 'playbooks', 'tags', 'reference', 'world', 'other'];
 let R = gameRules(client);
 let tab = 'moves';
+// rules.html?tag=<name>&group=<group> (a crew member's tag chip) opens the Tags tab at that tag.
+const params = new URLSearchParams(location.search);
+let showTag = params.get('tag') || '';
+if (showTag) tab = 'tags';
+function revealTag() {
+  if (!showTag || !store.loaded) return;
+  const low = s => String(s || '').toLowerCase();
+  const group = params.get('group');
+  const rec = R.recs.find(r => r.kind === 'tag' && low(r.name) === low(showTag) && (group == null || low(r.group) === low(group)));
+  const el = rec && main.querySelector(`.gloss[data-rec="${rec.i}"]`);
+  if (!el) return;
+  showTag = '';
+  el.classList.add('hl');
+  el.scrollIntoView({ block: 'center' });
+}
 let query = '';
 
 const search = debounce(() => {
@@ -33,6 +48,7 @@ function render() {
       <div class="cats">${tabs.map(k => `<button data-tab="${k}" aria-pressed="${!query && tab === k}" class="${!query && tab === k ? 'on' : ''}">${SECTIONS[k].label}</button>`).join('')}</div>
     </div>
     <div id="ref">${query.trim() ? searchAllHTML(R, tabs, query) : sectionHTML(R, tab)}</div>`;
+  revealTag();
 }
 
 main.addEventListener('click', e => {

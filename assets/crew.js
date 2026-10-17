@@ -77,6 +77,14 @@ export function splitTags(s) {
   return out.map(x => x.trim()).filter(Boolean);
 }
 
+// The list with v added (once; commas would split it, so they become spaces), or with tag k taken off.
+export function addTag(s, v) {
+  const t = String(v ?? '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  const tags = splitTags(s);
+  return !t || tags.some(x => x.toLowerCase() === t.toLowerCase()) ? tags.join(', ') : [...tags, t].join(', ');
+}
+export const removeTag = (s, k) => splitTags(s).filter((_, i) => i !== k).join(', ');
+
 /* ---------- kinds of crew member and new ones ---------- */
 // The crew section's System row, its tracks (type's role=harm and so on), and the kinds of crew member.
 export function crewSystem(R, shipSys) {

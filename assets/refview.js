@@ -49,7 +49,7 @@ const GLOSSARY = ['tag', 'trouble'];
 
 export function recordHTML(r, open = false) {
   if (GLOSSARY.includes(r.kind)) {
-    return `<div class="gloss"><b>${escTxt(r.name)}</b><div class="gdef">${md(r.text)}${origHTML(r)}</div></div>`;
+    return `<div class="gloss" data-rec="${r.i}"><b>${escTxt(r.name)}</b><div class="gdef">${md(r.text)}${origHTML(r)}</div></div>`;
   }
   const meta = r.kind === 'table' ? metaLine(r) : '';
   const body = (r.text.trim() ? md(r.text) : '') + origHTML(r);

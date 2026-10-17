@@ -82,3 +82,12 @@ test('the crew section says what crew members have; a new one takes a free sampl
   assert.deepEqual(newCrew(cs, '', []), { name: '', pips: [], type: '', serves: '', tags: '', note: '' });
   assert.equal(crewSystem(R, systemOf(R, 'pirate')), null, 'characters have no crew');
 });
+
+test('adding and taking off tags', async () => {
+  const { addTag, removeTag } = await import('../assets/crew.js');
+  assert.equal(addTag('loud, wild', 'jumpy'), 'loud, wild, jumpy');
+  assert.equal(addTag('loud', ' Loud '), 'loud', 'once');
+  assert.equal(addTag('', 'sings, badly'), 'sings badly', 'a comma would split it');
+  assert.equal(addTag('loud', '  '), 'loud');
+  assert.equal(removeTag('loud, good at (knots, sums), wild', 1), 'loud, wild');
+});

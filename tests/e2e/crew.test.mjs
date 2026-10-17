@@ -42,11 +42,17 @@ test('a crew member’s sheet: kind, whose they are, harm, tags explained, and t
   assert.match(await p.textContent('.crewhead'), /Crew\s*1\s*\(6 crew space\)/);
   assert.match(await p.textContent('.crewsheet .note'), /Deckhand · Hand of Testa/);
   assert.equal(where(await p.$eval('.crewsheet .note a', a => a.getAttribute('href'))), 'sheet.html?c=Testa');
-  assert.deepEqual(await p.$$eval('.crewsheet .tagchip', es => es.map(e => [e.textContent, e.tagName])), [['1-harm', 'SPAN'], ['good at knots', 'BUTTON'], ['jumpy', 'BUTTON']]);
-  await p.click('.crewsheet button.tagchip >> text=good at knots');
-  assert.match(await p.textContent('.tagdef'), /Good at \[something\]: Take \+1 when they help with it\./);
-  await p.click('.crewsheet button.tagchip >> text=good at knots');
-  assert.equal(await p.$('.tagdef'), null, 'a second click hides it');
+  assert.deepEqual(await p.$$eval('.crewsheet .tagchip', es => es.map(e => [e.textContent, e.tagName, e.title])), [
+    ['good at knots', 'A', 'Good at [something]: Take +1 when they help with it.'], ['jumpy', 'A', 'jumpy: Startles easily.'],
+  ], 'tags the Rules tab defines are chips linking to them');
+  assert.equal(await p.textContent('.crewsheet .tagtext'), '1-harm', 'the rest are plain text');
+  await p.click('.crewsheet a.tagchip >> text=good at knots');
+  await p.waitForSelector('.gloss.hl');
+  assert.equal(await p.$eval('.gloss.hl b', e => e.textContent), 'Good at [something]', 'the chip opens its entry on the Rules page');
+  assert.equal(await p.$eval('.cats button.on', b => b.dataset.tab), 'tags');
+  await p.goBack();
+  await p.click('[data-act="tab"][data-tab="crew"]');
+  await p.waitForSelector('.crewsheet');
   assert.match(await p.textContent('.crewsheet .lbonds'), /Bonds\s*Testa/);
   assert.equal(await p.$$eval('.crewsheet .lbonds .pip.on', es => es.length), 1);
   await p.click('[data-act="tab"][data-tab="sheet"]');
@@ -65,6 +71,18 @@ test('editing the crew: harm pips, a new member from a kind, whose they are, a p
   await until(async () => row(await h.tab(api, 'Ship'), 'crew', 'Bo Brine')?.[2] === '●●');
 
   await p.click('[data-act="edit"]');
+  // Tags: one from the Rules tab's list becomes a chip; typed text stays plain; × takes one off.
+  assert.deepEqual(await p.$$eval('#taglist option', os => os.map(o => o.value)), ['jumpy', 'Good at [something]', 'Armor-x']);
+  await p.fill('#newtag-crew-0', 'armor-2');
+  await p.keyboard.press('Enter');
+  await p.fill('#newtag-crew-0', 'sings shanties');
+  await p.click('[data-act="add-tag"][data-tags="crew-0"]');
+  await until(async () => /Tags: 1-harm, good at knots, jumpy, armor-2, sings shanties/.test(row(await h.tab(api, 'Ship'), 'crew', 'Bo Brine')[3]));
+  assert.deepEqual(await p.$$eval('.crewsheet.edit .tagchip', es => es.map(e => e.textContent)), ['good at knots', 'jumpy', 'armor-2']);
+  assert.deepEqual(await p.$$eval('.crewsheet.edit .tagwrap .tagtext', es => es.map(e => e.textContent)), ['1-harm', 'sings shanties']);
+  await p.click('[data-act="rm-tag"][data-tags="crew-0"][data-k="0"]');
+  await until(async () => /Tags: good at knots, jumpy, armor-2, sings shanties\n/.test(row(await h.tab(api, 'Ship'), 'crew', 'Bo Brine')[3]));
+
   await p.selectOption('#newcrew', 'Deckhand');
   await p.click('[data-act="add-crew"]');
   await p.waitForSelector('.crewsheet.edit >> nth=1');

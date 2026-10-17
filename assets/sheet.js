@@ -13,7 +13,8 @@ import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from './kit.js';
 import { makeUsage, useItem, useOf, signed } from './usage.js';
 import { pictureHTML, showPictures, shrink } from './pictures.js';
-import { people, whoIs, bondTarget, tagDef, splitTags, crewSystem, newCrew } from './crew.js';
+import { people, whoIs, bondTarget, crewSystem, newCrew } from './crew.js';
+import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
 import { staticPips } from './cards.js';
 
 const SHIP = (document.body.dataset.tab || '').toLowerCase() === 'ship';
@@ -507,7 +508,6 @@ function addItem(kind) {
 }
 
 /* ---------- the ship's crew: a little sheet each ---------- */
-let openTag = ''; // "crew index:tag index" whose explanation shows
 function crewTabHTML() {
   const cs = CS();
   const E = editing;
@@ -524,7 +524,7 @@ function crewTabHTML() {
   const add = E ? `<div class="additem crewadd"><select class="in" id="newcrew" aria-label="${esc(`Kind of ${lw(cs.def.title)} member`)}">` +
     cs.kinds.map(k => `<option value="${esc(k.name)}">${escTxt(k.name)}</option>`).join('') + '<option value="">Someone else</option></select>' +
     '<button class="pbtn" data-act="add-crew">Add</button></div>' : '';
-  return head + (cards ? `<div class="cols">${cards}</div>` : (E ? '' : `<div class="empty">No ${escTxt(lw(cs.def.title))} yet.</div>`)) + add;
+  return head + (cards ? `<div class="cols">${cards}</div>` : (E ? '' : `<div class="empty">No ${escTxt(lw(cs.def.title))} yet.</div>`)) + add + (E ? tagListHTML(R, cs.tagGroup) : '');
 }
 
 // Whose they are: a link to that character's sheet.
@@ -556,18 +556,24 @@ function crewTrackHTML(cs, c, j) {
   return `<div class="track harm"><span class="lbl">${escTxt(label)}</span><span class="pips">${pips(`c:${j}`, c.pips, `${c.name} ${label}`)}</span>${editing ? pm(`c:${j}`) : ''}</div>`;
 }
 
+function crewTagsHTML(cs, c, j) {
+  return tagsHTML(c.tags, { R, group: cs.tagGroup, game: client.game, edit: editing, key: `crew-${j}` });
+}
+function addCrewTag(j) {
+  const c = st.crew[j];
+  const el = document.getElementById(`newtag-crew-${j}`);
+  if (!c || !el || !canEdit() || !editing) return;
+  const next = addTag(c.tags, el.value);
+  if (next !== c.tags) { c.tags = next; changed(); }
+  render();
+  document.getElementById(`newtag-crew-${j}`)?.focus();
+}
+
 function crewHTML(cs, c, j, all) {
-  const tags = splitTags(c.tags);
-  const [oj, ok] = openTag.split(':').map(Number);
-  const shown = oj === j && tags[ok] != null ? tagDef(R, tags[ok], cs.tagGroup) : null;
   return `<section class="card crewsheet" data-crew="${esc(c.name)}"><div class="lhead">${portraitHTML(['crew', c.name], c.name, 'portrait sm')}` +
     `<div class="ident"><h2>${escTxt(c.name)}</h2><div class="note">${[c.type ? `<span>${escTxt(c.type)}</span>` : '', servesHTML(cs, c, all)].filter(Boolean).join(' · ')}</div></div></div>` +
     crewTrackHTML(cs, c, j) +
-    (tags.length ? `<div class="tags">${tags.map((t, k) => {
-      const def = tagDef(R, t, cs.tagGroup);
-      return def ? `<button class="tagchip${oj === j && ok === k ? ' on' : ''}" data-act="crew-tag" data-j="${j}" data-k="${k}" aria-expanded="${oj === j && ok === k}" title="${esc(def.name)}">${escTxt(t)}</button>` : `<span class="tagchip plain">${escTxt(t)}</span>`;
-    }).join('')}</div>` : '') +
-    (shown ? `<div class="tagdef"><b>${escTxt(shown.name)}:</b> ${md(shown.text)}</div>` : '') +
+    crewTagsHTML(cs, c, j) +
     crewBondsHTML(c, all) +
     (c.note ? `<div class="rich">${md(c.note)}</div>` : '') + '</section>';
 }
@@ -584,7 +590,7 @@ function crewEditHTML(cs, c, j, all) {
     `<label class="field"><span class="lbl">Kind</span><select class="in" data-bind="crew:${j}:type">${opt('', '—', c.type)}${kinds.map(k => opt(k, k, c.type)).join('')}</select></label>` +
     `<label class="field"><span class="lbl">${escTxt(cs.def.serves || 'Serves')}</span><select class="in" data-bind="crew:${j}:serves">${opt('', 'No one', c.serves)}${chars.map(p => opt(p.name, p.label, c.serves)).join('')}${serves}</select></label>` +
     crewTrackHTML(cs, c, j) +
-    `<input class="in" data-bind="crew:${j}:tags" value="${esc(c.tags)}" placeholder="Tags, comma-separated" aria-label="${esc(`${c.name}’s tags`)}">` +
+    crewTagsHTML(cs, c, j) +
     `<textarea class="in rtext" data-bind="crew:${j}:note" aria-label="${esc(`Notes on ${c.name}`)}" placeholder="Notes">${escTxt(c.note || '')}</textarea></section>`;
 }
 
@@ -772,8 +778,14 @@ app.addEventListener('click', e => {
     case 'sheet-menu': sheetMenu(); break;
     case 'pic-add': if (editing && !uploading) pickPicture(rowOfAttr(b.dataset.row)); break;
     case 'pic-rm': if (editing && !uploading && armed(b)) sendPicture('', rowOfAttr(b.dataset.row)); break;
-    case 'crew-tag': { const k = `${b.dataset.j}:${b.dataset.k}`; openTag = openTag === k ? '' : k; render(); break; }
     case 'add-crew': addCrew(); break;
+    case 'add-tag': addCrewTag(+b.dataset.tags.slice(5)); break;
+    case 'rm-tag': {
+      const c = st.crew[+b.dataset.tags.slice(5)];
+      if (!c || !canEdit() || !editing) break;
+      c.tags = removeTag(c.tags, +b.dataset.k);
+      changed(); render(); break;
+    }
     case 'rm-crew': if (canEdit() && editing && armed(b)) { st.crew.splice(+b.dataset.j, 1); changed(); render(); } break;
     case 'roll-stat': { const s = st.stats[i]; doRoll(s.k, s.v, 2); break; }
     case 'roll-move': {
@@ -909,6 +921,8 @@ app.addEventListener('toggle', e => {
 document.addEventListener('keydown', e => {
   const nk = LISTS.find(([kind]) => e.target.id === newId(kind));
   if (e.key === 'Enter' && nk) { e.preventDefault(); addItem(nk[0]); return; }
+  const nt = e.target.id?.match(/^newtag-crew-(\d+)$/);
+  if (e.key === 'Enter' && nt) { e.preventDefault(); addCrewTag(+nt[1]); return; }
   if (e.key === '/' && !e.target.closest('input,textarea,select') && !document.getElementById('overlay')) {
     e.preventDefault();
     if (ui.tab !== 'moves') { ui.tab = 'moves'; saveUi(); render(); }
