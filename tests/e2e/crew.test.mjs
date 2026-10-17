@@ -82,6 +82,10 @@ test('editing the crew: harm pips, a new member from a kind, whose they are, a p
   assert.deepEqual(await p.$$eval('.crewsheet.edit .tagwrap .tagtext', es => es.map(e => e.textContent)), ['1-harm', 'sings shanties']);
   await p.click('[data-act="rm-tag"][data-tags="crew-0"][data-k="0"]');
   await until(async () => /Tags: good at knots, jumpy, armor-2, sings shanties\n/.test(row(await h.tab(api, 'Ship'), 'crew', 'Bo Brine')[3]));
+  await p.click('.toast .tact'); // Undo puts it back first, where it was
+  await until(async () => /Tags: 1-harm, good at knots, jumpy, armor-2, sings shanties\n/.test(row(await h.tab(api, 'Ship'), 'crew', 'Bo Brine')[3]));
+  await p.click('[data-act="rm-tag"][data-tags="crew-0"][data-k="0"]');
+  await until(async () => /Tags: good at knots, jumpy, armor-2, sings shanties\n/.test(row(await h.tab(api, 'Ship'), 'crew', 'Bo Brine')[3]));
 
   await p.selectOption('#newcrew', 'Deckhand');
   await p.click('[data-act="add-crew"]');

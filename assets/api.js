@@ -16,6 +16,7 @@
 import { CONFIG } from '../config.js';
 import { ls, gkey, upsertGame } from './games.js';
 import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } from './codec.js';
+import { hold } from './hold.js';
 
 // The Code.gs version this site needs (its ping and reads answer {v}). An older deployment is
 // turned away with a note to redeploy: there's nothing to stay compatible with.
@@ -88,10 +89,37 @@ export class TabStore extends Emitter {
     this.inflight = false;
     this.failures = 0;
     this.confirmedAt = 0; // when the sheet last confirmed a patch from here
+    this.hidden = new Map(); // rows deleted here but not sent yet (see hide): key -> hold
     if (this.pending.size) this.schedule(300);
   }
 
-  get rows() { return applyPending(this.server.rows, [...this.pending.values()]); }
+  get rows() {
+    const rows = applyPending(this.server.rows, [...this.pending.values()]);
+    return this.hidden.size ? rows.filter(r => !this.hidden.has(rowKey(r[0], r[1]))) : rows;
+  }
+
+  // Rows in prev but not in next are deleted here at once, but go to the sheet only after a few
+  // seconds (hold.js). Call it before change(prev, next). Gives back undo(), which keeps them, in
+  // their places, as long as they haven't gone yet.
+  hideGone(prev, next) {
+    const now = new Set(next.map(r => rowKey(r[0], r[1])));
+    const keys = [...new Set(prev.map(r => rowKey(r[0], r[1])))].filter(k => k !== '|' && !now.has(k) && !this.hidden.has(k));
+    for (const k of keys) this.hidden.set(k, hold(() => this.drop(k)));
+    return () => {
+      const back = keys.filter(k => this.hidden.has(k));
+      for (const k of back) { this.hidden.get(k).cancel(); this.hidden.delete(k); }
+      return back.length > 0;
+    };
+  }
+
+  drop(k) {
+    this.hidden.delete(k);
+    const r = this.rows.find(x => rowKey(x[0], x[1]) === k);
+    if (!r) return;
+    this.queue(k, { row: [r[0], r[1], '', ''], del: true });
+    this.persist();
+    this.schedule();
+  }
 
   // The version the sheet last sent for a row ('' when it had none), or null before the tab is
   // read: a change made then goes ahead anyway.
@@ -141,9 +169,14 @@ export class TabStore extends Emitter {
       this.pending.delete(k);
       this.queue(`ren:${k}`, { ren: r, row: r.slice(0, 2) }, was);
     }
-    for (const row of set) this.queue(rowKey(row[0], row[1]), { row });
-    for (const [k, n] of del) this.queue(rowKey(k, n), { row: [k, n, '', ''], del: true });
-    if (!set.length && !del.length && !ren.length) return false;
+    for (const row of set) {
+      const k = rowKey(row[0], row[1]);
+      if (this.hidden.has(k)) { this.hidden.get(k).cancel(); this.hidden.delete(k); } // made again: it just changes
+      this.queue(k, { row });
+    }
+    const dels = del.filter(([k, n]) => !this.hidden.has(rowKey(k, n))); // held ones go later, from drop()
+    for (const [k, n] of dels) this.queue(rowKey(k, n), { row: [k, n, '', ''], del: true });
+    if (!set.length && !dels.length && !ren.length) return false;
     this.persist();
     this.schedule();
     return true;

@@ -13,7 +13,8 @@ import { shipRows } from './build.js';
 import { wealth, wealthOf, setWealth, addTreasure, kitRows, uniqueName } from './kit.js';
 import { makeUsage, useItem, useOf, signed } from './usage.js';
 import { pictureHTML, showPictures, shrink } from './pictures.js';
-import { people, whoIs, bondTarget, crewSystem, newCrew } from './crew.js';
+import { people, whoIs, bondTarget, crewSystem, newCrew, splitTags } from './crew.js';
+import { hold } from './hold.js';
 import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
 import { staticPips } from './cards.js';
 
@@ -117,22 +118,16 @@ const keep = {
 };
 const actions = makeActions({ st: () => st, rules: () => R, changed, render: () => render(), editing: () => editing, used, keep });
 
-// Taking something out offers to put it back: list() is the list it was in (looked up again on
-// undo, since the sheet may have updated). It comes back as a new row, so last in its list, as
-// the sheet will have it; log entries go back in time order.
+// Deleting something: it goes from the page at once and from the sheet a few seconds later
+// (TabStore.hideGone), and until then the toast's Undo brings it back where it was.
 function removed(what, list, i) {
-  if (i < 0) return;
-  const gone = list().splice(i, 1);
+  if (i < 0 || !list[i]) return;
+  const before = serializeSheet(st);
+  list.splice(i, 1);
+  const undo = store.hideGone(before, serializeSheet(st));
   changed();
   render();
-  if (!gone.length) return;
-  deletedToast(what, () => {
-    if (!canEdit()) return;
-    list().push(...gone);
-    st.log.sort((a, b) => a.at - b.at);
-    changed();
-    render();
-  });
+  deletedToast(what, () => { if (undo()) later(adopt); });
 }
 
 /* ---------- helpers ---------- */
@@ -205,7 +200,7 @@ function headerHTML() {
 let uploading = ''; // the row whose picture is on its way, as "kind|name"
 const INFO_ROW = ['info', 'Name'];
 function portraitHTML(row = INFO_ROW, label = st.info.name || tabName, cls = 'portrait') {
-  const pic = store.imageOf(...row);
+  const pic = picGone.has(row.join('|')) ? '' : store.imageOf(...row);
   const r = esc(row.join('|'));
   if (!editing) return pic ? pictureHTML(store.name, pic, label, cls) : '';
   if (uploading === row.join('|')) return `<div class="${cls} none" aria-busy="true"><span class="sub">Uploading…</span></div>`;
@@ -242,13 +237,21 @@ async function sendPicture(image, row = INFO_ROW) {
   try {
     const r = await client.request({ op: 'picture', tab: store.name, image, ...(row === INFO_ROW ? {} : { row }) }, { timeout: 90000 });
     store.receive(r, r.at);
-    toast(image ? 'Picture saved to the sheet.' : 'Picture taken off.');
+    if (image) toast('Picture saved to the sheet.');
   } catch (err) {
     toast(err.message, 'lo');
   } finally {
     uploading = '';
     render();
   }
+}
+// Taking a picture off waits a few seconds (hold.js), so Undo can keep it.
+const picGone = new Map(); // "kind|name" -> hold
+function takePictureOff(row) {
+  const k = row.join('|');
+  picGone.set(k, hold(() => { picGone.delete(k); sendPicture('', row); }));
+  render();
+  deletedToast('the picture', () => { picGone.get(k)?.cancel(); if (picGone.delete(k)) render(); });
 }
 const PORTRAIT_SIDE = 1024;
 
@@ -831,16 +834,20 @@ app.addEventListener('click', e => {
     case 'cat': ui.cat = b.dataset.cat; saveUi(); render(); break;
     case 'sheet-menu': sheetMenu(); break;
     case 'pic-add': if (editing && !uploading) pickPicture(rowOfAttr(b.dataset.row)); break;
-    case 'pic-rm': if (editing && !uploading && armed(b)) sendPicture('', rowOfAttr(b.dataset.row)); break;
+    case 'pic-rm': if (editing && !uploading && armed(b)) takePictureOff(rowOfAttr(b.dataset.row)); break;
     case 'add-crew': addCrew(); break;
     case 'add-tag': addCrewTag(+b.dataset.tags.slice(5)); break;
     case 'rm-tag': {
       const c = st.crew[+b.dataset.tags.slice(5)];
       if (!c || !canEdit() || !editing) break;
-      c.tags = removeTag(c.tags, +b.dataset.k);
-      changed(); render(); break;
+      const was = c.tags;
+      const tag = splitTags(was)[+b.dataset.k];
+      c.tags = removeTag(was, +b.dataset.k);
+      changed(); render();
+      deletedToast(tag, () => { const x = byName(st.crew, c.name); if (x && canEdit()) { x.tags = was; changed(); render(); } });
+      break;
     }
-    case 'rm-crew': if (canEdit() && editing && armed(b)) removed(st.crew[+b.dataset.j]?.name, () => st.crew, +b.dataset.j); break;
+    case 'rm-crew': if (canEdit() && editing && armed(b)) removed(st.crew[+b.dataset.j]?.name, st.crew, +b.dataset.j); break;
     case 'roll-stat': { const s = st.stats[i]; doRoll(s.k, s.v, 2); break; }
     case 'roll-move': {
       const m = lastMoves[i];
@@ -854,19 +861,19 @@ app.addEventListener('click', e => {
     case 'add-pip': setTrack(b.dataset.path, p => { if (p.length < 20) p.push(0); }); changed(); render(); break;
     case 'rm-pip': setTrack(b.dataset.path, p => p.pop()); changed(); render(); break;
     case 'add-section': st.sections.push({ tab: b.dataset.tab, title: uniqueTitle('New section'), text: '', note: '' }); changed(); render(); break;
-    case 'rm-section': if (armed(b)) removed(st.sections[i]?.title, () => st.sections, i); break;
+    case 'rm-section': if (armed(b)) removed(st.sections[i]?.title, st.sections, i); break;
     case 'add-bond': st.bonds.push({ name: uniqueBond('Someone'), pips: Array(Math.max(1, sum(sys().section('bonds')?.size))).fill(0) }); changed(); render(); break;
-    case 'rm-bond': if (armed(b)) removed(st.bonds[+b.dataset.j]?.name, () => st.bonds, +b.dataset.j); break;
+    case 'rm-bond': if (armed(b)) removed(st.bonds[+b.dataset.j]?.name, st.bonds, +b.dataset.j); break;
     case 'mv-mark': {
       const m = charMove(b.dataset.name);
       if (m) m.marked = !m.marked; else st.moves.push({ name: b.dataset.name, marked: true, text: '' });
       changed(); render(); break;
     }
     case 'add-move': st.moves.push({ name: uniqueMove('NEW MOVE'), marked: true, text: '' }); changed(); render(); break;
-    case 'rm-move': if (armed(b)) removed(b.dataset.name, () => st.moves, st.moves.findIndex(m => m.name === b.dataset.name)); break;
+    case 'rm-move': if (armed(b)) removed(b.dataset.name, st.moves, st.moves.findIndex(m => m.name === b.dataset.name)); break;
     case 'run': if (canEdit()) actions.open(b.dataset.kind); break;
     case 'spend': if (canEdit() && lastMoves[i]) actions.spend(lastMoves[i]); break;
-    case 'rm-log': if (armed(b)) removed(`log entry: ${st.log[i]?.title}`, () => st.log, i); break;
+    case 'rm-log': if (armed(b)) removed(`log entry: ${st.log[i]?.title}`, st.log, i); break;
     case 'dt-moves': ui.tab = 'moves'; ui.cat = actions.dtGroup() || 'all'; saveUi(); render(); break;
     case 'ship-create': if (canEdit()) createShip(); break;
     case 'treasure': {
@@ -884,7 +891,7 @@ app.addEventListener('click', e => {
     case 'add-item': addItem(b.dataset.kind); break;
     case 'use-item': useItemAt(b.dataset.kind, +b.dataset.j); break;
     case 'undo-use': if (st.log[i]) undoUse(st.log[i].id); break;
-    case 'rm-item': if (canEdit() && editing && armed(b)) { const kind = b.dataset.kind; removed(listOf(kind)[+b.dataset.j]?.name, () => listOf(kind), +b.dataset.j); } break;
+    case 'rm-item': if (canEdit() && editing && armed(b)) removed(listOf(b.dataset.kind)[+b.dataset.j]?.name, listOf(b.dataset.kind), +b.dataset.j); break;
     case 'add-tnotes': if (W().title) { st.sections.push({ tab: 'kit', title: W().title, text: '', note: W().note }); changed(); render(); } break;
     case 'fill-kit': {
       if (!canEdit()) break;
