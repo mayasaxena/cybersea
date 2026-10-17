@@ -188,6 +188,7 @@ class Sheet {
     this.name = String(n);
     return this;
   }
+  getIndex() { return this.ss.sheets.indexOf(this) + 1; }
   isSheetHidden() { return !!this.tabHidden; }
   hideSheet() {
     if (this.ss.sheets.every(s => s === this || s.tabHidden)) throw new Error("You can't hide all the sheets in a document.");

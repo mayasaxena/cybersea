@@ -23,8 +23,9 @@ function setup() {
   const api = loadCodeGs(gas);
   const ctx = loadAlso(api, 'Import.gs');
   const sheet = name => gas.ss.getSheetByName(name);
-  const replace = (tabs, opts) => ctx.replaceWithXlsx('cybersea.xlsx', makeXlsx(tabs, opts).toString('base64'));
-  return { gas, api, ctx, sheet, replace, names: () => gas.ss.getSheets().map(s => s.getName()) };
+  const replace = (tabs, opts, choice) => ctx.replaceWithXlsx('cybersea.xlsx', makeXlsx(tabs, opts).toString('base64'), choice);
+  const list = tabs => ctx.listXlsxTabs('cybersea.xlsx', makeXlsx(tabs).toString('base64'));
+  return { gas, api, ctx, sheet, replace, list, names: () => gas.ss.getSheets().map(s => s.getName()) };
 }
 
 const FRESH = [
@@ -115,6 +116,56 @@ test('a protected sheet is protected for everyone but the owner, its "allow edit
   assert.equal(p.canDomainEdit(), false);
   assert.deepEqual([...p.getUnprotectedRanges()].map(r => [r.getSheet().getName(), r.getA1Notation()]), [['Rules', 'G2:G5'], ['Rules', 'B9']]);
   assert.deepEqual(sheet('Nexa').getProtections('SHEET'), []);
+});
+
+test('lists the file’s tabs, which the sheet has, and the sheet’s tabs the file lacks', () => {
+  const { list } = setup();
+  const res = list(FRESH);
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual(JSON.parse(JSON.stringify(res.file)), [
+    { name: 'README', exists: false },
+    { name: 'Rules', exists: true },
+    { name: 'Nexa', exists: true },
+    { name: '_Overrides', exists: false },
+  ]);
+  assert.deepEqual([...res.sheetOnly], ['Old']);
+  assert.equal(list([{ name: 'Rules', rows: [['x']] }]).ok, true);
+});
+
+test('replaces only the ticked tabs, in their places; adds new ones at the end; keeps the rest', () => {
+  const { api, replace, names, gas } = setup();
+  const res = replace(FRESH, {}, { tabs: ['Nexa', '_Overrides'], remove: [] });
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual([...res.tabs], ['Nexa', '_Overrides']);
+  assert.deepEqual([...res.removed], []);
+  assert.deepEqual(names(), ['Rules', 'Nexa', 'Old', '_Overrides']);
+  const read = api.call({ key: 'gm-pass', op: 'read', tabs: '*' });
+  assert.deepEqual(read.tabs.Rules.rows.map(r => r[3]), ['Old text.'], 'Rules was not ticked');
+  assert.equal(read.tabs.Nexa.rows.find(r => r[0] === 'stat')[2], '+2');
+  assert.equal(read.tabs.Old.rows[0][1], 'Gone soon');
+  assert.equal(gas.docProps['gone:nexa'], undefined, 'Nexa’s removed rows are forgotten');
+  assert.equal(gas.docProps.other, 'kept');
+});
+
+test('removes the ticked tabs the file lacks, and only those', () => {
+  const { replace, names } = setup();
+  const res = replace(FRESH, {}, { tabs: ['Rules'], remove: ['Old', 'README'] });
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual([...res.removed], ['Old']);
+  assert.deepEqual(names(), ['Rules', 'Nexa']);
+});
+
+test('turns down a choice with no tabs, or one that leaves no Rules tab', () => {
+  const { replace, names } = setup();
+  const before = names();
+  const none = replace(FRESH, {}, { tabs: [], remove: ['Old'] });
+  assert.equal(none.ok, false);
+  assert.match(none.error, /Tick at least one tab/);
+  const noRules = replace([FRESH[2]], {}, { tabs: ['Nexa'], remove: ['Rules'] });
+  assert.equal(noRules.ok, false);
+  assert.match(noRules.error, /no Rules tab/);
+  assert.equal(replace([FRESH[2]], {}, { tabs: ['Nexa'], remove: [] }).ok, true, 'the sheet’s own Rules tab stays');
+  assert.deepEqual(names(), before);
 });
 
 test('forgets rows remembered as removed from the old tabs, and nothing else', () => {
