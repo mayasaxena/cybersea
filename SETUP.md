@@ -196,7 +196,8 @@ workbook, and lists its tabs, all ticked, and this sheet's tabs the file doesn't
 - With **Keep this sheet's changes** ticked (the default), a tab this sheet already has is merged
   with the file's rather than replaced. Rows are matched by Kind + Name (Kind + Group + Name on
   Rules and System, Region + Location + Level on Map), and each is compared with what the last
-  import brought in:
+  import brought in. Its **Import** first only lists what will change, row by row (your own edits
+  it keeps included), and **Import these changes** does it:
   - A row you added here stays, after the row it followed. A row you removed here stays removed.
     A cell you edited here keeps your edit.
   - What only the file changed comes in: new rows, updated cells, and rows the file no longer has.

@@ -80,6 +80,7 @@ test('keeping this sheet’s changes: shows each conflict, imports with the choi
   await p.waitForSelector('.conflict');
   assert.match(await p.textContent('.conflict'), /Rules · move · basic · POKE[\s\S]*Old\.[\s\S]*New\./);
   assert.equal(await p.textContent('#go'), 'Import with these choices');
+  assert.match(await p.textContent('.change'), /Nexa · stat · Snark[\s\S]*added from the file/, 'every other change is listed too');
   assert.equal(gas.ss.getSheetByName('Rules').getRange(2, 4).getValue(), 'Old.', 'nothing changed yet');
   await p.click('.bulk button:nth-child(2)'); // All: the file's
   calls.length = 0;
@@ -92,6 +93,32 @@ test('keeping this sheet’s changes: shows each conflict, imports with the choi
   assert.ok(gas.ss.getSheetByName('Old'), 'unticked sheet-only tabs stay');
   assert.ok(gas.ss.getSheetByName('_Import').isSheetHidden());
   assert.deepEqual(calls, ['replaceWithXlsx']);
+});
+
+test('keeping this sheet’s changes, the first Import only lists them; an edit kept from the sheet shows', async () => {
+  const { p, gas, calls } = await open();
+  const plain = makeXlsx([{ name: 'Nexa', rows: [H, ['info', 'Name', 'Nexa', '']] }]);
+  const pick = async () => {
+    await p.setInputFiles('#file', { name: 'game.xlsx', mimeType: 'application/octet-stream', buffer: plain });
+    await p.waitForSelector('input[data-kind="file"][value="Nexa"]');
+  };
+  await pick();
+  await p.click('#go');
+  await p.waitForSelector('#go:has-text("Import these changes")');
+  await p.click('#go');
+  await p.waitForFunction(() => /^Done:/.test(document.getElementById('msg').textContent));
+  const nexa = gas.ss.getSheetByName('Nexa');
+  nexa.getRange(2, 4).setValues([['edited here']]);
+  await pick();
+  calls.length = 0;
+  await p.click('#go');
+  await p.waitForSelector('.change');
+  assert.match(await p.textContent('.change'), /Nexa · info · Name[\s\S]*keeps this sheet’s edit[\s\S]*edited here/);
+  assert.match(await p.textContent('#msg'), /Nothing has changed yet/);
+  assert.deepEqual(calls, ['replaceWithXlsx'], 'one look, no import yet');
+  await p.click('#go');
+  await p.waitForFunction(() => /^Done:/.test(document.getElementById('msg').textContent));
+  assert.equal(nexa.getRange(2, 4).getValue(), 'edited here');
 });
 
 test('Replace waits for a ticked tab; a file too big is turned down before it is sent', async () => {
