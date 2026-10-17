@@ -51,14 +51,14 @@ export const system = [
   S('section', 'pirate', 'Bonds', '', 'role=bonds size=3 full=xp:1'),
   S('section', 'pirate', 'Troubles', '', 'role=troubles'),
   S('section', 'pirate', 'Experience', '', 'role=xp'),
-  S('section', 'pirate', 'Treasure', '(5-treasure = 1-hoard)', 'role=treasure tab=inventory'),
+  S('section', 'pirate', 'Treasure', '(5-treasure = 1-hoard)', 'role=treasure tab=kit'),
   S('section', 'pirate', 'Questions', '', 'tab=notes fill=questions'),
   S('section', 'pirate', 'Last Words', '', 'tab=notes fill=lastwords'),
   S('track', 'ship', 'Wreck', '', 'role=harm size=Steadfast+3'),
   S('track', 'ship', 'Renown', '', 'role=luck size=5'),
   S('section', 'ship', 'Oddity', '', 'role=oddity fill=oddity'),
-  S('section', 'ship', 'Kit', '', 'role=kit fill=kit'),
-  S('section', 'ship', 'Cargo', '({Fortune+5} cargo space)', 'role=cargo'),
+  S('section', 'ship', 'Kit', '', 'role=kit fill=kit tab=kit'),
+  S('section', 'ship', 'Cargo', '({Fortune+5} cargo space)', 'role=cargo tab=kit'),
   S('section', 'ship', 'Crew', '({Fortune+5} crew space)', 'role=crew'),
   S('section', 'ship', 'Specials', '', 'role=specials fill=specials'),
   S('section', 'ship', 'Questions', '', 'tab=notes fill=questions'),
@@ -171,7 +171,9 @@ export const sampleShip = [
   ['stat', 'Fortune', '+1', ''],
   ['track', 'Wreck', '○○○', ''],
   ['track', 'Renown', '●○○○○', ''],
-  ['sheet', 'Cargo', '- Crate of limes', ''],
+  ['kit', 'Cargo', '', '(6 cargo space)'],
+  ['item', 'Two oars', '', ''],
+  ['cargo', 'Crate of limes', '2', ''],
 ];
 
 // Tabs for the fake spreadsheet, as they'd be typed in (row 1 = header).

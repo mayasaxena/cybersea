@@ -390,18 +390,18 @@ test('a wrong passphrase asks for the right one, or you can carry on as crew', a
   assert.equal(await q.textContent('.gnav .who'), 'Sign in');
 });
 
-test('inventory: fill from a kit, add and remove items, treasure carries into hoard', async () => {
+test('kit: fill from a kit, add and remove items, treasure carries into hoard', async () => {
   const { sampleCharacter, HEADER } = await import('../fixtures/game.mjs');
   await h.setTab(api, 'Testa', [HEADER, ...sampleCharacter]);
   const p = await openSheet();
-  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="tab"][data-tab="kit"]');
   await p.waitForSelector('#kitpick');
   await p.selectOption('#kitpick', 'Kit 2');
-  await p.click('[data-act="fill-inv"]');
+  await p.click('[data-act="fill-kit"]');
   await p.waitForSelector('.items');
   let rows = await until(async () => { const r = await h.tab(api, 'Testa'); return r.some(x => x[0] === 'item') && r; });
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Bone dice', 'A lantern (cracked, still works)']);
-  assert.equal(row(rows, 'inventory', 'Treasure')[3], '(5-treasure = 1-hoard)', 'the note is the Rules tab’s');
+  assert.equal(row(rows, 'kit', 'Treasure')[3], '(5-treasure = 1-hoard)', 'the note is the Rules tab’s');
   assert.equal(row(rows, 'track', 'Treasure')[2], '●○○○○', '6-treasure is 1-hoard and 1-treasure');
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
 
@@ -420,14 +420,14 @@ test('inventory: fill from a kit, add and remove items, treasure carries into ho
   rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'track', 'Treasure')?.[2] === '●●●●○' && r; });
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['A lantern (cracked, still works)', 'Rope', 'Rope (2)']);
   assert.equal(row(rows, 'track', 'Hoard')[2], '●○○○○');
-  assert.match(row(rows, 'inventory', 'Treasure')[2], /6-treasure/);
+  assert.match(row(rows, 'kit', 'Treasure')[2], /6-treasure/);
 });
 
 test('items have counts and notes; using one, or changing the sheet outside edit mode, can go in the log', async () => {
   const base = (await h.tab(api, 'Testa')).map(r => r.slice(0, 4)).filter(r => r[0] !== 'item' && r[0] !== 'log');
   await h.setTab(api, 'Testa', [...base, ['item', 'Medkit', '2', 'From the clinic.'], ['item', 'Rope', '', '']]);
   const p = await openSheet();
-  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="tab"][data-tab="kit"]');
   await p.waitForSelector('[data-act="use-item"]');
   assert.match(await p.textContent('.items'), /×2/);
 
@@ -444,7 +444,7 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   assert.match(await p.textContent('.kept'), /Medkit\s*From the clinic\.\s*Rope\s*Fifty feet\./);
 
   // using an item takes from its count and logs, with a note
-  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="tab"][data-tab="kit"]');
   await p.click('[data-act="use-item"][data-j="0"]');
   await p.fill('[role="dialog"] [data-n]', '2');
   await p.fill('[role="dialog"] textarea', 'Patched up');
@@ -466,7 +466,7 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   await p.click('[data-act="undo-use"]');
   rows = await until(async () => { const r = await h.tab(api, 'Testa'); return row(r, 'item', 'Medkit')?.[2] === '2' && r; });
   assert.equal(rows.some(x => x[0] === 'log' && x[2] === 'Medkit'), false);
-  await p.click('[data-act="tab"][data-tab="inventory"]');
+  await p.click('[data-act="tab"][data-tab="kit"]');
   await p.click('[data-act="use-item"][data-j="0"]');
   await p.fill('[role="dialog"] [data-n]', '2');
   await p.click('[role="dialog"] [data-use]');
@@ -577,7 +577,7 @@ test('a dialog keeps Tab inside it, scrolls when tall, and gives focus back when
 
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {
   const p = await openSheet({ width: 380, height: 760 });
-  for (const t of ['sheet', 'inventory', 'moves', 'notes', 'log']) {
+  for (const t of ['sheet', 'kit', 'moves', 'notes', 'log']) {
     await p.click(`[data-act="tab"][data-tab="${t}"]`);
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, t);
   }

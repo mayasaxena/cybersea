@@ -12,10 +12,12 @@
 // sheet starts with), refill (Session Begins marks it back up to this), skulls (how many of its last
 // pips are drawn as skulls, the last one bloody, as on the book's harm tally). A number is a sum like
 // "6", "Steadfast+3", "level+6" or "Spitfire": numbers, stat names and the character's level.
-// Section meta: role (vice, oddity, bonds, troubles, xp, treasure, kit, cargo, crew, specials),
-// tab (sheet, notes or inventory), fill (vices, oddity, kit, specials, questions, lastwords: copied
-// from the playbook), size (pips per bond), full (what filling a bond gives, e.g. xp:1). The
-// section row's Text is the card's starting note; {sum} in it is worked out, e.g. "({Fortune+5} space)".
+// Section meta: role (vice, oddity, bonds, troubles, xp, treasure, kit, cargo, crew, specials; the kit
+// and cargo cards are lists of item and cargo rows, always on the Kit tab),
+// tab (sheet, notes or kit), fill (vices, oddity, kit, specials, questions, lastwords: copied
+// from the playbook; the kit section's card lists the kit as items instead), size (pips per bond),
+// full (what filling a bond gives, e.g. xp:1). The section row's Text is the card's starting note;
+// {sum} in it is worked out, e.g. "({Fortune+5} space)".
 //
 // Rows with actions, rolls and costs say so in their meta:
 //   action=session-begin|session-end|chapter-end|begin-downtime|leave-downtime|level-up, label="…"

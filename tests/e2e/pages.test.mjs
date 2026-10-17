@@ -94,6 +94,39 @@ test('ship page: ship stats roll, ship moves only', async () => {
   assert.equal(await p.$('[data-tab="log"]'), null, 'no actions tab for the ship');
 });
 
+test('ship kit: kit items and cargo are lists like a character’s, used without a log', async () => {
+  const p = await h.page();
+  await join(p, g1, 'ship.html');
+  await p.waitForSelector('h1.name');
+  await p.click('[data-act="tab"][data-tab="kit"]');
+  assert.deepEqual(await p.$$eval('main .card h2', hs => hs.map(x => x.textContent)), ['Kit', 'Cargo']);
+  assert.match(await p.textContent('[data-list="cargo"]'), /6 cargo space.*Crate of limes\s*×2/s);
+  assert.match(await p.textContent('[data-list="item"]'), /Two oars/);
+  assert.equal(await p.$('[data-act="use-item"]'), null, 'using cargo needs a sign-in');
+  await signIn(p, 'Testa');
+  await p.click('[data-act="use-item"][data-kind="cargo"][data-j="0"]');
+  assert.equal(await p.$('[role="dialog"] textarea'), null, 'no log, so no note');
+  await p.click('[role="dialog"] [data-use]');
+  let rows = await until(async () => { const r = await h.tab(g1, 'Ship'); return row(r, 'cargo', 'Crate of limes')?.[2] === '1' && r; });
+  assert.ok(rows, 'one crate used');
+  assert.equal(rows.some(r => r[0] === 'log'), false);
+  await p.click('.toast .tact');
+  rows = await until(async () => { const r = await h.tab(g1, 'Ship'); return row(r, 'cargo', 'Crate of limes')?.[2] === '2' && r; });
+  assert.ok(rows, 'undo gives it back');
+
+  // edit mode adds cargo; its notes show on the Notes tab
+  await p.click('[data-act="edit"]');
+  await p.fill('#newcargo', 'Barrel of rum');
+  await p.press('#newcargo', 'Enter');
+  await p.fill('[data-bind="cargo:1:note"]', 'Stolen.');
+  await p.click('[data-act="edit"]');
+  rows = await until(async () => { const r = await h.tab(g1, 'Ship'); return row(r, 'cargo', 'Barrel of rum')?.[3] === 'Stolen.' && r; });
+  assert.ok(rows);
+  assert.equal(row(rows, 'item', 'Barrel of rum'), undefined, 'cargo, not a kit item');
+  await p.click('[data-act="tab"][data-tab="notes"]');
+  assert.match(await p.textContent('.kept'), /Cargo\s*Barrel of rum\s*Stolen\./);
+});
+
 test('a game without a Ship tab offers to set one up from a ship playbook', async () => {
   const p = await h.page();
   await join(p, g2, 'ship.html');
@@ -109,6 +142,8 @@ test('a game without a Ship tab offers to set one up from a ship playbook', asyn
   assert.equal(row(rows, 'stat', 'Speed')[2], '+2');
   assert.equal(row(rows, 'track', 'Wreck')[2], '○○○', 'wreck tally is Steadfast + 3');
   assert.equal(row(rows, 'move', 'SLIP AWAY')[2], '●');
+  assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Two oars', 'A lantern'], 'the kit is items');
+  assert.deepEqual(row(rows, 'kit', 'Cargo').slice(2, 4), ['', '(6 cargo space)']);
 });
 
 test('lore: read, search, add, edit and delete entries', async () => {

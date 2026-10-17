@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitKit, wealth, wealthOf, setWealth, addTreasure, uniqueName, inventoryRows } from '../assets/inventory.js';
+import { splitKit, wealth, wealthOf, setWealth, addTreasure, uniqueName, kitRows } from '../assets/kit.js';
 import { parseSheet, serializeSheet } from '../assets/codec.js';
 import { indexRules } from '../assets/rules.js';
 import { systemOf } from '../assets/system.js';
@@ -29,6 +29,11 @@ test('a kit line splits into items and treasure', () => {
   assert.deepEqual([h.items, h.treasure, h.hoard], [['A hat'], 0, 1]);
 });
 
+test('a kit can be a line of items followed by a list', () => {
+  const k = splitKit('A small boat, two oars (patched),\nsails\n\n- 1 cannon: loud, big\n  - rusty', W);
+  assert.deepEqual(k.items, ['A small boat', 'Two oars (patched)', 'Sails', '1 cannon: loud, big (rusty)']);
+});
+
 test('a kit written as a list keeps sub-bullets with their item', () => {
   assert.deepEqual(splitKit('- Dagger\n  - rusty\n- Cloak', W).items, ['Dagger (rusty)', 'Cloak']);
 });
@@ -50,12 +55,12 @@ test('duplicate items get numbered names', () => {
   assert.equal(uniqueName('Rope', ['rope', 'Rope (2)']), 'Rope (3)');
 });
 
-test('inventory rows survive parse and serialize', () => {
-  const rows = [['info', 'Name', 'Ann', ''], ...inventoryRows(sys, 'Rope, rope, 6-treasure')];
+test('kit rows survive parse and serialize', () => {
+  const rows = [['info', 'Name', 'Ann', ''], ...kitRows(sys, 'Rope, rope, 6-treasure')];
   const st = parseSheet(rows);
   assert.deepEqual(st.items.map(i => i.name), ['Rope', 'Rope (2)']);
   assert.deepEqual(wealth(st, W), { treasure: 1, hoard: 1 });
-  assert.equal(st.sections[0].tab, 'inventory');
+  assert.equal(st.sections[0].tab, 'kit');
   assert.equal(st.sections[0].note, '(5-treasure = 1-hoard)');
   assert.deepEqual(serializeSheet(st), rows);
 });

@@ -28,7 +28,7 @@ RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'odd
                'faction']
 SYSTEM_KINDS = ['stat', 'track', 'section', 'choice']
 SYSTEM_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta']
-SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin']
+SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'kit', 'item', 'cargo', 'move', 'special', 'advance', 'log', 'state', 'signin']
 # As in Code.gs: tabs with these names are that kind; any other is a character (tests/kinds.test.mjs).
 TAB_KINDS = ['rules', 'system', 'gm', 'lore', 'ship', 'map', 'feedback', 'images']
 META_RE = re.compile(r'([^\s=]+)=(?:"([^"]*)"|(\S*))|(\S+)')
