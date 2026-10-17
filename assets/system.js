@@ -13,7 +13,7 @@
 // pips are drawn as skulls, the last one bloody, as on the book's harm tally). A number is a sum like
 // "6", "Steadfast+3", "level+6" or "Spitfire": numbers, stat names and the character's level.
 // Section meta: role (vice, oddity, bonds, troubles, xp, treasure, kit, cargo, crew, specials; the kit
-// and cargo cards are lists of item and cargo rows, always on the Kit tab),
+// and cargo cards are lists of item and cargo rows),
 // tab (sheet, notes or kit), fill (vices, oddity, kit, specials, questions, lastwords: copied
 // from the playbook; the kit section's card lists the kit as items instead), size (pips per bond),
 // full (what filling a bond gives, e.g. xp:1). The section row's Text is the card's starting note;

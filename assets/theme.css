@@ -3,7 +3,7 @@
   --bg:#f3f5f7;--panel:#fff;--panel2:#f0f3f6;--line:#d9e0e7;--text:#17202a;--muted:#5b6979;
   --cyan:#007c86;--pink:#c4185a;--purple:#6c3a9e;--blue:#2457c5;--green:#1c8a4c;--amber:#a07000;--red:#cf2a3a;--blood:#a3132b;
   --s1:#a3132b;--s2:#8a6d0b;--s3:#1f5fbf;--s4:#d45d00;--s5:#00807a;--s6:#b8236e;
-  --ascii:rgba(20,40,80,.12);--glow:0px;--shadow:0 8px 24px rgba(20,30,40,.15);
+  --skull:#5b6979;--ascii:rgba(20,40,80,.12);--glow:0px;--shadow:0 8px 24px rgba(20,30,40,.15);
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -11,7 +11,7 @@
     --bg:#080b10;--panel:#0e141b;--panel2:#141c25;--line:#212d3a;--text:#d5e1eb;--muted:#7b8c9d;
     --cyan:#27dfe6;--pink:#ff3f8a;--purple:#a26fcf;--blue:#5f8dff;--green:#46d67e;--amber:#ffc53d;--red:#ff4d5f;--blood:#e8384f;
     --s1:#e8384f;--s2:#d4ad3b;--s3:#5aa2ff;--s4:#ff8a1f;--s5:#2fd1c0;--s6:#ff5ca8;
-    --ascii:rgba(80,200,255,.13);--glow:8px;--shadow:0 10px 30px rgba(0,0,0,.5);
+    --skull:var(--text);--ascii:rgba(80,200,255,.13);--glow:8px;--shadow:0 10px 30px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="dark"]{
@@ -19,7 +19,7 @@
   --bg:#080b10;--panel:#0e141b;--panel2:#141c25;--line:#212d3a;--text:#d5e1eb;--muted:#7b8c9d;
   --cyan:#27dfe6;--pink:#ff3f8a;--purple:#a26fcf;--blue:#5f8dff;--green:#46d67e;--amber:#ffc53d;--red:#ff4d5f;--blood:#e8384f;
   --s1:#e8384f;--s2:#d4ad3b;--s3:#5aa2ff;--s4:#ff8a1f;--s5:#2fd1c0;--s6:#ff5ca8;
-  --ascii:rgba(80,200,255,.13);--glow:8px;--shadow:0 10px 30px rgba(0,0,0,.5);
+  --skull:var(--text);--ascii:rgba(80,200,255,.13);--glow:8px;--shadow:0 10px 30px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -73,15 +73,15 @@ button{font:inherit;color:inherit}
 .pip.nb:hover{box-shadow:none}
 .editing .pip.nb{cursor:pointer}
 .editing .pip.nb:hover{box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
-/* a track's skull boxes (its last skulls= pips, as on the book's harm tally): solid skulls in the text
-   color, skull and crossbones once marked; the last one drips blood */
+/* a track's skull boxes (its last skulls= pips, as on the book's harm tally): solid skulls (--skull: gray in light mode,
+   the text color in dark), skull and crossbones once marked; the last one drips blood */
 .pip.skull{--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1 -1 18 18'%3E%3Cpath fill-rule='evenodd' d='M8 1C4.1 1 1.5 3.6 1.5 7c0 2 .9 3.4 2.2 4.2V14h2v-1.5h1.3V14h2v-1.5h1.3V14h2v-2.8c1.3-.8 2.2-2.2 2.2-4.2C14.5 3.6 11.9 1 8 1zM5.2 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 9.2l1 1.6H7z'/%3E%3C/svg%3E");width:24px;height:24px;margin:-2px;border:0;border-radius:0;background:none}
 .pip.skull.on{--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-5 -5 26 26'%3E%3Cpath stroke='%23000' stroke-width='2' stroke-linecap='round' d='M-1.4 -0.2L18 17.2M18.5 -0.8L-1.7 17.5'/%3E%3Ccircle cx='-0.1' cy='-0.55' r='1.4'/%3E%3Ccircle cx='-1.75' cy='1.1' r='1.4'/%3E%3Ccircle cx='16.7' cy='17.55' r='1.4'/%3E%3Ccircle cx='18.35' cy='15.9' r='1.4'/%3E%3Ccircle cx='17.2' cy='-1.15' r='1.4'/%3E%3Ccircle cx='18.85' cy='0.5' r='1.4'/%3E%3Ccircle cx='-0.4' cy='17.85' r='1.4'/%3E%3Ccircle cx='-2.05' cy='16.2' r='1.4'/%3E%3Cpath fill-rule='evenodd' d='M8 1C4.1 1 1.5 3.6 1.5 7c0 2 .9 3.4 2.2 4.2V14h2v-1.5h1.3V14h2v-1.5h1.3V14h2v-2.8c1.3-.8 2.2-2.2 2.2-4.2C14.5 3.6 11.9 1 8 1zM5.2 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 9.2l1 1.6H7z'/%3E%3C/svg%3E")}
 /* the crossbones overshoot the skull, a little crooked; a marked skull takes their width so the gaps stay even */
 .pip.skull.on{margin:-2px 4px}
 .pip.skull.on::before{inset:-5.33px}
 .pip.skull:hover,.pip.skull.on{box-shadow:none}
-.pip.skull::before,.pip.skull.bloody::after{content:"";position:absolute;inset:0;background:var(--text);-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat}
+.pip.skull::before,.pip.skull.bloody::after{content:"";position:absolute;inset:0;background:var(--skull);-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat}
 .pip.skull.bloody::after{--m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1 -1 18 18'%3E%3Cpath d='M3.7 14.6h2v1a1 1 0 0 1-2 0zM7 14.6h1.3v1.8a.65.65 0 0 1-1.3 0zM10.3 14.6h2v.4a1 1 0 0 1-2 0z'/%3E%3C/svg%3E");background:var(--blood)}
 
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}

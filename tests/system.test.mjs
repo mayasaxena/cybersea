@@ -53,8 +53,8 @@ test('the fixture game: stats, tracks and cards a new character starts with', ()
 test('the fixture game: a new ship', () => {
   const rows = shipRows(R0, { name: 'Gull', playbook: 'Skiff' });
   assert.deepEqual(rows.filter(r => r[0] === 'track').map(r => [r[1], r[2]]), [['Wreck', '○○○'], ['Renown', '○○○○○']]);
-  assert.deepEqual(rows.find(r => r[1] === 'Cargo'), ['kit', 'Cargo', '', '(6 cargo space)']);
-  assert.deepEqual(rows.find(r => r[1] === 'Kit'), ['kit', 'Kit', '', ''], 'the kit card lists items, not the kit’s text');
+  assert.deepEqual(rows.find(r => r[1] === 'Cargo'), ['sheet', 'Cargo', '', '(6 cargo space)']);
+  assert.deepEqual(rows.find(r => r[1] === 'Kit'), ['sheet', 'Kit', '', ''], 'the kit card lists items, not the kit’s text');
   assert.deepEqual(rows.filter(r => r[0] === 'item').map(r => r[1]), ['Two oars', 'A lantern']);
   assert.ok(!rows.some(r => r[0] === 'info' && r[1] === 'Player'));
 });
