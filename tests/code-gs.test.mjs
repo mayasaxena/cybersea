@@ -837,3 +837,23 @@ test('place: makes the Map and Images tabs when the sheet has neither', () => {
   assert.deepEqual(r.rows, [['Vega', '', '', 'images:2', 'The sea.', '', '']]);
   assert.equal(crew(api, { op: 'image', tab: 'Images', row: 2 }).ok, true, 'a region map always shows');
 });
+
+test('one read looks up the Images tab once, for the Map and Lore tabs both', () => {
+  const { api, gas } = setup();
+  gas.ss.insertSheet('Images').getRange(1, 1, 2, 2).setValues([['Name', 'Image'], ['Port', '=IMAGE("https://example.com/p.png")']]);
+  const map = gas.ss.insertSheet('Map');
+  map.getRange(1, 1, 2, 7).setValues([['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'], ['Sea', '', '', 'Port', '', '', '']]);
+  const lore = gas.ss.getSheetByName('Lore');
+  lore.getRange(1, 5, 2, 1).setValues([['Image'], ['Port']]);
+  const images = gas.ss.getSheetByName('Images');
+  const real = images.getRange.bind(images);
+  let reads = 0;
+  images.getRange = (...a) => { reads++; return real(...a); };
+  const r = gm(api, { op: 'read', tabs: ['Map', 'Lore'] });
+  assert.equal(r.tabs.Map.rows[0][3], 'https://example.com/p.png');
+  assert.equal(r.tabs.Lore.imgs[0], 'https://example.com/p.png');
+  const once = reads;
+  reads = 0;
+  api.ctx.namedImages_();
+  assert.equal(once, reads, 'the same reads as one lookup');
+});
