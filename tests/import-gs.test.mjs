@@ -283,6 +283,18 @@ test('waits for the site’s writes: a busy sheet is turned down', () => {
   assert.deepEqual(names(), before);
 });
 
+test('the site can still save while the new tabs are being filled in', () => {
+  const { api, ctx, replace } = setup();
+  const fill = ctx.fillSheet_;
+  const saves = [];
+  ctx.fillSheet_ = (sh, t, skipped) => {
+    fill(sh, t, skipped);
+    saves.push(api.call({ op: 'patch', tab: 'Old', set: [['note', 'Saved', 'yes', '']] }).ok);
+  };
+  assert.equal(replace(FRESH.slice(1, 3)).ok, true);
+  assert.ok(saves.length && saves.every(Boolean), saves.join());
+});
+
 test('adds the Cybersea menu when the spreadsheet opens', () => {
   const { ctx } = setup();
   const items = [];
