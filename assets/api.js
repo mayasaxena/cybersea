@@ -54,6 +54,12 @@ export async function ping(api) {
   return JSON.parse(await res.text());
 }
 
+function dropCachedTabs() {
+  try {
+    for (const k of Object.keys(localStorage)) if (/^cybersea:[^:]+:tab:/.test(k)) localStorage.removeItem(k);
+  } catch { /* storage unavailable */ }
+}
+
 class Emitter {
   constructor() { this.fns = new Set(); }
   on(fn) { this.fns.add(fn); return () => this.fns.delete(fn); }
@@ -155,7 +161,20 @@ export class TabStore extends Emitter {
     });
   }
 
-  persist() { ls.set(this.pendKey, Object.fromEntries(this.pending)); }
+  // Unsaved changes are kept in localStorage so they outlive the page. When it's full, cached
+  // copies of tabs go first (they can be read again; a change can't), and if that isn't enough
+  // the page says so once.
+  persist() {
+    const all = Object.fromEntries(this.pending);
+    if (!ls.set(this.pendKey, all)) {
+      dropCachedTabs();
+      if (!ls.set(this.pendKey, all)) {
+        if (!this.client.storageFull) { this.client.storageFull = true; this.client.emit({ storageFull: true }); }
+        return;
+      }
+    }
+    this.client.storageFull = false;
+  }
 
   schedule(ms = 1000) {
     clearTimeout(this.timer);

@@ -225,6 +225,7 @@ input.name{width:11ch;padding:2px 8px}
 .toast.mid{--c:var(--amber)}
 .toast.lo{--c:var(--red)}
 .toast .tl{font:700 12px/1.2 "Chakra Petch",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toast .tl.msg{white-space:normal}
 .die{flex:none;display:grid;place-items:center;width:24px;height:24px;border:1px solid var(--line);border-radius:4px;font-weight:700}
 .mod{font-weight:700;color:var(--muted)}
 .tot{font-size:22px;font-weight:700;color:var(--c)}
