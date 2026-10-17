@@ -63,7 +63,7 @@ function replaceWithXlsx(name, data, choice) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   book.tabs = book.tabs.filter(t => !keptTab_(ss, t.name) && (!only || only.indexOf(t.name) >= 0));
   const remove = choice && Array.isArray(choice.remove) ? choice.remove.map(String) : null;
-  return withLock_(() => replaceTabs_(ss, book, remove));
+  return replaceTabs_(ss, book, remove);
 }
 
 // The workbook in base64 data, its tabs' cells read only for the tabs named in only (all if null).
@@ -118,7 +118,8 @@ function keptTab_(ss, name) {
 // Brings book's tabs into ss: each replaces the tab of the same name, keeping its place, or is
 // added at the end. Then removes the tabs named in remove (null: every tab the book doesn't
 // have, and the tabs end up in the book's order). The new tabs are made first, so a failure
-// leaves the old tabs as they were.
+// leaves the old tabs as they were; only the swap holds the script lock, so the site's writes
+// wait for that rather than for the whole import.
 function replaceTabs_(ss, book, remove) {
   if (!book.tabs.length) return { ok: false, error: 'Tick at least one tab from the file. Nothing was changed.' };
   const incoming = {};
@@ -151,7 +152,15 @@ function replaceTabs_(ss, book, remove) {
     made.forEach(sh => ss.deleteSheet(sh));
     throw err;
   }
-  // Swapping the new tabs in: from here on, the old tabs start going.
+  // The new tabs were filled without holding the site back; the swap waits for its writes.
+  const res = withLock_(() => swapIn_(ss, book, made, gone, kept, incoming));
+  if (res.code === 'busy') made.forEach(sh => ss.deleteSheet(sh));
+  return res;
+}
+
+// Swaps the filled-in tabs (made) for the old ones, then removes the tabs in gone.
+function swapIn_(ss, book, made, gone, kept, incoming) {
+  // From here on, the old tabs start going.
   try {
     made.forEach((sh, i) => {
       const old = findSheet_(ss, book.tabs[i].name);
@@ -163,7 +172,7 @@ function replaceTabs_(ss, book, remove) {
         ss.moveActiveSheet(at);
       }
     });
-    Object.keys(gone).forEach(k => ss.deleteSheet(findSheet_(ss, gone[k])));
+    Object.keys(gone).forEach(k => { const sh = findSheet_(ss, gone[k]); if (sh) ss.deleteSheet(sh); });
     if (!kept.length) made.forEach((sh, i) => { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); });
   } catch (err) {
     throw new Error((err.message || err) + ' (while swapping the new tabs in; File → Version history can undo it)');
