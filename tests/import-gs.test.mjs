@@ -189,6 +189,30 @@ test('turns down a file with no Rules tab, a file that isn’t an xlsx, and othe
   assert.deepEqual(names(), before);
 });
 
+test('turns down a file too big, or one that would unpack to far more than a workbook, before unpacking it', () => {
+  const { ctx, names } = setup();
+  const before = names();
+  assert.match(ctx.replaceWithXlsx('big.xlsx', 'A'.repeat(8 * 1024 * 1024)).error, /too big/);
+  const zip = makeXlsx(FRESH);
+  // Claim the first part unpacks to 2 GB, in the zip's central directory.
+  let end = zip.length - 22;
+  while (zip.readUInt32LE(end) !== 0x06054b50) end--;
+  zip.writeUInt32LE(0x7fffffff, zip.readUInt32LE(end + 16) + 24);
+  assert.match(ctx.replaceWithXlsx('bomb.xlsx', zip.toString('base64')).error, /unpacks to far more/);
+  assert.match(ctx.replaceWithXlsx('junk.xlsx', Buffer.from('not a zip at all').toString('base64')).error, /doesn’t look like an \.xlsx/);
+  assert.deepEqual(names(), before);
+});
+
+test('listing a file\'s tabs reads none of their cells, shared strings or styles', () => {
+  const { gas, ctx } = setup();
+  const unzip = gas.services.Utilities.unzip;
+  const read = [];
+  ctx.Utilities = { ...gas.services.Utilities, unzip: b => unzip(b).map(x => ({ ...x, getDataAsString: () => { read.push(x.getName()); return x.getDataAsString(); } })) };
+  const r = ctx.listXlsxTabs('cybersea.xlsx', makeXlsx(FRESH).toString('base64'));
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(read.filter(n => !/workbook/.test(n)), []);
+});
+
 test('if a tab can’t be filled in, the old tabs stay as they were', () => {
   const { replace, names } = setup();
   const before = names();
