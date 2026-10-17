@@ -203,8 +203,7 @@ function table_(sh, kind, role, named) {
   const width = rules ? RULES_HEADER.length : kind === 'system' ? SYSTEM_HEADER.length : HEADER.length;
   const vc = fixed ? 0 : verColIn_(grid[0]);
   const oc = rules ? overrideCols_(grid[0]) : [];
-  const ic = PICTURE_KINDS.indexOf(kind) >= 0 ? imageColIn_(grid[0]) : -1;
-  const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1, named) : null;
+  const tokens = pictureTokens_(sh, kind, grid, named);
   const rows = [];
   const vers = [];
   const imgs = [];
@@ -1030,6 +1029,20 @@ function imagesCols_(sh) {
   return IMAGES_HEADER.map((h, i) => (hs.indexOf(h.toLowerCase()) >= 0 ? hs.indexOf(h.toLowerCase()) : i));
 }
 
+// A tab's pictures, one per row from row 2 (see imageTokens_), or null when it has none: its Image
+// column's, and for a crew row without one, the Images tab's picture under the crew member's name.
+// grid: the tab's display values, header first.
+function pictureTokens_(sh, kind, grid, named) {
+  if (PICTURE_KINDS.indexOf(kind) < 0 || grid.length < 2) return null;
+  const ic = imageColIn_(grid[0]);
+  const tokens = ic >= 0 ? imageTokens_(sh, ic, grid.length - 1, named) : null;
+  const crew = line => String(line[0]).trim().toLowerCase() === 'crew' && String(line[1]).trim();
+  if (kind !== 'ship' || !grid.slice(1).some(crew)) return tokens;
+  if (typeof named === 'function') named = named();
+  else if (!named) named = namedImages_();
+  return grid.slice(1).map((line, i) => (tokens && tokens[i]) || (crew(line) && named[String(line[1]).trim().toLowerCase()]) || '');
+}
+
 function isCellImage_(v) {
   return !!v && typeof v === 'object' && typeof v.getContentUrl === 'function';
 }
@@ -1078,7 +1091,7 @@ function image_(role, req) {
   return { ok: true, d, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
 }
 
-// Whether a Map row the crew can see, or a row of Lore, a character's tab or Ship, has the picture
+// Whether a Map row the crew can see, or a row of Lore, a character's tab or Ship (see pictureTokens_), has the picture
 // token. Remembered for DIGEST_SECONDS under those tabs' and the Images tab's generations (see
 // digests_), since a page asks once for each of its pictures.
 function namedOnSight_(ss, token) {
@@ -1103,8 +1116,8 @@ function onSight_(ss, tabs, token) {
   if (map && mapRows_(map, 'crew', named).some(r => r.cells[3] === token)) return true;
   return tabs.some(sh => {
     if (sh.getLastRow() < 2) return false;
-    const ic = imageColIn_(sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0]);
-    return ic >= 0 && imageTokens_(sh, ic, sh.getLastRow() - 1, named).indexOf(token) >= 0;
+    const tokens = pictureTokens_(sh, tabKind_(sh.getName()), sh.getDataRange().getDisplayValues(), named);
+    return !!tokens && tokens.indexOf(token) >= 0;
   });
 }
 

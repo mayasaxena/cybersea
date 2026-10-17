@@ -41,6 +41,7 @@ test('a crew member’s sheet: kind, whose they are, harm, tags explained, and t
   await p.waitForSelector('.crewsheet');
   assert.match(await p.textContent('.crewhead'), /Crew\s*1\s*\(6 crew space\)/);
   assert.match(await p.textContent('.crewsheet .note'), /Deckhand · Hand of Testa/);
+  assert.ok(await until(() => p.$eval('.crewsheet .portrait img', i => i.complete && i.naturalWidth === 32)), 'the Images tab’s picture under their name');
   assert.equal(where(await p.$eval('.crewsheet .note a', a => a.getAttribute('href'))), 'sheet.html?c=Testa');
   assert.deepEqual(await p.$$eval('.crewsheet .tagchip', es => es.map(e => [e.textContent, e.tagName, e.title])), [
     ['good at knots', 'A', 'Good at [something]: Take +1 when they help with it.'], ['jumpy', 'A', 'jumpy: Startles easily.'],
