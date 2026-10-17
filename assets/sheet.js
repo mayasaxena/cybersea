@@ -241,7 +241,7 @@ function movesHTML() {
   const cats = [['all', 'All'], ...CATS().map(c => [c, catLabel(c)])];
   return `<div class="mtools">
       <input type="search" class="in search" id="q" placeholder="Search" value="${esc(query)}" aria-label="Search moves" autocomplete="off">
-      <div class="cats">${cats.map(([k, l]) => `<button data-act="cat" data-cat="${k}" class="${ui.cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
+      <div class="cats">${cats.map(([k, l]) => `<button data-act="cat" data-cat="${esc(k)}" class="${ui.cat === k ? 'on' : ''}">${escTxt(l)}</button>`).join('')}</div>
     </div><div id="mlist">${moveListHTML()}</div>`;
 }
 

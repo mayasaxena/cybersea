@@ -143,13 +143,13 @@ export function makeActions(ctx) {
   }
 
   const eff = (key, text, ok) =>
-    `<label class="eff${ok ? '' : ' off'}"><input type="checkbox" data-eff="${key}"${ok ? ' checked' : ' disabled'}>${escTxt(text)}</label>`;
+    `<label class="eff${ok ? '' : ' off'}"><input type="checkbox" data-eff="${esc(key)}"${ok ? ' checked' : ' disabled'}>${escTxt(text)}</label>`;
   const select = (k, items) => `<select class="in sub" data-sub="${k}">${items.map(([v, t]) => `<option value="${esc(v)}">${escTxt(t)}</option>`).join('')}</select>`;
 
   function controls(kind) {
     const s = st();
     if (kind === 'session-begin') {
-      return refills().map(({ t, have, target }) => eff(`refill:${t.name}`, `Refresh ${word(t.role) || t.name.toLowerCase()} up to ${target} (${have})`, have < target)).join('') + sessionList('start', '');
+      return refills().map(({ t, have, target }, i) => eff(`refill:${i}`, `Refresh ${word(t.role) || t.name.toLowerCase()} up to ${target} (${have})`, have < target)).join('') + sessionList('start', '');
     }
     if (kind === 'session-end') return sessionList('end', 'Nothing on this sheet happens at the end of a session.');
     if (kind === 'chapter-end') {
@@ -224,8 +224,8 @@ export function makeActions(ctx) {
     const items = [];
     const title = label(kind);
     if (kind === 'session-begin') {
-      for (const { t, pips, have, target } of refills()) {
-        const n = on(`refill:${t.name}`) && target > have ? markN(pips, target - have) : 0;
+      for (const [i, { t, pips, have, target }] of refills().entries()) {
+        const n = on(`refill:${i}`) && target > have ? markN(pips, target - have) : 0;
         if (n) items.push(`+${n} ${word(t.role) || t.name.toLowerCase()}`);
       }
       runSessionMoves(on, items);
@@ -312,7 +312,7 @@ export function makeActions(ctx) {
       const moves = dt.moves || [];
       const g = cap(dtGroup());
       h += `<div class="dtbar">${escTxt(g)} <time>${fmtDate(dt.at)}</time>` +
-        `<span class="cnt">${escTxt(dt.where || '')} ${moves.length}/${dt.slots ?? '–'}</span>` +
+        `<span class="cnt">${escTxt(dt.where || '')} ${moves.length}/${escTxt(dt.slots ?? '–')}</span>` +
         (moves.length ? `<span class="dtm">${moves.map(m => escTxt(`${m.name} (${m.total})`)).join(' · ')}</span>` : '') +
         `<button class="pill" data-act="dt-moves">${escTxt(g)} moves</button></div>`;
     }
