@@ -93,7 +93,7 @@ Each character sheet (and the Ship) has a **Scratchpad** at the top of its Notes
 the sheet has no place for yet. It needs no edit mode: it saves as you type, in the browser first
 and then to the sheet, as a `jot | Notes | …` row on that tab.
 
-The round button at the bottom left of every page sends feedback about the site. It lands on the
+The round button at the bottom right of every page sends feedback about the site. It lands on the
 **Feedback** tab (Date | Feedback), which the script makes the first time someone sends some.
 Only the day and the text are kept, not who sent it. The site never shows that tab; read it in
 Google Sheets.

@@ -375,7 +375,7 @@ export function openMenu(client) {
 }
 
 /* ---------- feedback ---------- */
-// The button at the bottom left of every game page. Feedback goes to the sheet's Feedback tab
+// The button at the bottom right of every game page. Feedback goes to the sheet's Feedback tab
 // with nothing about who sent it (see feedback_ in Code.gs); until it's sent, the draft stays in
 // this browser.
 const feedbackButton = () => `<button class="ic fb" data-nav="feedback" title="Send feedback" aria-label="Send feedback">${ICON.talk}</button>`;

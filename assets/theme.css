@@ -131,7 +131,7 @@ h2{font:700 13px/1.2 "Chakra Petch",sans-serif;letter-spacing:.14em;text-transfo
 .urow .in{flex:1;min-width:0}
 .has-usage .toast{bottom:calc(14px + var(--usage-h, 0px))}
 /* the feedback button, and the scratchpad on a sheet's Notes tab */
-.fb{position:fixed;left:14px;bottom:14px;z-index:19;width:34px;height:34px;border-radius:50%;box-shadow:var(--shadow);opacity:.85}
+.fb{position:fixed;right:14px;bottom:14px;z-index:19;width:34px;height:34px;border-radius:50%;box-shadow:var(--shadow);opacity:.85}
 .fb:hover{opacity:1}
 .has-usage .fb{bottom:calc(14px + var(--usage-h, 0px))}
 .has-fb{padding-bottom:52px}
