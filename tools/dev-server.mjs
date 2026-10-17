@@ -17,7 +17,7 @@
 
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGas, loadCodeGs } from './gas-fake.mjs';
 import { gameTabs, KEYS, RULES_HEADER } from '../tests/fixtures/game.mjs';
@@ -67,11 +67,26 @@ function editByHand(game, tab, rows) {
   for (const range of edited) game.api.onEdit({ range, source: ss });
 }
 
+// What .gitignore keeps out of the repo (rules.json, workbooks, the private materials folder)
+// is never served either. Handles the simple patterns that file uses: name, *.ext, dir/.
+const IGNORED = (() => {
+  let lines = [];
+  try { lines = readFileSync(join(ROOT, '.gitignore'), 'utf8').split('\n'); } catch { /* none */ }
+  return lines.map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('!')).map(l => {
+    const dir = l.endsWith('/');
+    const body = l.replace(/^\/|\/$/g, '').replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
+    return new RegExp(`(^|/)${body}${dir ? '/' : '$'}`);
+  });
+})();
+const ignored = rel => IGNORED.some(re => re.test(rel));
+
 function siteHandler(req, res) {
-  let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  let path;
+  try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400).end('Bad request'); return; }
   if (path.endsWith('/')) path += 'index.html';
   const file = normalize(join(ROOT, path));
-  if (!file.startsWith(ROOT) || /[\\/]\.|node_modules|[\\/]tools[\\/]extract/.test(file.slice(ROOT.length))) {
+  const rel = file.slice(ROOT.length + 1).split(sep).join('/');
+  if (!file.startsWith(ROOT + sep) || /(^|\/)\.|(^|\/)node_modules\/|^tools\/extract\//.test(rel) || ignored(rel)) {
     res.writeHead(404).end('Not found');
     return;
   }
@@ -85,9 +100,14 @@ function apiHandler(game, latency) {
   let failNext = 0;
   let n = 0;
   return (req, res) => {
+    try { handle(req, res); } catch (err) { if (!res.headersSent) res.writeHead(400).end(String(err?.message || err)); }
+  };
+  function handle(req, res) {
     const url = new URL(req.url, 'http://x');
     const body = () => new Promise(ok => { let b = ''; req.on('data', c => { b += c; }); req.on('end', () => ok(b)); });
     const json = (code, obj, extra = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...extra }); res.end(JSON.stringify(obj)); };
+    // A malformed request is the test's mistake: answer 400 rather than take the server down.
+    const bad = err => { if (!res.headersSent) json(400, { ok: false, error: String(err?.message || err) }); };
     const redirect = out => {
       const id = String(++n);
       outputs.set(id, out);
@@ -102,7 +122,7 @@ function apiHandler(game, latency) {
       return;
     }
     if (url.pathname === '/exec' && req.method === 'POST') {
-      body().then(text => redirect(game.api.doPostRaw(text)));
+      body().then(text => redirect(game.api.doPostRaw(text))).catch(bad);
       return;
     }
     if (url.pathname.startsWith('/echo/')) {
@@ -125,7 +145,7 @@ function apiHandler(game, latency) {
         const { tab, rows } = JSON.parse(text);
         editByHand(game, tab, rows);
         json(200, { ok: true });
-      });
+      }).catch(bad);
       return;
     }
     if (url.pathname === '/__test/tab') {
@@ -135,11 +155,11 @@ function apiHandler(game, latency) {
       return;
     }
     if (url.pathname === '/__test/fail' && req.method === 'POST') {
-      body().then(text => { const c = JSON.parse(text || '{}').count; failNext = c == null ? 1 : Number(c); json(200, { ok: true }); });
+      body().then(text => { const c = JSON.parse(text || '{}').count; failNext = c == null ? 1 : Number(c); json(200, { ok: true }); }).catch(bad);
       return;
     }
     res.writeHead(404).end();
-  };
+  }
 }
 
 // Start the site plus `games` fake APIs. Resolves to {site, apis: [{url, game}], close()}.
