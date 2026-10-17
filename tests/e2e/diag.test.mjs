@@ -32,7 +32,7 @@ test('a good deployment passes every check and can be opened', async () => {
 test('a script deployed before crew sign-in is called out, in diag and on the site', async () => {
   const old = h.srv.apis[1];
   const p = await run(old.url, KEYS.GM_KEY);
-  assert.match(await p.textContent('.dline.bad'), /older Code\.gs \(version 1; the latest is 6\)\. Players can’t join without a passphrase/);
+  assert.match(await p.textContent('.dline.bad'), /older Code\.gs \(version 1; the latest is 7\)\. Players can’t join without a passphrase/);
   assert.match(await p.textContent('#out'), /signed in as gm/, 'the GM passphrase still works');
 
   const q = await h.page();
@@ -45,7 +45,7 @@ test('a script deployed before crew sign-in is called out, in diag and on the si
 test('a script from before row versions is called out, and still opens', async () => {
   const p = await run(h.srv.apis[2].url, KEYS.GM_KEY);
   assert.equal(await p.$$eval('.dline.bad', ds => ds.length), 1);
-  assert.match(await p.textContent('.dline.bad'), /older Code\.gs \(version 2; the latest is 6\)\. It works, but/);
+  assert.match(await p.textContent('.dline.bad'), /older Code\.gs \(version 2; the latest is 7\)\. It works, but/);
   await p.click('#out a.pbtn');
   await p.waitForSelector('.crewcard');
 });

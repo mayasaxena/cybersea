@@ -28,7 +28,7 @@ RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'odd
                'faction']
 SYSTEM_KINDS = ['stat', 'track', 'section', 'choice']
 SYSTEM_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta']
-SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin']
+SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin']
 RESERVED = {'rules', 'system', 'gm', 'lore', 'map', 'readme'}
 META_RE = re.compile(r'([^\s=]+)=(?:"([^"]*)"|(\S*))|(\S+)')
 

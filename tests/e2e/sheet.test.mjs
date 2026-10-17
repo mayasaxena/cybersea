@@ -511,6 +511,49 @@ test('items have counts and notes; using one, or changing the sheet outside edit
   await p.click('[data-act="edit"]');
 });
 
+test('the scratchpad on the Notes tab saves as you type, outside edit mode, here first and then to the sheet', async () => {
+  const p = await openSheet();
+  await p.click('[data-act="tab"][data-tab="notes"]');
+  await fail(1); // the first save is lost on the way: it stays in this browser and goes again
+  await p.fill('.card.jot textarea', 'Owe Vex 2 treasure\nask about the map');
+  assert.ok(await until(() => queued(p)), 'kept in this browser');
+  assert.ok(await until(async () => row(await h.tab(api, 'Testa'), 'jot', 'Notes')?.[2] === 'Owe Vex 2 treasure\nask about the map'), 'reaches the sheet');
+  assert.equal(await p.$('body.editing'), null, 'no edit mode needed');
+  // someone else sees it, read-only
+  const q = await openSheet(undefined, { as: null });
+  await q.click('[data-act="tab"][data-tab="notes"]');
+  await q.waitForSelector('.card.jot .rich');
+  assert.equal(await q.$('.card.jot textarea'), null);
+  assert.match(await q.$eval('.card.jot .rich', e => e.textContent), /Owe Vex/);
+  await p.fill('.card.jot textarea', '');
+  assert.ok(await until(async () => !row(await h.tab(api, 'Testa'), 'jot', 'Notes')), 'clearing it removes the row');
+});
+
+test('feedback: the button sends a note to the Feedback tab without who sent it, and keeps the draft until it goes', async () => {
+  const p = await openSheet();
+  await p.click('.fb');
+  await p.fill('.fbtext', 'The log needs a search box.');
+  await p.keyboard.press('Escape');
+  await p.click('.fb');
+  assert.equal(await p.inputValue('.fbtext'), 'The log needs a search box.', 'draft kept');
+  await p.click('[data-send]');
+  await p.waitForSelector('#overlay', { state: 'detached' });
+  const rows = await until(async () => { const r = await h.tab(api, 'Feedback'); return r?.length > 1 && r; });
+  assert.deepEqual(rows[0].slice(0, 2), ['Date', 'Feedback']);
+  const last = rows[rows.length - 1];
+  assert.equal(last[1], 'The log needs a search box.');
+  assert.ok(!JSON.stringify(rows).includes('Testa'), 'nothing about who sent it');
+  await p.click('.fb');
+  assert.equal(await p.inputValue('.fbtext'), '', 'draft cleared once sent');
+  await p.keyboard.press('Escape');
+  // an old script can't take it: the draft stays
+  const q = await openSheet(undefined, { game: v2, as: null });
+  await q.click('.fb');
+  await q.fill('.fbtext', 'hello');
+  await q.click('[data-send]');
+  await q.waitForFunction(() => /out of date/.test(document.querySelector('[data-msg]')?.textContent || ''));
+});
+
 test('phone width has no sideways scrolling, and no page errors anywhere', async () => {
   const p = await openSheet({ width: 380, height: 760 });
   for (const t of ['sheet', 'inventory', 'moves', 'notes', 'log']) {

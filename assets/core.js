@@ -2,7 +2,7 @@
 
 import { esc, escTxt } from './markup.js';
 import { isSignedIn, isSigninRow } from './codec.js';
-import { ls, listGames, inviteUrl, href, joinGame, forgetGame, inviteFromText } from './games.js';
+import { ls, gkey, listGames, inviteUrl, href, joinGame, forgetGame, inviteFromText } from './games.js';
 
 export { esc, escTxt };
 
@@ -10,6 +10,7 @@ export const ICON = {
   pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.3 4.9"/><path d="M4 12a8 8 0 0 1 14.3-4.9"/><path d="M18.5 3v4.2h-4.2"/><path d="M5.5 21v-4.2h4.2"/></svg>',
+  talk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>',
   die: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="15.5" cy="15.5" r="1.4"/></g></svg>',
 };
 
@@ -294,6 +295,7 @@ export function wireNav(root, client) {
   root.addEventListener('click', e => {
     if (e.target.closest('[data-nav="menu"]')) openMenu(client);
     if (e.target.closest('[data-nav="who"]')) openWho(client);
+    if (e.target.closest('[data-nav="feedback"]')) openFeedback(client);
   });
   client?.on(e => {
     if (e.me || e.list || e.key || e.auth || e.status) {
@@ -374,10 +376,46 @@ export function openMenu(client) {
   });
 }
 
+/* ---------- feedback ---------- */
+// The button at the bottom right of every game page. Feedback goes to the sheet's Feedback tab
+// with nothing about who sent it (see feedback_ in Code.gs); until it's sent, the draft stays in
+// this browser.
+const feedbackButton = () => `<button class="ic fb" data-nav="feedback" title="Send feedback" aria-label="Send feedback">${ICON.talk}</button>`;
+
+export function openFeedback(client) {
+  const key = gkey(client.game, 'feedback');
+  const o = modal(`
+    <div class="prow"><h2>Feedback</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>
+    <div class="note">Something missing, broken or confusing? This goes to the game’s sheet without your name.</div>
+    <textarea class="in rtext fbtext" aria-label="Feedback" placeholder="What would make the site better?">${escTxt(ls.get(key, '') || '')}</textarea>
+    <div class="prow"><span class="status" data-msg></span><span class="grow"></span><button class="pbtn primary" data-send>Send</button></div>`, { label: 'Feedback' });
+  const ta = o.querySelector('textarea');
+  const send = o.querySelector('[data-send]');
+  const say = m => { o.querySelector('[data-msg]').textContent = m; };
+  ta.focus();
+  ta.addEventListener('input', () => { if (ta.value.trim()) ls.set(key, ta.value); else ls.del(key); });
+  send.addEventListener('click', async () => {
+    const text = ta.value.trim();
+    if (!text) { say('Write something first.'); return; }
+    send.disabled = true;
+    say('Sending…');
+    try {
+      await client.request({ op: 'feedback', text });
+      ls.del(key);
+      closeModal();
+      toast('Thanks! Your feedback is in the sheet.');
+    } catch (e) {
+      send.disabled = false;
+      say(/unknown op/i.test(e.message) ? 'This game’s script is out of date, so it can’t take feedback yet. Your note is kept here; ask the GM to update the script.' : `${e.message} Your note is kept here.`);
+    }
+  });
+}
+
 // Common page start: theme, nav, and (if there's a game) a client that's ready to read.
 export function pageShell(root, client, page) {
   applyTheme();
   root.insertAdjacentHTML('afterbegin', navHTML(client, page));
+  if (client && !document.querySelector('.fb')) { document.body.insertAdjacentHTML('beforeend', feedbackButton()); document.body.classList.add('has-fb'); }
   wireNav(document.body, client);
 }
 

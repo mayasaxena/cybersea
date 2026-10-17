@@ -23,7 +23,7 @@
  * @OnlyCurrentDoc
  */
 
-const API_VERSION = 6; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures. 6: the System tab, and checks on the tabs (setUpChecks)
+const API_VERSION = 7; // 2: crew need no passphrase unless CREW_KEY is set. 3: rows have versions. 4: rules overrides, Map tab. 5: the Map tab holds places and their pictures. 6: the System tab, and checks on the tabs (setUpChecks). 7: feedback
 const HEADER = ['Kind', 'Name', 'Value', 'Notes'];
 const RULES_HEADER = ['Kind', 'Group', 'Name', 'Text', 'Meta', 'Vis'];
 // The game's mechanics (stats, tracks, starting cards, options): read by everyone, edited only in Sheets.
@@ -40,6 +40,10 @@ const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this lon
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // The Map tab's columns, found by their headers (see mapRows_).
 const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
+// The Feedback tab: anonymous notes about the site, added by the feedback button (see feedback_).
+const FEEDBACK_TAB = 'Feedback';
+const FEEDBACK_HEADER = ['Date', 'Feedback'];
+const FEEDBACK_LIMIT = 30; // per minute, from everyone
 
 function doGet(e) {
   const op = e && e.parameter ? e.parameter.op : '';
@@ -76,6 +80,7 @@ function handle_(req) {
     case 'patch': return withLock_(() => patch_(role, req));
     case 'create': return withLock_(() => create_(role, req));
     case 'image': return image_(role, req);
+    case 'feedback': return withLock_(() => feedback_(req));
     case 'show': return role === 'gm' ? withLock_(() => show_(req)) : forbidden_();
     case 'selftest': return role === 'gm' ? withLock_(selftest_) : forbidden_();
   }
@@ -122,16 +127,17 @@ function forbidden_() {
 function tabKind_(name) {
   const n = String(name).trim().toLowerCase();
   if (!n || n.charAt(0) === '_' || n === 'readme') return null;
-  if (n === 'rules' || n === 'system' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map') return n;
+  if (n === 'rules' || n === 'system' || n === 'gm' || n === 'lore' || n === 'ship' || n === 'map' || n === 'feedback') return n;
   return 'character';
 }
 
+// Feedback is read in Sheets only, so the site never shows it, even to the GM.
 function canRead_(role, kind) {
-  return !!kind && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'feedback' && (kind !== 'gm' || role === 'gm');
 }
 
 function canWrite_(role, kind) {
-  return !!kind && kind !== 'rules' && kind !== 'system' && kind !== 'map' && (kind !== 'gm' || role === 'gm');
+  return !!kind && kind !== 'rules' && kind !== 'system' && kind !== 'map' && kind !== 'feedback' && (kind !== 'gm' || role === 'gm');
 }
 
 function findSheet_(ss, name) {
@@ -330,7 +336,7 @@ function onEdit(e) {
   if (!range || range.getColumn() > HEADER.length) return;
   const sh = range.getSheet();
   const kind = tabKind_(sh.getName());
-  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map') return;
+  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback') return;
   const top = Math.max(range.getRow(), 2);
   const n = range.getLastRow() - top + 1;
   if (n < 1) return;
@@ -392,7 +398,7 @@ function patch_(role, req) {
   const sh = findSheet_(ss, req.tab);
   if (!sh) return { ok: false, code: 'missing', error: 'No tab called "' + req.tab + '".' };
   const kind = tabKind_(sh.getName());
-  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'system' || kind === 'map' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
+  if (!canWrite_(role, kind)) return kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' ? { ok: false, code: 'forbidden', error: 'That tab is edited in the spreadsheet itself.' } : forbidden_();
 
   const sets = (req.set || []).map(r => ({ cells: cells_(r, 4), w: when_(r[4]) }));
   const vc = verCol_(sh);
@@ -494,6 +500,31 @@ function patch_(role, req) {
   return { ok: true, tab: sh.getName(), at, d: t.d, rows: t.rows, vers: t.vers, imgs: t.imgs, skipped };
 }
 
+/*
+ * feedback {text}: a line added to the Feedback tab (made if the game has none yet). It's
+ * anonymous: only the day and the text are kept, not who sent it, their role or their page.
+ */
+function feedback_(req) {
+  const text = String(req.text == null ? '' : req.text).trim();
+  if (!text) return { ok: false, error: 'There’s nothing to send.' };
+  if (text.length > MAX_CELL) return { ok: false, error: 'That’s too long (over ' + MAX_CELL + ' characters).' };
+  const cache = CacheService.getScriptCache();
+  const sent = Number(cache.get('feedback') || 0);
+  if (sent >= FEEDBACK_LIMIT) return { ok: false, code: 'busy', error: 'Lots of feedback just now. Try again in a minute.' };
+  cache.put('feedback', String(sent + 1), 60);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = findSheet_(ss, FEEDBACK_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(FEEDBACK_TAB);
+    sh.getRange(1, 1, 1, FEEDBACK_HEADER.length).setValues([FEEDBACK_HEADER]);
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  const range = sh.getRange(sh.getLastRow() + 1, 1, 1, FEEDBACK_HEADER.length);
+  range.setNumberFormat('@');
+  range.setValues([[day, safe_(text)]]);
+  return { ok: true };
+}
+
 /* create {tab, rows}: a new character tab (or a missing Ship/Lore tab; a GM tab needs the GM key) */
 function create_(role, req) {
   const name = String(req.tab || '').trim();
@@ -501,7 +532,7 @@ function create_(role, req) {
     return { ok: false, code: 'name', error: 'Pick a different name: up to ' + MAX_TAB_NAME + ' characters, without [ ] * ? / \\ :' };
   }
   const kind = tabKind_(name);
-  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || (kind === 'gm' && role !== 'gm')) {
+  if (!kind || kind === 'rules' || kind === 'system' || kind === 'map' || kind === 'feedback' || (kind === 'gm' && role !== 'gm')) {
     return { ok: false, code: 'name', error: '"' + name + '" is a reserved name.' };
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -649,7 +680,7 @@ function image_(role, req) {
 const RULES_KINDS = ['move', 'procedure', 'house', 'advance', 'playbook', 'vice', 'oddity', 'kit', 'lastwords', 'question',
   'pmove', 'smove', 'pnote', 'renown', 'rule', 'special', 'tag', 'trouble', 'table', 'fate', 'world', 'faction'];
 const SYSTEM_KINDS = ['stat', 'track', 'section', 'choice'];
-const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin'];
+const SHEET_KINDS = ['info', 'stat', 'track', 'bond', 'sheet', 'notes', 'jot', 'inventory', 'item', 'move', 'special', 'advance', 'log', 'state', 'signin'];
 const GUARD_NOTE = 'Cybersea: ';
 
 function setUpChecks() {
@@ -664,7 +695,7 @@ function guard_(sh) {
   const name = sh.getName().trim().toLowerCase();
   const kind = tabKind_(sh.getName());
   if (name === 'readme') { protectTab_(sh, 'how the sheet works'); return true; }
-  if (!kind) return false;
+  if (!kind || kind === 'feedback') return false;
   const rows = Math.max(sh.getMaxRows() - 1, 1);
   const list = (values, strict, help) => SpreadsheetApp.newDataValidation().requireValueInList(values, true)
     .setAllowInvalid(!strict).setHelpText(help).build();

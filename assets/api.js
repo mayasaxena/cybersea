@@ -20,8 +20,9 @@ import { rowKey, applyPending, diffRows, isSigninRow, isSignedIn, signinRow } fr
 // The latest Code.gs version (its ping answers {v}). Older deployments still work: before 2, only
 // with a passphrase (crew without one are turned away); before 3, without row versions, so
 // changes always go ahead; before 4, without the Rules tab's override columns; before 5, without
-// the Map tab (places, levels and pictures); before 6, without the System tab (the game's mechanics).
-export const API_VERSION = 6;
+// the Map tab (places, levels and pictures); before 6, without the System tab (the game's mechanics);
+// before 7, without feedback.
+export const API_VERSION = 7;
 const CREW_SIGNIN_VERSION = 2;
 
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
