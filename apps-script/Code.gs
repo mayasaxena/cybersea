@@ -790,18 +790,21 @@ function place_(req) {
       n = after + 1;
     } else n = Math.max(sh.getLastRow(), 1) + 1;
   }
-  const put = (col, v) => {
-    const cell = sh.getRange(n, col + 1);
-    cell.setNumberFormat('@');
-    cell.setValues([[safe_(v)]]);
-  };
-  [0, 1, 2].forEach(i => put(cols[i], c[i]));
-  put(cols[4], c[3]);
-  put(cols[5], c[4]);
-  if (image != null) {
-    const cell = sh.getRange(n, cols[3] + 1);
-    cell.setNumberFormat('General'); // a name, or =IMAGE() typed in later, as Sheets reads it
-    cell.setValues([[safe_(image)]]);
+  // The row's cells, written a run of side-by-side columns at a time (one run, in the usual layout).
+  const cellsAt = {}; // column -> [value, number format]
+  [0, 1, 2].forEach(i => { cellsAt[cols[i]] = [c[i], '@']; });
+  cellsAt[cols[4]] = [c[3], '@'];
+  cellsAt[cols[5]] = [c[4], '@'];
+  if (image != null) cellsAt[cols[3]] = [image, 'General']; // a name, or =IMAGE() typed in later, as Sheets reads it
+  const order = Object.keys(cellsAt).map(Number).sort((a, b) => a - b);
+  for (let i = 0; i < order.length;) {
+    let j = i;
+    while (j + 1 < order.length && order[j + 1] === order[j] + 1) j++;
+    const run = order.slice(i, j + 1).map(col => cellsAt[col]);
+    const range = sh.getRange(n, order[i] + 1, 1, run.length);
+    range.setNumberFormats([run.map(x => x[1])]);
+    range.setValues([run.map(x => safe_(x[0]))]);
+    i = j + 1;
   }
   // A renamed place takes its levels along.
   if (old && !String(old.cells[2]).trim() && old.loc && c[1].toLowerCase() !== old.loc) {
@@ -979,8 +982,25 @@ function image_(role, req) {
   return { ok: true, type: String(blob.getContentType() || 'image/png'), data: Utilities.base64Encode(bytes) };
 }
 
-// Whether a Map row the crew can see, or a Lore row, has the picture token.
+// Whether a Map row the crew can see, or a Lore row, has the picture token. Remembered for
+// DIGEST_SECONDS under the Map, Lore and Images tabs' generations (see digests_), since a page
+// asks once for each of its pictures.
 function namedOnSight_(ss, token) {
+  const cache = CacheService.getScriptCache();
+  const ks = ['gen:map', 'gen:lore', 'gen:images'];
+  const gens = cache.getAll(ks);
+  const missing = {};
+  ks.forEach(k => { if (!gens[k]) gens[k] = missing[k] = stamp_(); });
+  if (Object.keys(missing).length) cache.putAll(missing, 21600); // before reading, as in digests_
+  const key = 'sight:' + token + ':' + ks.map(k => gens[k]).join(':');
+  const hit = cache.get(key);
+  if (hit != null) return hit === '1';
+  const yes = onSight_(ss, token);
+  cache.put(key, yes ? '1' : '0', DIGEST_SECONDS);
+  return yes;
+}
+
+function onSight_(ss, token) {
   const named = namedImages_();
   const map = findSheet_(ss, 'Map');
   if (map && mapRows_(map, 'crew', named).some(r => r.cells[3] === token)) return true;
