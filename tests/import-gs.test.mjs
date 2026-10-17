@@ -107,13 +107,13 @@ test('keeps list data validation, and says what it left out', () => {
   assert.deepEqual([...res.skipped].sort(), ['data validation that isn’t a list of choices (Map E2)', 'merged cells (Map)']);
 });
 
-test('a protected sheet is protected for everyone but the owner, its "allow edit" ranges left open', () => {
+test('a protected sheet warns before an edit, locking no one out; its "allow edit" ranges left open', () => {
   const { replace, sheet } = setup();
   const res = replace([{ ...FRESH[1], protect: { open: ['G2:G5', 'B9'] } }, FRESH[2]]);
   assert.equal(res.ok, true, res.error);
   const [p] = sheet('Rules').getProtections('SHEET');
-  assert.deepEqual([...p.getEditors()], ["owner"]);
-  assert.equal(p.canDomainEdit(), false);
+  assert.equal(p.isWarningOnly(), true);
+  assert.match(p.getDescription(), /^Cybersea: /);
   assert.deepEqual([...p.getUnprotectedRanges()].map(r => [r.getSheet().getName(), r.getA1Notation()]), [['Rules', 'G2:G5'], ['Rules', 'B9']]);
   assert.deepEqual(sheet('Nexa').getProtections('SHEET'), []);
 });
