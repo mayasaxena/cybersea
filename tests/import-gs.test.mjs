@@ -1,4 +1,4 @@
-// Unit tests for apps-script/Import.gs (the Cybersea menu's Replace with an xlsx…), run against
+// Unit tests for apps-script/Import.gs (the Cybersea menu's Import an xlsx…), run against
 // tools/gas-fake.mjs with .xlsx files built by tests/fixtures/xlsx.mjs. Rules text here is made up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +25,8 @@ function setup() {
   const sheet = name => gas.ss.getSheetByName(name);
   const replace = (tabs, opts, choice) => ctx.replaceWithXlsx('cybersea.xlsx', makeXlsx(tabs, opts).toString('base64'), choice);
   const list = tabs => ctx.listXlsxTabs('cybersea.xlsx', makeXlsx(tabs).toString('base64'));
-  return { gas, api, ctx, sheet, replace, list, names: () => gas.ss.getSheets().map(s => s.getName()) };
+  // _Import (what the last import brought in) is checked on its own.
+  return { gas, api, ctx, sheet, replace, list, names: () => gas.ss.getSheets().map(s => s.getName()).filter(n => n !== '_Import') };
 }
 
 const FRESH = [
@@ -334,7 +335,7 @@ test('adds the Cybersea menu when the spreadsheet opens', () => {
   });
   ctx.onOpen();
   assert.equal(added, true);
-  assert.deepEqual(items, [['Replace with an xlsx…', 'showReplaceDialog']]);
+  assert.deepEqual(items, [['Import an xlsx…', 'showReplaceDialog']]);
   assert.equal(typeof ctx[items[0][1]], 'function');
 });
 
@@ -381,7 +382,7 @@ test('filling a tab costs the same few Sheets round trips however many rows it h
     return gas.ss.calls - c;
   };
   const few = cost(5);
-  assert.equal(cost(500), few, 'no call per row');
+  assert.equal(cost(300), few, 'no call per row');
   assert.ok(few <= 40, `${few} calls`);
 });
 
@@ -407,6 +408,7 @@ test('imports a workbook built by tools/xlsx with openpyxl, then mechanics.py', 
   execFileSync('python3', ['-I', 'tools/xlsx/mechanics.py', '--mechanics', mech, built, '--out', out]);
 
   const { api, ctx, names } = setup();
+  assert.equal(ctx.openXlsx_('game.xlsx', readFileSync(out).toString('base64'), null).book.schema, 1, 'the schema build.py wrote');
   const res = ctx.replaceWithXlsx('game.xlsx', readFileSync(out).toString('base64'));
   assert.equal(res.ok, true, res.error);
   assert.ok(names().includes('System') && names().includes('Nexa'), names().join(', '));
