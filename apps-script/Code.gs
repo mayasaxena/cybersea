@@ -38,6 +38,7 @@ const MAX_TAB_NAME = 40;
 const MAX_GONE = 150;          // removed rows remembered per tab (see gone_)
 const BAD_KEY_LIMIT = 10;      // wrong passphrases per minute before pausing
 const KEY_CACHE_SECONDS = 120; // passphrase changes take effect within this long
+const KNOWN_KEY_SECONDS = 6 * 60 * 60; // a passphrase that worked skips the wrong-guess pause this long (CacheService's most)
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // The Map tab's columns, found by their headers (see mapRows_).
 const MAP_HEADER = ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'];
@@ -74,12 +75,18 @@ function out_(obj) {
 
 function handle_(req) {
   if (req.op === 'ping') return { ok: true, v: API_VERSION };
-  if (throttled_()) return { ok: false, code: 'throttled', error: 'Too many wrong passphrases. Wait a minute and try again.' };
   const role = role_(req.key);
-  if (!role) {
-    if (!req.key) return { ok: false, code: 'auth', error: 'This game needs a passphrase.' };
-    noteBadKey_();
-    return { ok: false, code: 'auth', error: 'Wrong passphrase.' };
+  if (!role && !req.key) return { ok: false, code: 'auth', error: 'This game needs a passphrase.' };
+  // Wrong guesses pause new sign-ins for a minute. Requests that carry no passphrase guess
+  // nothing, and a passphrase that already worked lately keeps working, so one player's typos
+  // don't lock out the table or the GM.
+  if (req.key && !(role && knownKey_(req.key))) {
+    if (throttled_()) return { ok: false, code: 'throttled', error: 'Too many wrong passphrases. Wait a minute and try again.' };
+    if (!role) {
+      noteBadKey_();
+      return { ok: false, code: 'auth', error: 'Wrong passphrase.' };
+    }
+    noteKnownKey_(req.key);
   }
   switch (req.op) {
     case 'read': return read_(role, req);
@@ -124,6 +131,15 @@ function throttled_() {
 function noteBadKey_() {
   const cache = CacheService.getScriptCache();
   cache.put('bad', String(Number(cache.get('bad') || 0) + 1), 60);
+}
+
+// A passphrase that worked within the last KNOWN_KEY_SECONDS, remembered by its digest.
+function knownKey_(key) {
+  return !!CacheService.getScriptCache().get('known:' + digest_(String(key)));
+}
+
+function noteKnownKey_(key) {
+  CacheService.getScriptCache().put('known:' + digest_(String(key)), '1', KNOWN_KEY_SECONDS);
 }
 
 function forbidden_() {
