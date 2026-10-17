@@ -173,6 +173,13 @@ test('lore: read, search, add, edit and delete entries', async () => {
   await p.click('[data-act="rm"][data-i="1"]');
   await p.click('[data-act="rm"][data-i="1"]');
   assert.ok(await until(async () => !row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')));
+  // the toast's Undo puts it back, then it goes for good
+  assert.match(await p.textContent('.toast.show'), /Deleted The Drowned Bell/);
+  await p.click('.toast .tact');
+  assert.ok(await until(async () => row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')?.[2] === '- rings at low tide'));
+  await p.click('[data-act="rm"][data-i="1"]');
+  await p.click('[data-act="rm"][data-i="1"]');
+  assert.ok(await until(async () => !row(await h.tab(g1, 'Lore'), 'Rumors', 'The Drowned Bell')));
 });
 
 test('lore: someone else\'s edit made while you type shows once you stop', async () => {

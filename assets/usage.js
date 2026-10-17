@@ -1,6 +1,6 @@
 // Changes made outside edit mode (a pip marked, a bond used, treasure spent, a box ticked) gather
 // in a small panel at the bottom of the page. Log writes them to the log as one entry, with an
-// optional note; closing the panel leaves them out of the log. The changes are saved either way.
+// optional note; the panel's × undoes them instead.
 // Using a kit item always logs, from its own dialog (sheet.js).
 
 import { escTxt } from './markup.js';
@@ -28,9 +28,10 @@ export function usageEntry(lines, note = '') {
   return lines.length === 1 ? { title: lines[0], items: [], note } : { title: 'Changes', items: lines, note };
 }
 
-// log(entry) adds { title, items, note } to the log and saves.
-export function makeUsage({ log }) {
+// log(entry) adds { title, items, note } to the log and saves. undone(lines) runs after × undoes them.
+export function makeUsage({ log, undone }) {
   const pending = new Map(); // key -> { n, line(n) }
+  const undos = []; // one per change while the panel is open, each putting back what that change found
   let el = null;
   let note = '';
 
@@ -38,19 +39,19 @@ export function makeUsage({ log }) {
 
   function draw() {
     const ls = lines();
-    if (!ls.length) { hide(); return; }
+    if (!ls.length) { clear(); return; }
     if (!el) {
       el = document.createElement('div');
       el.className = 'usage';
       el.setAttribute('role', 'region');
       el.setAttribute('aria-label', 'Log this change');
       el.innerHTML = `<ul class="ulines"></ul><div class="urow"><input class="in" placeholder="Note (optional)" aria-label="Note" autocomplete="off">` +
-        '<button class="pbtn primary" data-log>Log</button><button class="mini" data-skip title="Don’t log" aria-label="Don’t log">×</button></div>';
+        '<button class="pbtn primary" data-log>Log</button><button class="mini" data-undo title="Undo" aria-label="Undo">×</button></div>';
       el.querySelector('input').addEventListener('input', e => { note = e.target.value; });
       el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); commit(); } });
       el.addEventListener('click', e => {
         if (e.target.closest('[data-log]')) commit();
-        else if (e.target.closest('[data-skip]')) clear();
+        else if (e.target.closest('[data-undo]')) undo();
       });
       document.body.append(el);
       document.body.classList.add('has-usage');
@@ -67,8 +68,16 @@ export function makeUsage({ log }) {
 
   function clear() {
     pending.clear();
+    undos.length = 0;
     note = '';
     hide();
+  }
+
+  function undo() {
+    const ls = lines();
+    undos.reverse().forEach(u => u());
+    clear();
+    if (ls.length) undone?.(ls);
   }
 
   function commit() {
@@ -78,11 +87,13 @@ export function makeUsage({ log }) {
   }
 
   // Add n to the change under key; line(total) words it, or returns '' when it nets out to nothing.
-  function add(key, n, line) {
+  // undo, taken before the change was made, puts back what it changed.
+  function add(key, n, line, undo) {
     const p = pending.get(key) || { n: 0, line };
     p.n += n;
     p.line = line;
     if (p.n) pending.set(key, p); else pending.delete(key);
+    if (undo) undos.push(undo);
     draw();
   }
 

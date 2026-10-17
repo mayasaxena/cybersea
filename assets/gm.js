@@ -7,7 +7,7 @@ import { gameRules, TABS as RULE_TABS } from './rules.js';
 import { systemOf, characterTypes, sum, circles } from './system.js';
 import { md } from './markup.js';
 import { parseTrack, formatTrack } from './codec.js';
-import { esc, escTxt, ICON, armed, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
+import { esc, escTxt, ICON, armed, deletedToast, pipClass, pageShell, refreshNav, askKey, whenIdle, debounce, fitText, noGame, freeName, toEntries, toRows, sameRows, typingIn } from './core.js';
 import { crewCardHTML, shipCardHTML } from './cards.js';
 import { tagsHTML, tagListHTML, addTag, removeTag } from './tags.js';
 import { SECTIONS, sectionHTML, searchAllHTML, sectionHasContent } from './refview.js';
@@ -200,9 +200,16 @@ main.addEventListener('click', e => {
   if (act === 'clock+' || act === 'clock-') { const c = entries[i]; const p = parseTrack(c.value); if (act === 'clock+') p.push(0); else p.pop(); c.value = formatTrack(p); changed(); render(); }
   if (act === 'rm' && armed(b)) {
     const gone = entries[i];
+    if (!gone) return;
+    const h = gone.kind === 'npc' && harmOf(gone.name);
     entries.splice(i, 1);
-    if (gone.kind === 'npc') { const h = harmOf(gone.name); if (h) entries.splice(entries.indexOf(h), 1); }
+    if (h) entries.splice(entries.indexOf(h), 1);
     changed(); render();
+    deletedToast(gone.name, () => {
+      entries.push(gone); // a new row again, so last, as the sheet will have it
+      if (h && !harmOf(gone.name)) entries.push(h);
+      changed(); render();
+    });
   }
 });
 

@@ -2,7 +2,7 @@
 // Begin/Leave Downtime and Level Up, or whatever the game calls them. Rules rows with action=
 // (procedure and move rows) name each action and give the text its dialog shows; choice rows
 // with the action as their Group are its options (see system.js). What each one does is here.
-// ctx = {st(), rules(), changed(), render(), editing(), used(key, n, line)}; used offers a change
+// ctx = {st(), rules(), changed(), render(), editing(), used(key, n, line, undo), keep}; used offers a change
 // for the log (usage.js).
 
 import { esc, escTxt, fmt, fmtDate, modal, closeModal, toast } from './core.js';
@@ -349,6 +349,7 @@ export function makeActions(ctx) {
     const c = cost(move);
     if (!c?.ok) return;
     const take = n => {
+      const undo = ctx.keep?.tracks(track(c.role).name);
       const l = track(c.role).pips;
       let done = 0;
       for (let j = l.length - 1; j >= 0 && done < n; j--) if (l[j] === 1) { l[j] = 0; done++; }
@@ -356,7 +357,7 @@ export function makeActions(ctx) {
       ctx.render();
       toast(`Spent ${done} ${c.word}: ${move.name} (${c.have - done} left)`);
       const name = track(c.role).name;
-      ctx.used?.(`spend:${move.name}`, done, k => `${move.name}: ${name} −${k}`);
+      ctx.used?.(`spend:${move.name}`, done, k => `${move.name}: ${name} −${k}`, undo);
     };
     if (c.n) { take(c.n); return; }
     const o = modal(`<div class="prow"><h2>${escTxt(move.name)}</h2><span class="grow"></span><button class="mini" data-close aria-label="Close">×</button></div>

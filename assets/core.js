@@ -142,6 +142,9 @@ export function toast(message, kind = '', action = null) {
   toastT = setTimeout(() => el.classList.remove('show'), 5000);
 }
 
+// After taking something out: a toast saying so, whose Undo puts it back.
+export const deletedToast = (what, putBack) => toast(`Deleted ${what}`, '', { label: 'Undo', run: putBack });
+
 /* ---------- holding updates while someone types ---------- */
 // whenIdle(root, busy) gives later(fn): fn runs now, or, while busy() (typing in a field under
 // root, a dialog open), once focus leaves the field or the dialog closes. Each fn runs once however
