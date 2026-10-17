@@ -80,7 +80,7 @@ function placeHTML(p) {
     ${isGm() ? `<button class="add sm" data-new="level" data-for="${p.i}">+ Level</button>` : ''}</section>`;
 }
 
-let W = [];
+let W = world(store.rows); // a cached copy shows at once; the sheet may say it's unchanged
 const allPlaces = () => W.flatMap(r => r.places);
 
 function render() {
