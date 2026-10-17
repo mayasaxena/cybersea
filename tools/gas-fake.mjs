@@ -179,6 +179,7 @@ class Sheet {
   setFrozenColumns(n) { this.frozenCols = n; return this; }
   getFrozenColumns() { return this.frozenCols || 0; }
   setColumnWidth(c, px) { (this.widths ||= {})[c] = px; return this; }
+  setColumnWidths(c, n, px) { for (let i = 0; i < n; i++) this.setColumnWidth(c + i, px); return this; }
   getColumnWidth(c) { return (this.widths || {})[c] || 100; }
   insertRowsAfter(r, n) { if (r !== MAX_ROWS) throw new Error('fake: only appends rows'); throw new Error(`fake: sheets are ${MAX_ROWS} rows (asked for ${MAX_ROWS + n})`); }
   setName(n) {
