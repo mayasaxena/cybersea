@@ -197,6 +197,25 @@ test('if a tab can’t be filled in, the old tabs stay as they were', () => {
   assert.deepEqual(names(), before);
 });
 
+test('a check or format Sheets turns down is listed, not fatal; a value it turns down names the tab', () => {
+  const { ctx, replace, names, sheet } = setup();
+  ctx.guard_ = () => { throw new Error('Invalid argument'); };
+  ctx.SpreadsheetApp.newDataValidation = () => { throw new Error('Invalid argument'); };
+  const res = replace([{ ...FRESH[1], validations: [{ sqref: 'F2:F9', formula: '"crew,gm"' }] }, FRESH[2]]);
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual([...res.skipped].sort(), [
+    'data validation (Rules F2:F9): Invalid argument',
+    'the site’s checks on the Nexa tab: Invalid argument',
+    'the site’s checks on the Rules tab: Invalid argument',
+  ]);
+  assert.equal(sheet('Rules').getRange(2, 4).getDisplayValue(), 'New text.');
+
+  const before = names();
+  const rows = [H, ...Array.from({ length: 1200 }, (_, i) => ['note', `Row ${i}`, '', ''])];
+  assert.throws(() => replace([FRESH[1], { name: 'Huge', rows }]), /\(the Huge tab\)$/);
+  assert.deepEqual(names(), before);
+});
+
 test('waits for the site’s writes: a busy sheet is turned down', () => {
   const { ctx, replace, names } = setup();
   const lock = ctx.LockService.getScriptLock();

@@ -108,26 +108,37 @@ function replaceTabs_(ss, book, remove) {
     book.tabs.forEach((t, i) => {
       const sh = ss.insertSheet('Importing ' + (i + 1) + ' ' + Date.now());
       made.push(sh);
-      fillSheet_(sh, t, book.skipped);
+      try {
+        fillSheet_(sh, t, book.skipped);
+      } catch (err) {
+        throw new Error((err.message || err) + ' (the ' + t.name + ' tab)');
+      }
     });
   } catch (err) {
     made.forEach(sh => ss.deleteSheet(sh));
     throw err;
   }
-  made.forEach((sh, i) => {
-    const old = findSheet_(ss, book.tabs[i].name);
-    const at = old ? old.getIndex() : 0;
-    if (old) ss.deleteSheet(old);
-    sh.setName(book.tabs[i].name);
-    if (at) {
-      ss.setActiveSheet(sh);
-      ss.moveActiveSheet(at);
-    }
-  });
-  Object.keys(gone).forEach(k => ss.deleteSheet(findSheet_(ss, gone[k])));
-  if (!kept.length) made.forEach((sh, i) => { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); });
+  // Swapping the new tabs in: from here on, the old tabs start going.
+  try {
+    made.forEach((sh, i) => {
+      const old = findSheet_(ss, book.tabs[i].name);
+      const at = old ? old.getIndex() : 0;
+      if (old) ss.deleteSheet(old);
+      sh.setName(book.tabs[i].name);
+      if (at) {
+        ss.setActiveSheet(sh);
+        ss.moveActiveSheet(at);
+      }
+    });
+    Object.keys(gone).forEach(k => ss.deleteSheet(findSheet_(ss, gone[k])));
+    if (!kept.length) made.forEach((sh, i) => { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); });
+  } catch (err) {
+    throw new Error((err.message || err) + ' (while swapping the new tabs in; File → Version history can undo it)');
+  }
   made.forEach((sh, i) => { if (book.tabs[i].hidden) sh.hideSheet(); });
-  made.forEach(sh => guard_(sh)); // setUpChecks's checks, as on a tab the site makes
+  // setUpChecks's checks, as on a tab the site makes. The tabs are in by now, so a check that
+  // can't be set is listed rather than stopping the import.
+  made.forEach(sh => extra_(book.skipped, 'the site’s checks on the ' + sh.getName() + ' tab', () => guard_(sh)));
   ss.setActiveSheet(made.find(sh => !sh.isSheetHidden()) || made[0]);
 
   // Rows remembered as removed (see gone_) were the old tabs' rows.
@@ -146,31 +157,48 @@ function fillSheet_(sh, t, skipped) {
   const range = sh.getRange(1, 1, nr, nc);
   range.setNumberFormats(grid(c => (c.text ? '@' : 'General')));
   range.setValues(t.values.length ? t.values : [['']]);
-  range.setFontWeights(grid(c => (c.bold ? 'bold' : 'normal')));
-  range.setBackgrounds(grid(c => c.fill || null));
-  range.setWraps(grid(c => !!c.wrap));
+  // The rest is how the tab looks and what it checks: one that can't be set is listed in the
+  // result instead of stopping the import.
+  const tab = ' (' + t.name + ')';
+  extra_(skipped, 'bold' + tab, () => range.setFontWeights(grid(c => (c.bold ? 'bold' : 'normal'))));
+  extra_(skipped, 'fill colors' + tab, () => range.setBackgrounds(grid(c => c.fill || null)));
+  extra_(skipped, 'wrapping' + tab, () => range.setWraps(grid(c => !!c.wrap)));
   t.cols.forEach(c => {
-    for (let i = c.min; i <= Math.min(c.max, nc); i++) {
-      if (c.width) sh.setColumnWidth(i, Math.round(c.width * 7 + 5));
-      if (c.hidden) sh.hideColumns(i);
+    for (let i = Math.max(c.min, 1); i <= Math.min(c.max, nc); i++) {
+      if (c.width > 0) extra_(skipped, 'column widths' + tab, () => sh.setColumnWidth(i, Math.round(c.width * 7 + 5)));
+      if (c.hidden) extra_(skipped, 'hidden columns' + tab, () => sh.hideColumns(i));
     }
   });
-  if (t.frozenRows) sh.setFrozenRows(t.frozenRows);
-  if (t.frozenCols) sh.setFrozenColumns(t.frozenCols);
+  if (t.frozenRows) extra_(skipped, 'frozen rows' + tab, () => sh.setFrozenRows(t.frozenRows));
+  if (t.frozenCols) extra_(skipped, 'frozen columns' + tab, () => sh.setFrozenColumns(t.frozenCols));
   t.validations.forEach(v => {
     const list = listOf_(v.formula);
     if (v.type !== 'list' || !list) {
       skipped['data validation that isn’t a list of choices (' + t.name + ' ' + v.sqref + ')'] = 1;
       return;
     }
-    const rule = SpreadsheetApp.newDataValidation().requireValueInList(list, v.dropdown).setAllowInvalid(!v.strict).build();
-    v.sqref.split(/\s+/).filter(Boolean).forEach(a1 => sh.getRange(a1).setDataValidation(rule));
+    extra_(skipped, 'data validation (' + t.name + ' ' + v.sqref + ')', () => {
+      const rule = SpreadsheetApp.newDataValidation().requireValueInList(list, v.dropdown).setAllowInvalid(!v.strict).build();
+      v.sqref.split(/\s+/).filter(Boolean).forEach(a1 => sh.getRange(a1).setDataValidation(rule));
+    });
   });
   if (t.protect) {
-    const p = sh.protect();
-    p.setUnprotectedRanges(t.protect.open.map(a1 => sh.getRange(a1)));
-    p.removeEditors(p.getEditors());
-    if (p.canDomainEdit()) p.setDomainEdit(false);
+    extra_(skipped, 'protection' + tab, () => {
+      const p = sh.protect();
+      p.setUnprotectedRanges(t.protect.open.map(a1 => sh.getRange(a1)));
+      p.removeEditors(p.getEditors());
+      if (p.canDomainEdit()) p.setDomainEdit(false);
+    });
+  }
+}
+
+// Runs fn; if Sheets turns it down, notes what, and why, in skipped.
+function extra_(skipped, what, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.warn('Import: ' + what + ': ' + (err.stack || err));
+    skipped[what + ': ' + (err.message || err)] = 1;
   }
 }
 
