@@ -1,10 +1,12 @@
 /**
- * The spreadsheet's Cybersea menu: Replace with an xlsx… swaps every tab for the tabs of an .xlsx
- * file (a fresh workbook from tools/xlsx/build.py, say), picked from the computer.
+ * The spreadsheet's Cybersea menu: Replace with an xlsx… swaps tabs for the tabs of an .xlsx file
+ * (a fresh workbook from tools/xlsx/build.py, say), picked from the computer. Once a file is
+ * picked, the dialog lists its tabs (all ticked: each replaces the sheet's tab of the same name,
+ * or is added) and the sheet's tabs the file doesn't have (unticked: ticking one removes it).
  *
  * The spreadsheet itself stays: its name, its script, the script's properties and the web app
- * deployment, so the site's URL and invite links keep working. Everything on the tabs is
- * replaced, including pictures placed in cells (File > Version history can bring them back).
+ * deployment, so the site's URL and invite links keep working. Everything on a replaced tab goes,
+ * including pictures placed in cells (File > Version history can bring them back).
  *
  * The script reads the .xlsx itself (it's a zip of XML files), so it needs no access beyond this
  * spreadsheet. It carries over what the game's workbooks use: values and formulas, plain-text,
@@ -26,34 +28,73 @@ function onOpen() {
 }
 
 function showReplaceDialog() {
-  const html = HtmlService.createHtmlOutput(REPLACE_DIALOG_HTML).setWidth(460).setHeight(330);
+  const html = HtmlService.createHtmlOutput(REPLACE_DIALOG_HTML).setWidth(460).setHeight(520);
   SpreadsheetApp.getUi().showModalDialog(html, 'Replace with an xlsx');
 }
 
-// Called from the dialog: name is the file's name, data its bytes in base64.
-function replaceWithXlsx(name, data) {
+// Called from the dialog once a file is picked: the file's tabs (and whether the sheet has a tab
+// of the same name), and the sheet's tabs the file doesn't have.
+function listXlsxTabs(name, data) {
+  const opened = openXlsx_(name, data, []);
+  if (!opened.ok) return opened;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inFile = {};
+  opened.book.tabs.forEach(t => { inFile[tabKey_(t.name)] = 1; });
+  return {
+    ok: true,
+    file: opened.book.tabs.map(t => ({ name: t.name, exists: !!findSheet_(ss, t.name) })),
+    sheetOnly: ss.getSheets().map(sh => sh.getName()).filter(n => !inFile[tabKey_(n)]),
+  };
+}
+
+// Called from the dialog: name is the file's name, data its bytes in base64. choice: {tabs: the
+// file's tabs to bring in, remove: the sheet's tabs to delete}; without it, the sheet becomes the
+// file (every tab brought in, every other tab removed).
+function replaceWithXlsx(name, data, choice) {
+  const only = choice && Array.isArray(choice.tabs) ? choice.tabs.map(String) : null;
+  const opened = openXlsx_(name, data, only);
+  if (!opened.ok) return opened;
+  const book = opened.book;
+  if (only) book.tabs = book.tabs.filter(t => only.indexOf(t.name) >= 0);
+  const remove = choice && Array.isArray(choice.remove) ? choice.remove.map(String) : null;
+  return withLock_(() => replaceTabs_(SpreadsheetApp.getActiveSpreadsheet(), book, remove));
+}
+
+// The workbook in base64 data, its tabs' cells read only for the tabs named in only (all if null).
+function openXlsx_(name, data, only) {
   name = String(name || '');
   if (!/\.xlsx$/i.test(name)) return { ok: false, error: 'Pick an .xlsx file.' };
   const bytes = Utilities.base64Decode(String(data || ''));
   if (!bytes.length) return { ok: false, error: 'That file is empty.' };
   if (bytes.length > MAX_XLSX_BYTES) return { ok: false, error: 'That file is too big.' };
-  let book;
   try {
     // An .xlsx is a zip, and Utilities.unzip only takes a blob typed as one.
-    book = readXlsx_(Utilities.unzip(Utilities.newBlob(bytes, 'application/zip', name)));
+    return { ok: true, book: readXlsx_(Utilities.unzip(Utilities.newBlob(bytes, 'application/zip', name)), only) };
   } catch (err) {
     return { ok: false, error: 'That doesn’t look like an .xlsx file (' + (err.message || err) + '). Nothing was changed.' };
   }
-  return withLock_(() => replaceTabs_(SpreadsheetApp.getActiveSpreadsheet(), book));
 }
 
-// Replaces ss's tabs with the workbook's, in its order. The new tabs are made first, so a failure
+function tabKey_(name) {
+  return String(name).trim().toLowerCase();
+}
+
+// Brings book's tabs into ss: each replaces the tab of the same name, keeping its place, or is
+// added at the end. Then removes the tabs named in remove (null: every tab the book doesn't
+// have, and the tabs end up in the book's order). The new tabs are made first, so a failure
 // leaves the old tabs as they were.
-function replaceTabs_(ss, book) {
-  if (!book.tabs.some(t => tabKind_(t.name) === 'rules')) {
-    return { ok: false, error: 'That file has no Rules tab, so it doesn’t look like a game. Nothing was changed.' };
+function replaceTabs_(ss, book, remove) {
+  if (!book.tabs.length) return { ok: false, error: 'Tick at least one tab from the file. Nothing was changed.' };
+  const incoming = {};
+  book.tabs.forEach(t => { incoming[tabKey_(t.name)] = 1; });
+  const gone = {};
+  ss.getSheets().map(sh => sh.getName()).forEach(n => {
+    if (!incoming[tabKey_(n)] && (remove ? remove.some(r => tabKey_(r) === tabKey_(n)) : true)) gone[tabKey_(n)] = n;
+  });
+  const kept = ss.getSheets().map(sh => sh.getName()).filter(n => !incoming[tabKey_(n)] && !gone[tabKey_(n)]);
+  if (!book.tabs.some(t => tabKind_(t.name) === 'rules') && !kept.some(n => tabKind_(n) === 'rules')) {
+    return { ok: false, error: 'That would leave no Rules tab, so the site couldn’t read the game. Nothing was changed.' };
   }
-  const old = ss.getSheets();
   const made = [];
   try {
     book.tabs.forEach((t, i) => {
@@ -65,21 +106,27 @@ function replaceTabs_(ss, book) {
     made.forEach(sh => ss.deleteSheet(sh));
     throw err;
   }
-  old.forEach(sh => ss.deleteSheet(sh));
   made.forEach((sh, i) => {
+    const old = findSheet_(ss, book.tabs[i].name);
+    const at = old ? old.getIndex() : 0;
+    if (old) ss.deleteSheet(old);
     sh.setName(book.tabs[i].name);
-    ss.setActiveSheet(sh);
-    ss.moveActiveSheet(i + 1);
+    if (at) {
+      ss.setActiveSheet(sh);
+      ss.moveActiveSheet(at);
+    }
   });
+  Object.keys(gone).forEach(k => ss.deleteSheet(findSheet_(ss, gone[k])));
+  if (!kept.length) made.forEach((sh, i) => { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); });
   made.forEach((sh, i) => { if (book.tabs[i].hidden) sh.hideSheet(); });
   made.forEach(sh => guard_(sh)); // setUpChecks's checks, as on a tab the site makes
   ss.setActiveSheet(made.find(sh => !sh.isSheetHidden()) || made[0]);
 
   // Rows remembered as removed (see gone_) were the old tabs' rows.
   const props = PropertiesService.getDocumentProperties();
-  Object.keys(props.getProperties()).filter(k => k.indexOf('gone:') === 0).forEach(k => props.deleteProperty(k));
+  Object.keys(incoming).concat(Object.keys(gone)).forEach(k => props.deleteProperty('gone:' + k));
   const skipped = Object.keys(book.skipped);
-  return { ok: true, tabs: made.map(sh => sh.getName()), skipped };
+  return { ok: true, tabs: made.map(sh => sh.getName()), removed: Object.keys(gone).map(k => gone[k]), skipped };
 }
 
 function fillSheet_(sh, t, skipped) {
@@ -127,9 +174,10 @@ function listOf_(formula) {
 
 /* ---------- reading an .xlsx ---------- */
 
-// blobs: the unzipped parts. Returns {tabs: [{name, hidden, values, cells, width, cols,
+// blobs: the unzipped parts; only: the tabs whose cells to read (null: all; others get only
+// their name and hidden). Returns {tabs: [{name, hidden, values, cells, width, cols,
 // frozenRows, frozenCols, validations, protect}], skipped: {what: 1}}.
-function readXlsx_(blobs) {
+function readXlsx_(blobs, only) {
   const parts = {};
   blobs.forEach(b => { parts[b.getName().replace(/^\/+/, '')] = b; });
   const text = path => (parts[path] ? parts[path].getDataAsString('UTF-8') : '');
@@ -143,7 +191,7 @@ function readXlsx_(blobs) {
     const target = String(rels[s.a['r:id']] || '');
     const path = target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
     if (!parts[path]) throw new Error('no ' + path + ' for tab ' + s.a.name);
-    const tab = readSheet_(xml_(text(path)), shared, styles, skipped, s.a.name);
+    const tab = only && only.indexOf(s.a.name) < 0 ? {} : readSheet_(xml_(text(path)), shared, styles, skipped, s.a.name);
     tab.name = s.a.name;
     tab.hidden = !!s.a.state && s.a.state !== 'visible';
     return tab;
@@ -292,19 +340,25 @@ const REPLACE_DIALOG_HTML = `<!doctype html>
 <style>
   body { font: 14px/1.4 Arial, sans-serif; margin: 0; }
   p { margin: 0 0 12px; }
-  label { display: block; margin: 0 0 12px; }
+  label { display: block; margin: 0 0 8px; }
+  h4 { margin: 12px 0 6px; font-size: 13px; color: #555; }
+  #tabs { max-height: 230px; overflow-y: auto; }
+  #tabs label { margin: 0 0 4px; }
+  #sureRow { margin-top: 14px; padding-top: 10px; border-top: 1px solid #ddd; }
+  .note { color: #777; }
   .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   button { font: inherit; padding: 6px 14px; }
   #go { background: #c5221f; color: #fff; border: 0; border-radius: 4px; }
   #go:disabled { background: #ccc; }
-  #msg { min-height: 1.4em; }
+  #msg { min-height: 1.4em; margin-top: 12px; }
   .err { color: #c5221f; }
 </style>
-<p>Every tab in this spreadsheet is replaced by the tabs in the file, including pictures placed in
-cells. The spreadsheet, its script and the site's link stay the same.
-<b>File → Version history</b> can undo it.</p>
+<p>Each ticked tab from the file replaces the tab of the same name here, including pictures placed
+in cells, or is added. Tabs you don't tick stay as they are. The spreadsheet, its script and the
+site's link stay the same. <b>File → Version history</b> can undo it.</p>
 <label><input type="file" id="file" accept=".xlsx"></label>
-<label><input type="checkbox" id="sure"> Replace every tab in this spreadsheet</label>
+<div id="tabs"></div>
+<label id="sureRow" hidden><input type="checkbox" id="sure"> Replace the ticked tabs</label>
 <p id="msg"></p>
 <div class="row">
   <button id="cancel" onclick="google.script.host.close()">Cancel</button>
@@ -312,30 +366,75 @@ cells. The spreadsheet, its script and the site's link stay the same.
 </div>
 <script>
   const file = document.getElementById('file');
+  const tabs = document.getElementById('tabs');
   const sure = document.getElementById('sure');
   const go = document.getElementById('go');
   const msg = document.getElementById('msg');
-  const ready = () => { go.disabled = !(file.files.length && sure.checked); };
-  file.onchange = ready;
+  let data = null;
+  const ticked = kind => [...tabs.querySelectorAll('input[data-kind="' + kind + '"]:checked')].map(i => i.value);
+  const ready = () => { go.disabled = !(data && sure.checked && ticked('file').length); };
+  const say = (text, err) => { msg.className = err ? 'err' : ''; msg.textContent = text; };
+  const fail = text => { say(text, true); ready(); };
+  const box = (kind, name, text, on) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = name;
+    input.checked = on;
+    input.dataset.kind = kind;
+    input.onchange = ready;
+    const note = document.createElement('span');
+    note.className = 'note';
+    note.textContent = text;
+    label.append(input, ' ' + name + ' ', note);
+    return label;
+  };
+  const heading = text => { const h = document.createElement('h4'); h.textContent = text; return h; };
   sure.onchange = ready;
-  const fail = text => { msg.className = 'err'; msg.textContent = text; ready(); };
-  go.onclick = () => {
+  file.onchange = () => {
+    data = null;
+    tabs.replaceChildren();
+    document.getElementById('sureRow').hidden = true;
+    ready();
     const f = file.files[0];
-    go.disabled = true;
-    msg.className = '';
-    msg.textContent = 'Replacing… this can take a minute.';
+    if (!f) return;
+    say('Reading the file…');
     const reader = new FileReader();
     reader.onerror = () => fail('Couldn’t read that file.');
     reader.onload = () => {
+      const b64 = String(reader.result).split(',')[1] || '';
       google.script.run
         .withSuccessHandler(res => {
           if (!res || !res.ok) return fail((res && res.error) || 'Something went wrong.');
-          msg.textContent = 'Done: ' + res.tabs.join(', ') + '.' + (res.skipped && res.skipped.length ? ' Left out: ' + res.skipped.join('; ') + '.' : '');
-          if (!(res.skipped && res.skipped.length)) setTimeout(() => google.script.host.close(), 1500);
+          data = b64;
+          tabs.append(heading('Tabs in the file'));
+          res.file.forEach(t => tabs.append(box('file', t.name, t.exists ? '(replaces this sheet’s)' : '(new tab)', true)));
+          if (res.sheetOnly.length) {
+            tabs.append(heading('Tabs only in this sheet: tick to remove'));
+            res.sheetOnly.forEach(n => tabs.append(box('remove', n, '', false)));
+          }
+          document.getElementById('sureRow').hidden = false;
+          say('');
+          ready();
         })
         .withFailureHandler(err => fail(String(err && err.message || err)))
-        .replaceWithXlsx(f.name, String(reader.result).split(',')[1] || '');
+        .listXlsxTabs(f.name, b64);
     };
     reader.readAsDataURL(f);
+  };
+  go.onclick = () => {
+    go.disabled = true;
+    say('Replacing… this can take a minute.');
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res || !res.ok) return fail((res && res.error) || 'Something went wrong.');
+        let text = 'Done: ' + res.tabs.join(', ') + '.';
+        if (res.removed && res.removed.length) text += ' Removed: ' + res.removed.join(', ') + '.';
+        if (res.skipped && res.skipped.length) text += ' Left out: ' + res.skipped.join('; ') + '.';
+        say(text);
+        if (!(res.skipped && res.skipped.length)) setTimeout(() => google.script.host.close(), 1500);
+      })
+      .withFailureHandler(err => fail(String(err && err.message || err)))
+      .replaceWithXlsx(file.files[0].name, data, { tabs: ticked('file'), remove: ticked('remove') });
   };
 </script>`;

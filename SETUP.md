@@ -145,13 +145,17 @@ goes in an `_Overrides` tab, to copy into that row by hand.
 
 The spreadsheet has a **Cybersea** menu (it appears a few seconds after the sheet opens). Its
 **Replace with an xlsx…** picks an `.xlsx` file from your computer, such as a freshly built
-workbook, and replaces every tab with that file's tabs, in its order.
+workbook, and lists its tabs, all ticked, and this sheet's tabs the file doesn't have, unticked.
 
+- Each ticked tab from the file replaces this sheet's tab of the same name, in the same place,
+  or is added at the end. Tabs you leave unticked stay as they are.
+- Ticking one of this sheet's own tabs removes it. If you replace every tab and remove the rest,
+  the tabs end up in the file's order.
 - The spreadsheet, its script, the GM passphrase and the deployment stay as they are, so the
   site's URL and everyone's invite links keep working.
-- Everything on the old tabs goes, including pictures placed in cells. **File → Version
+- Everything on a replaced tab goes, including pictures placed in cells. **File → Version
   history** brings the old tabs back if you need them.
-- The file needs a **Rules** tab; anything else is turned down without changing the sheet.
+- The sheet must end up with a **Rules** tab; otherwise nothing changes.
 - It keeps the file's values and formulas, plain-text, bold, fill and wrap formatting, column
   widths, hidden tabs and columns, frozen rows and columns, and drop-down (list) data
   validation. A protected sheet is protected for everyone but the spreadsheet's owner, except
