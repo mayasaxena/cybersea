@@ -323,7 +323,7 @@ export function makeActions(ctx) {
       (editing ? `<textarea class="in enote" data-log="${i}" aria-label="Note">${escTxt(e.note || '')}</textarea>`
                : e.note ? `<p class="enote">${escTxt(e.note)}</p>` : '') +
       '</article>').reverse().join('');
-    return h + (entries || '<div class="empty">—</div>');
+    return h + (entries || '<div class="empty">Nothing logged yet.</div>');
   }
 
   // The action a move runs (action= on its Rules row), and whether it can run now: only one of

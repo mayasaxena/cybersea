@@ -1,7 +1,7 @@
 // The world: map.html?g=<game>. Everyone sees it. From the Map tab (edited in the spreadsheet, or
 // by the GM here):
 //   Region | Location | Level   | Image | Text | GM notes | Shown
-//   Vega   |          |         | 🖼    | …    |          |          a region's own map: always shows
+//   Vega   |          |         | 🖼    | …    |          |          a region's own map: always shows, under its heading
 //   Vega   | Haven    |         | 🖼    | …    | …        | on       a place: crew see it once Shown is on
 //          | Haven    | Level 1 | 🖼    | …    |          |          a floor or level of the place, in order
 // A place with no levels is one picture. Image is a picture placed in the cell, =IMAGE(…), or the
@@ -111,9 +111,9 @@ function worldHTML() {
   const regions = W.map(r => ({ ...r, maps: r.maps.filter(m => !q || `${m.name} ${m.text}`.toLowerCase().includes(q)), places: r.places.filter(visible) }))
     .filter(r => r.maps.length || r.places.length);
   return `
-      ${regions.map(r => `
-        ${r.maps.map(m => `<section class="worldmap"><div class="shead"><h2>${escTxt(m.name)}</h2>${gm ? `<button class="ic" data-edit="${m.at}" title="Edit ${esc(m.name)}" aria-label="Edit ${esc(m.name)}">${ICON.pen}</button>` : ''}</div>${imgHTML(m, 'mapimg')}${m.text.trim() ? `<div class="rich">${md(m.text)}</div>` : ''}${notesHTML(m)}</section>`).join('')}
-        ${r.places.length ? `<div class="mgroup"><h3>${escTxt(r.name || 'Places')}</h3><div class="cols">${r.places.map(placeHTML).join('')}</div></div>` : ''}`).join('')}
+      ${regions.map(r => `<div class="mgroup"><h3>${escTxt(r.name || 'Places')}${gm ? r.maps.map(m => `<button class="ic" data-edit="${m.at}" title="Edit the ${esc(m.name)} map" aria-label="Edit the ${esc(m.name)} map">${ICON.pen}</button>`).join('') : ''}</h3>
+        ${r.maps.map(m => [imgHTML(m, 'mapimg'), m.text.trim() ? `<div class="rich">${md(m.text)}</div>` : '', notesHTML(m)].join('')).filter(Boolean).map(h => `<section class="worldmap">${h}</section>`).join('')}
+        ${r.places.length ? `<div class="cols">${r.places.map(placeHTML).join('')}</div>` : ''}</div>`).join('')}
       ${!regions.some(r => r.places.length) ? `<div class="empty">${none}</div>` : ''}`;
 }
 

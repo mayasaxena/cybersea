@@ -219,7 +219,8 @@ test("map page: from the Map tab; crew see the region's map and only the places 
   const p = await h.page();
   await join(p, g1, 'map.html');
   await p.waitForSelector('.worldmap img');
-  assert.equal(await p.textContent('.worldmap h2'), 'The Test Server');
+  assert.deepEqual(await p.$$eval('.mgroup h3', hs => hs.map(x => x.textContent)), ['The Test Server'], 'the region is named once, over its map and places');
+  assert.ok(await p.$('.mgroup > h3 + .worldmap + .cols'), 'its map sits under the heading, above the place cards');
   assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'the picture placed in the cell loads, through the script');
   await p.waitForSelector('.loc h2');
   assert.deepEqual(await p.$$eval('.loc h2', hs => hs.map(x => x.textContent)), ['Packet Reef'], 'hidden places never reach the crew');
@@ -312,7 +313,7 @@ test('map page: with no Map tab, the GM can start one', async () => {
   await g.click('[data-new="map"]');
   await g.fill('[role="dialog"] [data-f="region"]', 'Open Sea');
   await g.click('[role="dialog"] [data-save]');
-  await g.waitForSelector('.worldmap h2:has-text("Open Sea")');
+  await g.waitForSelector('.mgroup h3:has-text("Open Sea")');
   assert.deepEqual((await h.tab(g2, 'Map')).slice(0, 2).map(r => r.slice(0, 7)), [
     ['Region', 'Location', 'Level', 'Image', 'Text', 'GM notes', 'Shown'],
     ['Open Sea', '', '', '', '', '', ''],
