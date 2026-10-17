@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { useItem, usageEntry, signed } from '../assets/usage.js';
+import { useItem, useOf, usageEntry, signed } from '../assets/usage.js';
 
 test('using an item takes at least one and no more than it has', () => {
   assert.deepEqual(useItem({ count: 3 }, 1), { used: 1, left: 2 });
@@ -14,4 +14,12 @@ test('one change is the log entry’s title; several go under Changes', () => {
   assert.deepEqual(usageEntry(['Harm +1', 'Luck −2']), { title: 'Changes', items: ['Harm +1', 'Luck −2'], note: '' });
   assert.equal(signed(2), '+2');
   assert.equal(signed(-1), '−1');
+});
+
+test('a use’s log entry tells what undoing it gives back', () => {
+  const items = [{ name: 'Medkit', count: 0 }, { name: 'Rope', count: null }];
+  assert.equal(useOf({ title: 'Medkit', items: ['Used 2, 0 left'] }, items).n, 2);
+  assert.equal(useOf({ title: 'Rope', items: ['Used'] }, items).n, 0);
+  assert.equal(useOf({ title: 'Gone', items: ['Used 1, 0 left'] }, items), null, 'the item was removed');
+  assert.equal(useOf({ title: 'Medkit', items: ['Harm +1'] }, items), null, 'not a use');
 });

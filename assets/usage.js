@@ -15,6 +15,14 @@ export function useItem(item, n) {
   return { used, left: item.count - used };
 }
 
+// The item use a log entry records ("Used 2, 1 left" or "Used" under the item's name), if the
+// item is still there: undoing it gives back n.
+export function useOf(entry, items) {
+  const m = entry.items.length === 1 && entry.items[0].match(/^Used(?: (\d+), \d+ left)?$/);
+  const item = m && items.find(x => x.name === entry.title);
+  return item ? { item, n: m[1] && item.count != null ? +m[1] : 0 } : null;
+}
+
 // One log entry for the gathered lines: a single line is the title, several go under "Changes".
 export function usageEntry(lines, note = '') {
   return lines.length === 1 ? { title: lines[0], items: [], note } : { title: 'Changes', items: lines, note };
