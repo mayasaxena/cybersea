@@ -293,6 +293,40 @@ test('map page: pictures are kept between visits, not fetched through the script
   assert.deepEqual(asks, []);
 });
 
+test('map page: a kept picture over an hour old shows at once, then the script is asked behind it and a new one swaps in', async () => {
+  const p = await h.page();
+  await join(p, g1, 'map.html');
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)));
+  // Age the kept copy and make it a different picture, as if the sheet's had been replaced since.
+  await p.evaluate(async () => {
+    const cache = await caches.open('cybersea-pictures');
+    for (const req of await cache.keys()) {
+      const old = await cache.match(req);
+      const c = Object.assign(document.createElement('canvas'), { width: 10, height: 10 });
+      const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+      const headers = new Headers(old.headers);
+      headers.set('x-d', 'stale');
+      headers.set('x-at', String(Date.now() - 2 * 60 * 60 * 1000));
+      await cache.put(req, new Response(blob, { headers }));
+    }
+  });
+  let release;
+  const held = new Promise(r => { release = r; });
+  const asks = [];
+  await p.route('**/*', async route => {
+    const body = route.request().postData() || '';
+    if (route.request().method() === 'POST' && /"op":"image"/.test(body)) { asks.push(body); await held; }
+    await route.continue();
+  });
+  await p.reload();
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 10)), 'the kept copy shows while the script is asked');
+  assert.ok(await until(() => asks.length >= 1), 'the script is asked about the old copy');
+  assert.match(asks[0], /"have":"stale"/);
+  release();
+  assert.ok(await until(() => p.$eval('.worldmap img', i => i.complete && i.naturalWidth === 64)), 'the new picture swaps in');
+  assert.equal(await p.$eval('.worldmap img', i => i.closest('a')?.href === i.src), true, 'its full-size link follows');
+});
+
 test('polls that change nothing leave the page alone: focus in the search box and the nav stays', async () => {
   const p = await h.page();
   await join(p, g1, 'map.html');
