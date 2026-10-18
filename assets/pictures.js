@@ -6,9 +6,10 @@
 //
 // Placed pictures come through the script as base64, so they're costly: they load only as they
 // near the screen, a few at a time, and are kept in the browser's Cache Storage between visits.
-// A kept picture is used as is while the tab it showed on hasn't changed (and for an hour at
-// most); otherwise the script is asked again with the picture's digest, and sends the bytes only
-// if they changed.
+// A kept picture shows at once while the tab it showed on hasn't changed. Replacing a placed
+// picture needn't change its tab, so once it's been kept an hour the script is also asked, behind
+// the scenes, with the picture's digest: it sends the bytes only if they changed, and the page
+// swaps them in. When the tab has changed (rows may have moved), the script is asked first.
 import { imgSrc } from './markup.js';
 import { esc } from './core.js';
 
@@ -58,34 +59,61 @@ async function keep(url, blob, d, seen) {
   } catch { /* no Cache Storage: fine */ }
 }
 
+// Asks the script for the picture, sending the kept copy's digest; the blob it ends up with.
+async function fetchPicture(client, tab, row, url, old, seen) {
+  const h = old?.headers;
+  let r;
+  try {
+    r = await limited(() => client.request({ op: 'image', tab, row, have: h?.get('x-d') || undefined }));
+  } catch (err) {
+    if (old) return old.blob(); // offline, say: the kept copy will do
+    throw new Error(err.message || 'Couldn’t load the picture.');
+  }
+  if (r.same && old) {
+    const blob = await old.blob();
+    await keep(url, blob, r.d, seen || '');
+    return blob;
+  }
+  const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: r.type });
+  await keep(url, blob, r.d || '', seen || '');
+  blob.changed = true;
+  return blob;
+}
+
+// The picture of a tab's row came in new while the page showed the kept copy: show the new one.
+function swap(tab, row, blob) {
+  const k = `${tab}:${row}`;
+  const was = placed.get(k);
+  const src = URL.createObjectURL(blob);
+  placed.set(k, src);
+  loading.set(k, Promise.resolve(src));
+  document.querySelectorAll(`img[data-row="${row}"]`).forEach(img => {
+    if (img.dataset.tab !== tab || img.getAttribute('src') !== was) return;
+    img.src = src;
+    const a = img.closest('a');
+    if (a?.getAttribute('href') === was) a.href = src;
+  });
+}
+
 // seen: the digest of the tab the picture shows on, as this page has it.
 function picture(client, tab, row, seen) {
   const k = `${tab}:${row}`;
   if (!loading.has(k)) {
+    const url = keyUrl(client, tab, row);
+    let recheck = null; // the kept copy shown, if the script should be asked about it after
     const p = (async () => {
-      const url = keyUrl(client, tab, row);
       const old = await kept(url);
       const h = old?.headers;
-      if (old && seen && h.get('x-seen') === seen && Date.now() - Number(h.get('x-at')) < KEEP_MS) return old.blob();
-      let r;
-      try {
-        r = await limited(() => client.request({ op: 'image', tab, row, have: h?.get('x-d') || undefined }));
-      } catch (err) {
-        if (old) return old.blob(); // offline, say: the kept copy will do
-        throw new Error(err.message || 'Couldn’t load the picture.');
+      if (old && seen && h.get('x-seen') === seen) {
+        if (Date.now() - Number(h.get('x-at')) >= KEEP_MS) recheck = old;
+        return old.blob();
       }
-      if (r.same && old) {
-        const blob = await old.blob();
-        keep(url, blob, r.d, seen || '');
-        return blob;
-      }
-      const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: r.type });
-      keep(url, blob, r.d || '', seen || '');
-      return blob;
+      return fetchPicture(client, tab, row, url, old, seen);
     })().then(blob => {
       const src = URL.createObjectURL(blob);
       placed.set(k, src);
+      if (recheck) fetchPicture(client, tab, row, url, recheck, seen).then(b => { if (b.changed) swap(tab, row, b); }, () => {});
       return src;
     });
     p.catch(() => loading.delete(k)); // a later render tries again
