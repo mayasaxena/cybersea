@@ -20,7 +20,7 @@ import { hold } from './hold.js';
 
 // The Code.gs version this site needs (its ping and reads answer {v}). An older deployment is
 // turned away with a note to redeploy: there's nothing to stay compatible with.
-export const API_VERSION = 11;
+export const API_VERSION = 12;
 
 // The most versions a pending change carries for what earlier unconfirmed changes may have left.
 const MAX_ALTS = 20;
